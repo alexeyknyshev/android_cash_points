@@ -1,0 +1,13 @@
+<RCC>
+    <qresource prefix="/">
+        <file>main.qml</file>
+        <file>MapView.qml</file>
+        <file>MapHoldDialog.qml</file>
+        <file>MapHoldDialogItem.qml</file>
+    </qresource>
+    <qresource prefix="/ico">
+        <file>ico/gtk-zoom-in.png</file>
+        <file>ico/gtk-zoom-out.png</file>
+        <file>ico/zoom-fit-best.png</file>
+    </qresource>
+</RCC>
