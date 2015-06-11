@@ -4,10 +4,13 @@
         <file>MapView.qml</file>
         <file>MapHoldDialog.qml</file>
         <file>MapHoldDialogItem.qml</file>
+        <file>MapMeMark.qml</file>
+        <file>EnableLocServiceDialog.qml</file>
     </qresource>
     <qresource prefix="/ico">
-        <file>ico/gtk-zoom-in.png</file>
-        <file>ico/gtk-zoom-out.png</file>
-        <file>ico/zoom-fit-best.png</file>
+        <file>zoom-in.png</file>
+        <file>zoom-out.png</file>
+        <file>zoom-fit.png</file>
+        <file>marker.png</file>
     </qresource>
 </RCC>
