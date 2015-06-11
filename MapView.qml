@@ -3,6 +3,7 @@ import QtQuick.Controls 1.3
 import QtLocation 5.3
 import QtPositioning 5.3
 import QtSensors 5.3
+import QtGraphicalEffects 1.0
 
 Item {
     width: 480
@@ -10,6 +11,15 @@ Item {
     visible: true
 
     focus: true
+
+    Keys.onEscapePressed: Qt.quit()
+    Keys.onPressed: {
+        if (event.key === Qt.Key_Plus) {
+            map.zoom(map.zoomLevel + 1)
+        } else if (event.key === Qt.Key_Minus) {
+            map.zoom(map.zoomLevel - 1)
+        }
+    }
 
     Plugin {
         id: mapPlugin
@@ -29,29 +39,67 @@ Item {
         updateInterval: 200
         preferredPositioningMethods: PositionSource.AllPositioningMethods
         property bool needUpdate: false
-        property MapCircle circle
+        property MapQuickItem me: null
+        property bool locationAvaliable: false
         onPositionChanged: {
+            locationAvaliable = true
             if (position.coordinate.isValid && needUpdate) {
                 needUpdate = false
                 map.moveToCoord(position.coordinate)
-                map.zoom(map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * 0.9)
+                var expectedZoomLevel = map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * 0.9
+                if (expectedZoomLevel >= map.zoomLevel) {
+                    map.zoom(map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * 0.9)
+                }
 
-                    if (circle == null) {
-                        circle = Qt.createQmlObject('import QtLocation 5.3; MapCircle {}', map)
+                if (me == null) {
+                    var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
+                    if (mapMeMarkComponent.status == Component.Ready) {
+                        me = mapMeMarkComponent.createObject(map)
                     }
-                    circle.center = position.coordinate
-                    circle.radius = 15.0
-                    circle.color = 'green'
-                    circle.border.width = 3
-                    map.addMapItem(circle)
+                }
+                me.coordinate = position.coordinate
+                map.addMapItem(me)
 
-               findMeButton.scaleAnimated = false
+                findMeButtonRotationAnim.stop()
+                findMeButtonRotationAnimBack.start()
+            }
+        }
+
+        onSourceErrorChanged: {
+            if (sourceError === PositionSource.ClosedError) {
+                locationAvaliable = false
+                console.error("position source is disabled")
+            } else if (sourceError === PositionSource.NoError) {
+                locationAvaliable = true
             }
         }
 
         function forceUpdate() {
             needUpdate = true
             update()
+        }
+
+        function debugPrintSupportedPositioningMethods() {
+            if (supportedPositioningMethods == PositionSource.AllPositioningMethods) {
+                console.log("All pos methods")
+                return
+            }
+            if (supportedPositioningMethods & PositionSource.SatellitePositioningMethods) {
+                console.log("Sat pos methods")
+            }
+            if (supportedPositioningMethods & PositionSource.NonSatellitePositioningMethods) {
+                console.log("Network pos methods")
+            }
+            if (supportedPositioningMethods & PositionSource.NoPositioningMethods) {
+                console.log("No pos methods")
+            }
+        }
+    }
+
+    EnableLocServiceDialog {
+        id: enableLocServiceDialog
+        onVisibilityChanged: {
+            console.log("dialog showed")
         }
     }
 
@@ -95,8 +143,6 @@ Item {
             to: map.targetZoomLevel
             duration: 300
             easing.type: Easing.InOutQuad
-//            onStarted: console.log("started")
-//            onStopped: console.log("stopped")
         }
 
 
@@ -117,15 +163,20 @@ Item {
         }
 
         function moveToCoord(coord) {
-            console.log("Coordinate:", coord.latitude, coord.longitude);
+            console.warn("Coordinate:", coord.latitude, coord.longitude);
             map.center = coord
         }
 
         function findMe() {
+            if (!positionSource.valid) {
+                console.log("position source is invalid!")
+                enableLocServiceDialog.open()
+            }
+
+            positionSource.debugPrintSupportedPositioningMethods()
             if (positionSource.supportedPositioningMethods ===
                     PositionSource.NoPositioningMethods)
             {
-                console.error("positioning methods are unsupported!")
                 return
             }
 
@@ -134,6 +185,10 @@ Item {
             }
 
             positionSource.forceUpdate()
+
+            if (!positionSource.locationAvaliable) {
+                enableLocServiceDialog.open()
+            }
         }
 
         PinchArea {
@@ -228,16 +283,28 @@ Item {
 
 
 
-        Image {
+        Rectangle {
             z: parent.z + 1
             id: zoomOutButton
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            anchors.margins: 1
-            height: Math.min(Math.max(parent.width, parent.height) * 0.125, 160)
+            anchors.rightMargin: height * 0.25
+            height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            source: "ico/ico/gtk-zoom-out.png"
-            opacity: 0.95
+            radius: width * 0.5
+            color: "#3295BA"
+            opacity: 0.9
+
+            Behavior on scale {
+                NumberAnimation { duration: 100 }
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.3
+                height: parent.height * 0.05
+                radius: height * 0.1
+            }
 
             MouseArea {
                 anchors.fill: parent
@@ -248,16 +315,38 @@ Item {
 
         }
 
-        Image {
+
+        Rectangle {
             z: parent.z + 1
             id: zoomInButton
             anchors.top: zoomOutButton.bottom
+            anchors.topMargin: height * 0.25
             anchors.right: parent.right
-            anchors.margins: 1
-            height: Math.min(Math.max(parent.width, parent.height) * 0.125, 160)
+            anchors.rightMargin: height * 0.25
+            height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            source: "ico/ico/gtk-zoom-in.png"
-            opacity: 0.95
+            radius: width * 0.5
+            color: "#D94336"
+            opacity: 0.9
+
+            Behavior on scale {
+                NumberAnimation { duration: 100 }
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.05
+                height: parent.height * 0.3
+                radius: width * 0.1
+            }
+
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.3
+                height: parent.height * 0.05
+                radius: height * 0.1
+            }
 
             MouseArea {
                 anchors.fill: parent
@@ -267,61 +356,144 @@ Item {
             }
         }
 
-        Image {
-                z: parent.z + 1
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.margins: 1
-                height: Math.min(Math.max(parent.width, parent.height) * 0.125, 160)
-                width: height
-                id: findMeButton
-                source: "ico/ico/zoom-fit-best.png"
+//        InnerShadow {
+//            anchors.fill: zoomOutButton
+//            radius: 128.0
+//                    samples: 16
+//                    horizontalOffset: -10
+//                    verticalOffset: -10
+//                    color: "#b0000000"
+//                    source: zoomOutButton
+//        }
 
-                property bool scaleAnimated: false
+        Rectangle {
+            id: findMeButton
+            z: parent.z + 1
+            anchors.left: parent.left
+            anchors.leftMargin: height * 0.25
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.margins: 1
+            height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
+            width: height
+            radius: width * 0.5
+            opacity: 0.9
+            color: "#3295BA"
 
-                states: [
-                    State {
-                        name: "animated_out"
-                        PropertyChanges {
-                            target: findMeButton
-                            scale: 0.8
-                        }
-                        onCompleted: findMeButton.state = "animated_in"
-                    },
-                    State {
-                        name: "animated_in"
-                        PropertyChanges {
-                            target: findMeButton
-                            scale: 1.0
-                        }
-                        onCompleted: {
-                            if (findMeButton.scaleAnimated) {
-                                findMeButton.state = "animated_out"
-                            } else {
-                                findMeButton.state = ""
-                            }
-                        }
-                    }
-                ]
+            property bool activated: false
 
-                transitions: Transition {
-                    ScaleAnimator {
-                        duration: 2000
+            SequentialAnimation {
+                id: findMeButtonRotationAnim
+                running: false
+                loops: 3
+                RotationAnimation {
+                    target: findMeButton
+                    to: 180
+                    duration: 1500
+                    easing.type: Easing.InOutCubic
+                }
+                RotationAnimation {
+                    target: findMeButton
+                    to: 0
+                    duration: 1500
+                    easing.type: Easing.InOutCubic
+                }
+            }
+
+            RotationAnimation {
+                id: findMeButtonRotationAnimBack
+                running: false
+                target: findMeButton
+                to: 0
+                duration: 1500 * (findMeButton.rotation / 180)
+            }
+
+            Behavior on scale {
+                NumberAnimation { duration: 100 }
+            }
+
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.5
+                height: parent.height * 0.04
+                color: "white"
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.height * 0.04
+                height: parent.width * 0.5
+                color: "white"
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 0.4
+                height: width
+                color: "white"
+                radius: width * 0.4
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.8
+                    height: width
+                    radius: width * 0.4
+                    color: findMeButton.color
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.5
+                        height: width
+                        radius: width * 0.5
+                        color: "#D94336"
                     }
                 }
+            }
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        map.findMe()
-                        if (parent.state === "") {
-                            parent.scaleAnimated = true
-                            parent.state = "animated_out"
+//            property bool scaleAnimated: false
+/*
+            states: [
+                State {
+                    name: "animated_out"
+                    PropertyChanges {
+                        target: findMeButton
+                        scale: 0.8
+                    }
+                    onCompleted: findMeButton.state = "animated_in"
+                },
+                State {
+                    name: "animated_in"
+                    PropertyChanges {
+                        target: findMeButton
+                        scale: 1.0
+                    }
+                    onCompleted: {
+                        if (findMeButton.scaleAnimated) {
+                            findMeButton.state = "animated_out"
+                        } else {
+                            findMeButton.state = ""
                         }
                     }
-                    onPressed: parent.scale = 0.9
-                    onReleased: parent.scale = 1.0
-                }
+                 }
+             ]
+
+             transitions: Transition {
+                 ScaleAnimator {
+                     duration: 2000
+                 }
+             }*/
+
+             MouseArea {
+                 anchors.fill: parent
+                 onClicked: {
+                     map.findMe()
+                     if (positionSource.locationAvaliable) {
+                        findMeButtonRotationAnim.start()
+                     }
+                 }
+                 onPressed: parent.scale = 0.9
+                 onReleased: parent.scale = 1.0
+             }
         }
     }
 }
