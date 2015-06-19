@@ -4,6 +4,7 @@ import sys
 import codecs
 import collections
 import fnmatch
+import re
 from bs4 import BeautifulSoup
 
 # site schema
@@ -29,9 +30,10 @@ class CashPoint:
     self.time = ""         # time in format 13:30-22:00
     self.atc = False       # is around the clock cash point
     self.org_s = False     # organization schedule
+    self.access = True     # cashpoint is accessable for everyone
   
   def __str__(self):
-    return "\tbank\t\t= %s\n\tcards\t\t= %s\n\ttown\t\t= %s\n\tregion\t\t= %s\n\taddress\t\t= %s\n\tmetro\t\t= %s\n\tdescription\t= %s\n\tcurrency\t= %s\n\ttime\t\t= %s\n\tatc\t\t= %s\n\torg_s\t\t= %s\n" % (self.bank, str(self.cards), self.town, self.region, self.address, str(self.metro), str(self.description), str(self.currency), self.time, str(self.atc), str(self.org_s))
+    return "\tbank\t\t= %s\n\tcards\t\t= %s\n\ttown\t\t= %s\n\tregion\t\t= %s\n\taddress\t\t= %s\n\tmetro\t\t= %s\n\tdescription\t= %s\n\tcurrency\t= %s\n\ttime\t\t= %s\n\tatc\t\t= %s\n\torg_s\t\t= %s\n\taccess\t\t= %s\n" % (self.bank, str(self.cards), self.town, self.region, self.address, str(self.metro), str(self.description), str(self.currency), self.time, str(self.atc), str(self.org_s), str(self.access))
   
   def __repr__(self):
     return "\n{\n" + self.__str__() + "}"
@@ -58,6 +60,30 @@ def convertTime(timeStr):
     return timeAtcOrg("", False, True)
   
   return timeAtcOrg(timeStr, False, False)
+
+def checkAccess(descrStr):
+  descrAccess = collections.namedtuple('DescrAccess', ['description', 'access'])
+
+  tmpStr = descrStr
+  access = True
+
+  tmpStr = re.sub("Только для сотрудников", "", tmpStr)
+  tmpStr = re.sub("Для сотрудников организации>", "", tmpStr)
+  tmpStr = re.sub("Для сотрудников Банка>", "", tmpStr)
+  tmpStr = re.sub("Для сотрудников предприятия>", "", tmpStr)
+  tmpStr = re.sub("\(только для сотрудников\)", "", tmpStr)
+  tmpStr = re.sub("\(для сотрудников\)", "", tmpStr)
+
+  if len(tmpStr) != len(descrStr):
+    print(descrStr, "\n=> [-]", descrStr[len(tmpStr):], "\n=> [=]", tmpStr, file=sys.stderr)
+    access = False
+
+  tmpStr = tmpStr.rstrip(";\t ")
+
+  #if len(tmpStr) != len(descrStr):
+
+
+  return descrAccess(tmpStr, access)
 
 def parseHtmlData(data):
   result = []
@@ -95,6 +121,10 @@ def parseHtmlData(data):
       metro = [m.strip() for m in addrAndMetro[1].split(',')]
       
     descr = cols[CP_DESCRIPTION].getText().strip()
+
+    descrAndAccess = checkAccess(descr)
+    descr = descrAndAccess.description
+
     if len(descr) > 0 and descr[len(descr) - 1] == ';':
       descr = descr[:-1]
       descr = descr.strip()
@@ -121,6 +151,7 @@ def parseHtmlData(data):
     cp.address = addr
     cp.metro = metro
     cp.description = descr
+    cp.access = descrAndAccess.access
     
     currencyStr = cols[CP_CURRENCY].getText().strip()
     if currencyStr == "н/д":
