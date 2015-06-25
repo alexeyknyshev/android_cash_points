@@ -1,8 +1,9 @@
 TEMPLATE = app
 
-QT += qml quick widgets location
+QT += qml quick widgets location sql
 
-SOURCES += main.cpp
+SOURCES += main.cpp \
+    banklistsqlmodel.cpp
 
 RESOURCES += qml.qrc
 
@@ -22,3 +23,8 @@ DISTFILES += \
     android/gradlew.bat
 
 ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
+
+HEADERS += \
+    banklistsqlmodel.h
+
+QMAKE_CXXFLAGS += -std=c++11
