@@ -6,11 +6,10 @@
         <file>MapHoldDialogItem.qml</file>
         <file>MapMeMark.qml</file>
         <file>EnableLocServiceDialog.qml</file>
+        <file>BanksList.qml</file>
+        <file alias="bank.sql">extras/banki.ru/bank.sql</file>
     </qresource>
     <qresource prefix="/ico">
-        <file>zoom-in.png</file>
-        <file>zoom-out.png</file>
-        <file>zoom-fit.png</file>
         <file>marker.png</file>
     </qresource>
 </RCC>
