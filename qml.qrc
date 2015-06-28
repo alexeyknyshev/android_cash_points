@@ -8,6 +8,7 @@
         <file>EnableLocServiceDialog.qml</file>
         <file>BanksList.qml</file>
         <file alias="bank.sql">extras/banki.ru/bank.sql</file>
+        <file>LeftMenu.qml</file>
     </qresource>
     <qresource prefix="/ico">
         <file>marker.png</file>
@@ -35,5 +36,14 @@
         <file>ico/logo/intercommerzbank.svg</file>
         <file>ico/logo/deutschebank.svg</file>
         <file>ico/logo/mtsbank.svg</file>
+    </qresource>
+    <qresource prefix="/icon">
+        <file alias="atm.svg">ico/other/atm_gray.svg</file>
+        <file alias="bug.svg">ico/other/bugs_gray_rotated.svg</file>
+        <file alias="settings.svg">ico/other/gear_gray_rotated.svg</file>
+        <file alias="info.svg">ico/other/information_gray.svg</file>
+        <file alias="like.svg">ico/other/like_gray.svg</file>
+        <file alias="town.svg">ico/other/buildings_gray.svg</file>
+        <file alias="bank.svg">ico/other/bank_gray.svg</file>
     </qresource>
 </RCC>
