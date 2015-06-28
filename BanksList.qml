@@ -1,46 +1,58 @@
 import QtQuick 2.4
 import QtQuick.Controls 1.3
+import QtGraphicalEffects 1.0
 
 ApplicationWindow {
     visible: true
     width: 800
     height: 600
+//    visibility: "FullScreen"
 
 Rectangle {
+    id: topRect
     anchors.fill: parent
+    color: "#EDEDED"
 
-//    Rectangle {
-//        color: "blue"
-//        id: bankFilterEditContainer
-//        anchors.top: parent.top
-//        anchors.topMargin: 20
-//        anchors.left: parent.left
-//        anchors.leftMargin: 10
-//        anchors.right: parent.right
-//        anchors.rightMargin: 10
-//        anchors.bottomMargin: 20
-//        width: parent.width
-//        height: bankFilterEdit.font.pixelSize * 1.5
+    Rectangle {
+        id: bankFilterEditContainer
+
+        z: bankListView.z + 1
+
+        anchors.top: parent.top
+        anchors.topMargin: anchors.leftMargin
+        anchors.left: parent.left
+        anchors.leftMargin: parent.width * 0.02
+        anchors.right: parent.right
+        anchors.rightMargin: anchors.leftMargin
+        anchors.bottomMargin: anchors.leftMargin
+
+        radius: height / 20
+        height: bankFilterEdit.contentHeight * 2
 
         TextInput {
             id: bankFilterEdit
-//            anchors.fill: parent
-            anchors.top: parent.top
-            anchors.topMargin: 20
-            anchors.left: parent.left
-            anchors.leftMargin: 10
-            anchors.right: parent.right
-            anchors.rightMargin: 10
-            anchors.bottomMargin: 20
-//                    width: parent.width
 
-            font.pixelSize: parent.height / (15 * 1.5) > 24 ? parent.height / (15 * 1.5) : 24
+            z: bankListView.z + 1
+
+            anchors.top: parent.top
+            anchors.topMargin: bankFilterEdit.contentHeight * 0.5
+            anchors.left: parent.left
+            anchors.leftMargin: bankFilterEdit.contentHeight * 0.5
+            anchors.right: clearButton.left
+            anchors.rightMargin: bankFilterEdit.contentHeight * 0.5
+            anchors.bottomMargin: bankFilterEdit.contentHeight * 0.5
+            anchors.bottom: parent.bottom
+
+            echoMode: TextInput.Normal
+
+            font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
+                            Math.max(topRect.height, topRect.width) / (15 * 3) : 18
 
             property bool isUserTextShowed: false
-            property string placeHolderText: "Имя банка, сайт, номер тел..."
+            property string placeHolderText: qsTr("Банк, сайт, номер тел...")
             property string userText: ""
 
-            wrapMode: Text.WordWrap
+            wrapMode: Text.NoWrap
 
             Component.onCompleted: {
                 text = placeHolderText
@@ -63,91 +75,182 @@ Rectangle {
             }
 
             onDisplayTextChanged: {
-                if (displayText === "" || displayText === placeHolderText)
-                {
+                if (displayText === "" || displayText === placeHolderText) {
                     bankListModel.setFilter("")
                 } else {
                     bankListModel.setFilter(displayText)
                 }
             }
         } // TextInput
-//    }
 
-    ListView {
-        id: bankListView
+        Rectangle {
+            id: clearButton
+            color: "transparent"
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.topMargin: bankFilterEdit.topMargin
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: bankFilterEdit.bottomMargin
+            width: height
+            opacity: bankFilterEdit.isUserTextShowed && bankFilterEdit.displayText != "" ? 1.0 : 0.0
 
-//        anchors.top: bankFilterEditContainer.bottom
-        anchors.top: bankFilterEdit.bottom
-        anchors.topMargin: 20
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-
-        model: bankListModel
-        delegate: Rectangle {
-            id: itemContatiner
-//            color: model.index % 2 == 1 ? "white" : "lightgray"
-            height: itemText.contentHeight + itemText.width * 0.04
-            width: parent.width
-            Rectangle {
-                anchors.top: parent.top
-                color: "lightgray"
-                height: 1
-                width: parent.width
+            Behavior on opacity {
+                NumberAnimation { duration: 100 }
             }
 
-            Label {
-                id: itemText
-
-                anchors.verticalCenter: parent.verticalCenter
-
-                anchors.left: parent.left
-                anchors.right: parent.right
-//                anchors.top: parent.top
-                anchors.rightMargin: parent.width * 0.02
-                anchors.leftMargin: parent.width * 0.02
-//                anchors.topMargin: width * 0.1
-//                anchors.fill: parent
-                verticalAlignment: Text.AlignVCenter
-                text: model.bank_name.replace(bankFilterEdit.displayText,
-                                              '<b>' + bankFilterEdit.displayText +
-                                              '</b>')
-                textFormat: Text.StyledText
-                wrapMode: Text.WordWrap
-                font.pixelSize: bankListView.height / (15 * 1.5) > 24 ? bankListView.height / (15 * 1.5) : 24
-//                font.bold: true
-
-//                Behavior on scale {
-//                    NumberAnimation { duration: 100 }
-//                }
+            Rectangle {
+                anchors.centerIn: parent
+                height: parent.width * 0.05
+                width: parent.width * 0.5
+                color: "gray"
+                rotation: 45
+            }
+            Rectangle {
+                anchors.centerIn: parent
+                height: parent.width * 0.05
+                width: parent.width * 0.5
+                color: "gray"
+                rotation: -45
             }
 
             states: State {
-                name: "clicked"
+                name: "pressed"
                 PropertyChanges {
-                    target: itemContatiner
+                    target: clearButton
                     color: "lightgray"
-                }
-            }
-
-            transitions: Transition {
-                ColorAnimation {
-                    duration: 100
                 }
             }
 
             MouseArea {
                 anchors.fill: parent
+                onClicked: {
+                    bankFilterEdit.userText = ""
+                    bankFilterEdit.text = ""
+                }
+
                 onHoveredChanged: {
                     if (containsMouse) {
-//                        itemText.scale = 0.98
-                        itemContatiner.state = "clicked"
+                        parent.state = "pressed"
                     } else {
-                        itemContatiner.state = ""
+                        parent.state = ""
                     }
                 }
             }
         }
     }
-} // Rectangle
+
+    RectangularGlow {
+        anchors.fill: bankFilterEditContainer
+        glowRadius: bankFilterEditContainer.height / 10
+        spread: 0.2
+        color: "#11000055"
+        cornerRadius: glowRadius
+    }
+
+    Rectangle {
+        anchors.top: bankFilterEditContainer.bottom
+        anchors.topMargin: bankFilterEditContainer.anchors.topMargin
+        anchors.left: parent.left
+        anchors.leftMargin: bankFilterEditContainer.anchors.leftMargin
+        anchors.right: parent.right
+        anchors.rightMargin: bankFilterEditContainer.anchors.rightMargin
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: bankFilterEditContainer.anchors.bottomMargin
+
+        RectangularGlow {
+            anchors.fill: bankListViewContainer
+            glowRadius: bankFilterEditContainer.height / 10
+            spread: 0.2
+            color: "#11000055"
+            cornerRadius: glowRadius
+        }
+
+        ScrollView {
+            id: bankListViewContainer
+            anchors.fill: parent
+            verticalScrollBarPolicy: Qt.ScrollBarAlwaysOff
+
+            ListView {
+                id: bankListView
+                anchors.fill: parent
+                snapMode: ListView.SnapToItem
+
+                model: bankListModel
+                delegate: Rectangle {
+                    id: itemContatiner
+                    height: itemText.contentHeight * 3
+                    width: parent.width
+                    Rectangle {
+                        anchors.top: parent.top
+                        color: "lightgray"
+                        height: 1
+                        width: parent.width
+                    }
+
+                    Image {
+                        id: itemImage
+                        source: "ico/ico/logo/" + model.bank_url.replace('/banks/bank/', '').replace('/', '') + ".svg"
+                        smooth: true
+                        fillMode: Image.PreserveAspectFit
+                        anchors.left: parent.left
+                        anchors.leftMargin: bankFilterEdit.anchors.leftMargin
+                        anchors.top: parent.top
+                        anchors.topMargin: bankFilterEdit.anchors.topMargin
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: bankFilterEdit.anchors.bottomMargin
+                        width: height
+                    }
+
+                    Label {
+                        id: itemText
+
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        anchors.left: itemImage.right
+                        anchors.right: parent.right
+                        anchors.rightMargin: bankFilterEdit.anchors.rightMargin
+                        anchors.leftMargin: bankFilterEdit.anchors.leftMargin
+
+                        verticalAlignment: Text.AlignVCenter
+                        text: model.bank_name.replace(bankFilterEdit.displayText,
+                                                      '<b>' + bankFilterEdit.displayText +
+                                                      '</b>')
+                        textFormat: Text.StyledText
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
+                                        Math.max(topRect.height, topRect.width) / (15 * 3) : 18
+                    }
+
+                    states: State {
+                        name: "clicked"
+                        PropertyChanges {
+                            target: itemContatiner
+                            color: "lightgray"
+                        }
+                    }
+
+                    transitions: Transition {
+                        ColorAnimation {
+                            duration: 100
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onHoveredChanged: {
+                            if (containsMouse) {
+                                itemContatiner.state = "clicked"
+                            } else {
+                                itemContatiner.state = ""
+                            }
+                        }
+                        onClicked: {
+                            console.log("selected bank: " + model.bank_name)
+                        }
+                    }
+                }
+            }
+        } // Rectangle
+    }
+}
 } // ApplicationWindow
