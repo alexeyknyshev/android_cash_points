@@ -1,6 +1,6 @@
 TEMPLATE = app
 
-QT += qml quick widgets location sql
+QT += qml quick widgets location sql svg
 
 SOURCES += main.cpp \
     banklistsqlmodel.cpp
