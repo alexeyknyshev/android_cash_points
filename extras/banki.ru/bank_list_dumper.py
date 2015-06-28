@@ -22,6 +22,11 @@ class Bank:
       res = "8" + res
     self.tel = res
     
+  def setTelDescription(self, telDescrStr):
+    telDescrStr = telDescrStr.replace(' (звонок по России бесплатный)', '')
+    telDescrStr = telDescrStr.replace('звонок по России бесплатный', '')
+    self.tel_description = telDescrStr
+
   def __str__(self):
     return "\tname\t\t= %s\n\turl\t\t= %s\n\ttel\t\t= %s\n\ttel_descr\t= %s\n" % (self.name, self.url, self.tel, self.tel_description)
   
@@ -30,6 +35,8 @@ class Bank:
   
   def toTuple(self):
     return (self.name, self.url, self.tel, self.tel_description)
+
+#def parseBankSiteUrl
 
 def parseHtmlData(data):
   result = []
@@ -63,7 +70,7 @@ def parseHtmlData(data):
     bank.name = bank_name.getText().replace(u'\xa0', u' ')
     bank.url  = bank_url
     bank.setTel(bank_tel)
-    bank.tel_description = bank_tel_descr    
+    bank.setTelDescription(bank_tel_descr)
     
     result.append(bank)
   
@@ -81,8 +88,9 @@ if __name__ == "__main__":
   dataDir = sys.argv[1]
   outputDB = sys.argv[2]
   
-  os.remove(outputDB)
-  print('removed file:', outputDB)
+  if os.path.isfile(outputDB):
+    os.remove(outputDB)
+    print('removed file:', outputDB)
   
   cwd = os.getcwd()
   index = 1
