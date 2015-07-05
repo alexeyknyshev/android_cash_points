@@ -3,11 +3,12 @@
 import urllib.request
 from credcard_parser import parseHtmlData
 import credcard_towns
+import sqlite3
 
 if __name__ == "__main__":
   opener = urllib.request.FancyURLopener({})
   urlMask = "http://www.credcard.ru/bankomat_pr.html?action=-1&rg=%s&town=-1&valut=0&sort=bank&vivod=50&search=&page=%i"
-  
+
   #for region in range(0, 79):
   cp_count = 0
   for region in range(0, 80):
@@ -22,12 +23,13 @@ if __name__ == "__main__":
       cp_count += len(parsedData)
       if len(parsedData) == 0:
         break
-      
-      for data in parsedData:
-        
-      
+
+#      for data in parsedData:
+
+
+
       print(parsedData)
       #break
       page += 1
-      
+
   print("Total cp_count: " + str(cp_count))
