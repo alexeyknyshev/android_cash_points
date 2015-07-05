@@ -2,8 +2,7 @@
 #define BANKLISTSQLMODEL_H
 
 #include <QtSql/QSqlQueryModel>
-
-#include <QSqlQuery>
+#include <QtSql/QSqlQuery>
 
 class BankListSqlModel : public QSqlQueryModel
 {

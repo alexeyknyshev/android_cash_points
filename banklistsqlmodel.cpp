@@ -1,9 +1,6 @@
 #include "banklistsqlmodel.h"
 
-#include <QSqlRecord>
-#include <QSqlQuery>
-
-#include <QDebug>
+#include <QtSql/QSqlRecord>
 
 BankListSqlModel::BankListSqlModel(QString connectionName)
     : QSqlQueryModel(nullptr),
@@ -27,6 +24,7 @@ QHash<int, QByteArray> BankListSqlModel::roleNames() const
 
 int BankListSqlModel::rowCount(const QModelIndex &parent) const
 {
+    Q_UNUSED(parent);
     return QSqlQueryModel::rowCount();
 }
 
