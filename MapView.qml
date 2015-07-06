@@ -6,11 +6,16 @@ import QtSensors 5.3
 import QtGraphicalEffects 1.0
 
 Item {
+    id: topView
     width: 480
     height: 800
     visible: true
 
     focus: true
+
+    property bool active: true
+
+    signal clicked()
 
     Keys.onEscapePressed: Qt.quit()
     Keys.onPressed: {
@@ -199,14 +204,18 @@ Item {
             onParentChanged: oldZoom = parent.zoomLevel
 
             onPinchStarted: {
-                console.log("pinch started")
-                oldZoom = map.zoomLevel
+                if (topView.active) {
+                    console.log("pinch started")
+                    oldZoom = map.zoomLevel
+                }
             }
 
             onPinchUpdated: {
-                console.log("pinch")
-                console.log("scale: " + pinch.scale)
-                map.zoomLevel = oldZoom + Math.log(pinch.scale) / Math.log(2)
+                if (topView.active) {
+                    console.log("pinch")
+                    console.log("scale: " + pinch.scale)
+                    map.zoomLevel = oldZoom + Math.log(pinch.scale) / Math.log(2)
+                }
             }
 
             MouseArea {
@@ -215,6 +224,11 @@ Item {
                 z: parent.z + 1
 
                 onClicked: {
+                    topView.clicked()
+
+                    if (!topView.active)
+                        return
+
                     if (parent.zooming)
                     {
                         parent.zooming = false
@@ -237,6 +251,8 @@ Item {
 //                    }
 //                }
                 onDoubleClicked: {
+                    if (!topView.active)
+                        return
 //                    console.log("double click!")
 
                     var coord = map.toCoordinate(Qt.point(mouseX, mouseY))
@@ -251,6 +267,9 @@ Item {
                     map.zoom(map.zoomLevel + 1)
                 }
                 onPositionChanged: {
+                    if (!topView.active)
+                        return
+
                     if (!map.panActive) {
                         map.panActive = true
                         map.panLastX = mouseX
@@ -308,8 +327,8 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: map.zoom(map.zoomLevel - 1)
-                onPressed: parent.scale = 0.9
+                onClicked: if (topView.active) map.zoom(map.zoomLevel - 1)
+                onPressed: if (topView.active) parent.scale = 0.9
                 onReleased: parent.scale = 1.0
             }
 
@@ -350,8 +369,8 @@ Item {
 
             MouseArea {
                 anchors.fill: parent
-                onClicked: map.zoom(map.zoomLevel + 1)
-                onPressed: parent.scale = 0.9
+                onClicked: if (topView.active) map.zoom(map.zoomLevel + 1)
+                onPressed: if (topView.active) parent.scale = 0.9
                 onReleased: parent.scale = 1.0
             }
         }
@@ -486,6 +505,9 @@ Item {
              MouseArea {
                  anchors.fill: parent
                  onClicked: {
+                     if (!topView.active)
+                         return
+
                      map.findMe()
                      if (positionSource.locationAvaliable) {
                         findMeButtonRotationAnim.start()
