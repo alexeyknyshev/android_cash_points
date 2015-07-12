@@ -9,6 +9,7 @@
         <file>BanksList.qml</file>
         <file alias="bank.sql">extras/banki.ru/bank.sql</file>
         <file>LeftMenu.qml</file>
+        <file alias="region.sql">extras/banki.ru/region.sql</file>
     </qresource>
     <qresource prefix="/ico">
         <file>marker.png</file>
