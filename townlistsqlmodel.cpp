@@ -9,7 +9,7 @@ TownListSqlModel::TownListSqlModel(QString connectionName)
     mRoleNames[IdRole]     = "town_id";
     mRoleNames[NameRole]   = "town_name";
     mRoleNames[NameTrRole] = "town_name_tr";
-    mRoleNames[RegionRole] = "town_region";
+    mRoleNames[RegionRole] = "town_region_id";
 
     mRoleNames[RegionRole + 1] = "index";
 
@@ -50,7 +50,8 @@ void TownListSqlModel::setFilter(QString filterStr)
     filterStr.replace('*', '%');
     filterStr.replace('?', '_');
     mQueryMask = "SELECT id, name, url, tel, tel_description FROM towns WHERE name LIKE '%" + filterStr +
-                 "%' or name_tr LIKE '%" + filterStr + "%' or region LIKE '%" + filterStr + "%'";
+                 "%' or name_tr LIKE '%" + filterStr + "%' or "
+                 "region_id IN (SELECT id FROM regions WHERE name LIKE '%" + filterStr + "%')";
     setQuery(mQueryMask, QSqlDatabase::database(mConnectionName));
 }
 

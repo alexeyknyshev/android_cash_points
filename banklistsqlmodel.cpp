@@ -35,7 +35,8 @@ QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
         return QSqlQueryModel::data(item, role);
     }
 
-    if (role == TelDescrRole + 1) {
+    if (role == TelDescrRole + 1)
+    {
         return item.row();
     }
 
