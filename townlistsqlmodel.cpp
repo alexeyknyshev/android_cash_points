@@ -49,9 +49,10 @@ void TownListSqlModel::setFilter(QString filterStr)
     filterStr.replace('%', "");
     filterStr.replace('*', '%');
     filterStr.replace('?', '_');
-    mQueryMask = "SELECT id, name, url, tel, tel_description FROM towns WHERE name LIKE '%" + filterStr +
+    mQueryMask = "SELECT id, name, name_tr FROM towns WHERE name LIKE '%" + filterStr +
                  "%' or name_tr LIKE '%" + filterStr + "%' or "
-                 "region_id IN (SELECT id FROM regions WHERE name LIKE '%" + filterStr + "%')";
+                 "region_id IN (SELECT id FROM regions WHERE name LIKE '%" + filterStr + "%') "
+                 " ORDER BY region_id, id";
     setQuery(mQueryMask, QSqlDatabase::database(mConnectionName));
 }
 
