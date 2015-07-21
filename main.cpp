@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    foreach (QString sqlFile, QStringList() << ":/bank.sql" << ":/region.sql")
+    foreach (QString sqlFile, QStringList() << ":/bank.sql" << ":/town.sql")
     {
         QStringList q_list = getSqlQuery(sqlFile);
         db.transaction();
@@ -61,10 +61,12 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("townListModel", townListModel);
 //    engine.load(QUrl("qrc:/LeftMenu.qml"));
 //    engine.load(QUrl(QStringLiteral("qrc:/BanksList.qml")));
-    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
+    engine.load(QUrl(QStringLiteral("qrc:/TownList.qml")));
+//    engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
 
     const int exitStatus = app.exec();
 
+    delete townListModel;
     delete bankListModel;
 
     db.close();

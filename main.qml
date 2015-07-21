@@ -2,6 +2,7 @@ import QtQuick 2.4
 import QtQuick.Controls 1.3
 import QtQuick.Window 2.2
 import QtQuick.Dialogs 1.2
+import QtGraphicalEffects 1.0
 
 ApplicationWindow {
     title: qsTr("Cash Points")
@@ -155,6 +156,43 @@ ApplicationWindow {
             id: mapView
             enabled: parent.flipped
             anchors.fill: parent
+
+            active: !leftMenu.visible
+
+            LeftMenu {
+                id: leftMenu
+                z: mapView.z + 1
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                width: parent.width * 0.6
+            }
+
+            RectangularGlow {
+                visible: leftMenu.visible
+                anchors.fill: leftMenu
+                z: leftMenu.z - 1
+                glowRadius: leftMenu.height / 10
+                spread: 0.1
+                color: "#0000000FF"
+                cornerRadius: glowRadius
+            }
+
+            onClicked: {
+                leftMenu.visible = false
+                console.log("test")
+            }
         }
+
+
+//        Desaturate {
+//            anchors.top: mapView.top
+//            anchors.left: leftMenu.right
+//            anchors.right: mapView.right
+//            anchors.bottom: mapView.bottom
+//            source: mapView
+//            desaturation: 0.8
+////            z: leftMenu.z - 1
+//        }
     }
 }
