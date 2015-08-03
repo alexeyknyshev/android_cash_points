@@ -12,6 +12,7 @@
         <file alias="region.sql">extras/banki.ru/region.sql</file>
         <file>TownList.qml</file>
         <file alias="town.sql">extras/banki.ru/town.sql</file>
+        <file>UpperSwitcher.qml</file>
     </qresource>
     <qresource prefix="/ico">
         <file>marker.png</file>
