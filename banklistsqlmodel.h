@@ -12,9 +12,11 @@ public:
     enum Roles {
         IdRole = Qt::UserRole,
         NameRole,
-        UrlRole,
+        LicenceRole,
+        NameTrRole,
+        RaitingRole,
+        NameTrAltRole,
         TelRole,
-        TelDescrRole
     };
 
     explicit BankListSqlModel(QString connectionName);

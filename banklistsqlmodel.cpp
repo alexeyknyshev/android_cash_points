@@ -6,13 +6,15 @@ BankListSqlModel::BankListSqlModel(QString connectionName)
     : QSqlQueryModel(nullptr),
       mConnectionName(connectionName)
 {
-    mRoleNames[IdRole]       = "bank_id";
-    mRoleNames[NameRole]     = "bank_name";
-    mRoleNames[UrlRole]      = "bank_url";
-    mRoleNames[TelRole]      = "bank_tel";
-    mRoleNames[TelDescrRole] = "bank_tel_description";
+    mRoleNames[IdRole]        = "bank_id";
+    mRoleNames[NameRole]      = "bank_name";
+    mRoleNames[LicenceRole]   = "bank_licence";
+    mRoleNames[NameTrRole]    = "bank_name_tr";
+    mRoleNames[RaitingRole]   = "bank_raiting";
+    mRoleNames[NameTrAltRole] = "bank_name_tr_alt";
+    mRoleNames[TelRole]       = "bank_tel";
 
-    mRoleNames[TelDescrRole + 1] = "index";
+    mRoleNames[TelRole + 1]   = "index";
 
     setFilter("");
 }
@@ -35,7 +37,7 @@ QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
         return QSqlQueryModel::data(item, role);
     }
 
-    if (role == TelDescrRole + 1)
+    if (role == TelRole + 1)
     {
         return item.row();
     }
@@ -50,8 +52,15 @@ void BankListSqlModel::setFilter(QString filterStr)
     filterStr.replace('%', "");
     filterStr.replace('*', '%');
     filterStr.replace('?', '_');
-    mQueryMask = "SELECT id, name, url, tel, tel_description FROM banks WHERE name LIKE '%" + filterStr +
-                 "%' or url LIKE '%" + filterStr + "%' or tel LIKE '%" + filterStr + "%'";
+    mQueryMask = "SELECT id, name, licence, name_tr, region, name_tr_alt, tel FROM banks"
+                 " WHERE"
+                 "       name LIKE '%" + filterStr + "%'"
+                 " or licence LIKE '%" + filterStr + "%'"
+                 " or name_tr LIKE '%" + filterStr + "%'"
+                 " or  region LIKE '%" + filterStr + "%'"
+                 " or     tel LIKE '%" + filterStr + "%'"
+                 " ORDER BY raiting"
+            ;
     setQuery(mQueryMask, QSqlDatabase::database(mConnectionName));
 }
 
