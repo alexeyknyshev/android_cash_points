@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    foreach (QString sqlFile, QStringList() << ":/bank.sql" << ":/town.sql")
+    foreach (QString sqlFile, QStringList() << ":/banks.sql" << ":/town.sql")
     {
         QStringList q_list = getSqlQuery(sqlFile);
         db.transaction();
