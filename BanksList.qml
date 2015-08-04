@@ -36,7 +36,7 @@ Rectangle {
 
             anchors.top: parent.top
             anchors.topMargin: bankFilterEdit.contentHeight * 0.5
-            anchors.left: parent.left
+            anchors.left: upperSwitcher.right
             anchors.leftMargin: bankFilterEdit.contentHeight * 0.5
             anchors.right: clearButton.left
             anchors.rightMargin: bankFilterEdit.contentHeight * 0.5
@@ -74,6 +74,17 @@ Rectangle {
                 }
             }
 
+            function setFirstLetterUpper(upper)
+            {
+                if (upper && text != "") {
+                    text = text.charAt(0).toUpperCase() + text.slice(1)
+                }
+            }
+
+            onTextChanged: {
+                setFirstLetterUpper(upperSwitcher.state == "enabled")
+            }
+
             onDisplayTextChanged: {
                 if (displayText === "" || displayText === placeHolderText) {
                     bankListModel.setFilter("")
@@ -82,6 +93,26 @@ Rectangle {
                 }
             }
         } // TextInput
+
+        UpperSwitcher {
+            id: upperSwitcher
+
+            anchors.left: parent.left
+            anchors.leftMargin: bankFilterEdit.contentHeight * 0.2
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: bankFilterEdit.contentHeight * 0.2
+            anchors.top: parent.top
+            anchors.topMargin: bankFilterEdit.contentHeight * 0.3
+            width: height
+
+            onEnabledChanged: {
+                bankFilterEdit.setFirstLetterUpper(isEnabled)
+            }
+
+            onParentChanged: {
+                state = "enabled"
+            }
+        }
 
         Rectangle {
             id: clearButton
@@ -178,7 +209,7 @@ Rectangle {
                 model: bankListModel
                 delegate: Rectangle {
                     id: itemContatiner
-                    height: itemText.contentHeight * 3
+                    height: (itemText.contentHeight * (itemText.lineCount + 2) / itemText.lineCount)
                     width: parent.width
                     Rectangle {
                         anchors.top: parent.top
@@ -196,8 +227,9 @@ Rectangle {
                         anchors.leftMargin: bankFilterEdit.anchors.leftMargin
                         anchors.top: parent.top
                         anchors.topMargin: bankFilterEdit.anchors.topMargin
-                        anchors.bottom: parent.bottom
+//                        anchors.bottom: parent.bottom
                         anchors.bottomMargin: bankFilterEdit.anchors.bottomMargin
+                        height: bankListView.height / 15
                         width: height
                     }
 
@@ -218,8 +250,8 @@ Rectangle {
                                                       '</b>')
                         textFormat: Text.StyledText
                         wrapMode: Text.WordWrap
-                        font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
-                                        Math.max(topRect.height, topRect.width) / (15 * 3) : 18
+                        font.pixelSize: Math.max(topRect.height, topRect.height) / (15 * 3) > 18 ?
+                                        Math.max(topRect.height, topRect.height) / (15 * 3) : 18
                     }
 
                     /*Label {

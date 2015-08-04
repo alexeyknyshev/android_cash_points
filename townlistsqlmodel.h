@@ -1,10 +1,10 @@
 #ifndef TOWNLISTSQLMODEL_H
 #define TOWNLISTSQLMODEL_H
 
-#include <QtSql/QSqlQueryModel>
+#include <QtGui/QStandardItemModel>
 #include <QtSql/QSqlQuery>
 
-class TownListSqlModel : public QSqlQueryModel
+class TownListSqlModel : public QStandardItemModel
 {
     Q_OBJECT
 
@@ -18,8 +18,6 @@ public:
 
     explicit TownListSqlModel(QString connctionName);
 
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-
     QVariant data(const QModelIndex &item, int role) const override;
 
 public slots:
@@ -30,8 +28,6 @@ protected:
 
 private:
     QHash<int, QByteArray> mRoleNames;
-    QString mQueryMask;
-    const QString mConnectionName;
     QSqlQuery mQuery;
 };
 
