@@ -49,7 +49,7 @@ Rectangle {
                             Math.max(topRect.height, topRect.width) / (15 * 3) : 18
 
             property bool isUserTextShowed: false
-            property string placeHolderText: qsTr("Банк, сайт, номер тел...")
+            property string placeHolderText: qsTr("Банк, номер лицезии, номер тел...")
             property string userText: ""
 
             wrapMode: Text.NoWrap
@@ -189,7 +189,7 @@ Rectangle {
 
                     Image {
                         id: itemImage
-                        source: "ico/ico/logo/" + model.bank_url.replace('/banks/bank/', '').replace('/', '') + ".svg"
+                        source: "ico/ico/logo/" + model.bank_name_tr_alt + ".svg"
                         smooth: true
                         fillMode: Image.PreserveAspectFit
                         anchors.left: parent.left
@@ -207,6 +207,7 @@ Rectangle {
                         anchors.verticalCenter: parent.verticalCenter
 
                         anchors.left: itemImage.right
+                        //anchors.right: itemTelNumber.left
                         anchors.right: parent.right
                         anchors.rightMargin: bankFilterEdit.anchors.rightMargin
                         anchors.leftMargin: bankFilterEdit.anchors.leftMargin
@@ -220,6 +221,26 @@ Rectangle {
                         font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
                                         Math.max(topRect.height, topRect.width) / (15 * 3) : 18
                     }
+
+                    /*Label {
+                        id: itemTelNumber
+
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        //anchors.left: itemText.right
+                        anchors.right: parent.right
+                        anchors.leftMargin: bankFilterEdit.anchors.leftMargin
+                        anchors.rightMargin: bankFilterEdit.anchors.rightMargin
+
+                        verticalAlignment: Text.AlignRight
+                        text: model.bank_tel.replace(bankFilterEdit.displayText,
+                                                    '<b>' + bankFilterEdit.displayText +
+                                                    '</b>')
+                        textFormat: Text.StyledText
+                        wrapMode: Text.NoWrap
+                        font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
+                                        Math.max(topRect.height, topRect.width) / (15 * 3) : 18
+                    }*/
 
                     states: State {
                         name: "clicked"
