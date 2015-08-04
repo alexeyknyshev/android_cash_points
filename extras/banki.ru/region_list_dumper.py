@@ -289,7 +289,7 @@ if __name__ == "__main__":
   regionsMap = {}
 
   jsonData = ""
-  with open(regionsJson, "r") as regionsJsonFile:
+  with open(regionsJson, "r", encoding="utf8") as regionsJsonFile:
     jsonData = regionsJsonFile.read()
 
   jsonTree = json.loads(jsonData);
