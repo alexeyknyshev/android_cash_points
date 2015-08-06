@@ -180,7 +180,10 @@ ApplicationWindow {
 
             onClicked: {
                 leftMenu.visible = false
-                console.log("test")
+            }
+
+            onMenuClicked: {
+                leftMenu.visible = true
             }
         }
 
