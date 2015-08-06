@@ -523,7 +523,7 @@ Item {
     Rectangle {
         id: searchLineEditContainer
 
-        z: parent.z + 1
+        //z: parent.z + 1
 
         anchors.top: parent.top
         anchors.topMargin: anchors.leftMargin
@@ -535,6 +535,7 @@ Item {
 
         radius: height / 20
         height: searchLineEdit.contentHeight * 2
+        color: "white"
 
         TextInput {
             id: searchLineEdit
@@ -552,11 +553,11 @@ Item {
 
             echoMode: TextInput.Normal
 
-            font.pixelSize: Math.max(topView.height, topView.width) / (15 * 3) > 18 ?
-                            Math.max(topView.height, topView.width) / (15 * 3) : 18
+            font.pixelSize: Math.max(topView.height, topView.width) / (15 * 2) > 18 ?
+                            Math.max(topView.height, topView.width) / (15 * 2) : 18
 
             property bool isUserTextShowed: false
-            property string placeHolderText: qsTr("Банк, номер лицезии, номер тел...")
+            property string placeHolderText: qsTr("Искать")
             property string userText: ""
 
             wrapMode: Text.NoWrap
