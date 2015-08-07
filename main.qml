@@ -161,7 +161,7 @@ ApplicationWindow {
 
             LeftMenu {
                 id: leftMenu
-                z: mapView.z + 1
+                z: mapView.z + 10
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom

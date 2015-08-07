@@ -523,7 +523,7 @@ Item {
     Rectangle {
         id: searchLineEditContainer
 
-        //z: parent.z + 1
+        z: parent.z + 2
 
         anchors.top: parent.top
         anchors.topMargin: anchors.leftMargin
@@ -535,7 +535,8 @@ Item {
 
         radius: height / 20
         height: searchLineEdit.contentHeight * 2
-        color: "white"
+
+//        color: "lightgray"
 
         TextInput {
             id: searchLineEdit
@@ -708,9 +709,10 @@ Item {
     }
 
     RectangularGlow {
+        z: searchLineEditContainer.z - 1
         anchors.fill: searchLineEditContainer
         glowRadius: searchLineEditContainer.height / 5
-        spread: 0.2
+        spread: 0.3
         color: "#11000055"
         cornerRadius: glowRadius
     }
