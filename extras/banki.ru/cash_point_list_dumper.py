@@ -14,12 +14,13 @@ def createJsonDataPrefetch(townId):
        "with_empty_coordinates": True,
        "limit": 25,
        "type": ["atm", "self_office"],
-       "region_id": [townId]},
-       "id": "2"
+       "region_id": [townId]
+    },
+    "id": "2"
   }
 
 def createJsonData(offset, townId):
-    return {
+  return {
     "jsonrpc": "2.0",
     "method": "bankGeo/getObjectsByFilter",
     "params": {
@@ -28,18 +29,21 @@ def createJsonData(offset, townId):
        "offset": offset,
 #       "type": ["atm", "self_office"],
        "type": ["office", "branch", "atm", "cash", "self_office"],
-       "region_id": [townId]},
-       "id": "2"
-    }
+       "region_id": [townId]
+     },
+    "id": "2"
+  }
 
+# idList : stringList
 def createJsonFullData(idList):
-    return {
+  return {
     "jsonrpc": "2.0",
     "method": "bank/getBankObjectsData",
     "params": {
         "id_list": idList
-        "id": "9"
-    }
+    },
+    "id": "9"
+  }
     
 #{,,{"id_list":
 #["4328310","7296301","7593802","7296298","1189208","495345","495378","495400",
