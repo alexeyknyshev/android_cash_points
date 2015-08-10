@@ -13,7 +13,7 @@ def createJsonDataPrefetch(townId):
     "params": {
        "with_empty_coordinates": True,
        "limit": 25,
-       "type": ["atm", "self_office"],
+       "type": ["office", "branch", "atm", "cash", "self_office"],
        "region_id": [townId]},
        "id": "2"
   }
