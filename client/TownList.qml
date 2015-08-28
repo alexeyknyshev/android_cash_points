@@ -13,6 +13,8 @@ Rectangle {
     anchors.fill: parent
     color: "#EDEDED"
 
+    signal townSelected(int id, string name)
+
     Rectangle {
         id: townFilterEditContainer
 
@@ -246,7 +248,8 @@ Rectangle {
                             }
                         }
                         onClicked: {
-                            console.log("selected town: " + model.town_name)
+                            console.log("selected town: " + model.town_name + " (" + model.town_id + ")")
+                            topRect.townSelected(model.town_id, model.town_name)
                         }
                     }
                 }

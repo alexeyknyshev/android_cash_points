@@ -7,12 +7,8 @@
         <file>MapMeMark.qml</file>
         <file>EnableLocServiceDialog.qml</file>
         <file>BanksList.qml</file>
-        <file alias="bank.sql">extras/banki.ru/bank.sql</file>
         <file>LeftMenu.qml</file>
-        <file alias="region.sql">extras/banki.ru/region.sql</file>
         <file>TownList.qml</file>
-        <file alias="town.sql">extras/banki.ru/town.sql</file>
-        <file alias="banks.sql">extras/banki.ru/data/banks.sql</file>
         <file>UpperSwitcher.qml</file>
     </qresource>
     <qresource prefix="/ico">
@@ -50,5 +46,11 @@
         <file alias="like.svg">ico/other/like_gray.svg</file>
         <file alias="town.svg">ico/other/buildings_gray.svg</file>
         <file alias="bank.svg">ico/other/bank_gray.svg</file>
+    </qresource>
+    <qresource prefix="/sql">
+        <file alias="banks.sql">sql/banks.sql</file>
+        <file alias="town.sql">sql/town.sql</file>
+        <file alias="region.sql">sql/region.sql</file>
+        <file alias="bank.sql">sql/bank.sql</file>
     </qresource>
 </RCC>
