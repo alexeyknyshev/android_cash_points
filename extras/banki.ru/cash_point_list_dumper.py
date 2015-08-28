@@ -107,6 +107,10 @@ class CashPoint:
     return (self.point_id, self.point_type, self.bank_id, self.town_id, self.longitude, self.latitude, self.address, self.address_comment, self.metro_name, self.free_access, self.main_office, self.without_weekend, self.round_the_clock, self.works_as_shop, self.schedule_general, self.schedule_private, self.schedule_vip, self.tel, self.additional)
 
   def toTupleNew(self):
+    self.schedule_general = htmlParser.unescape(self.schedule_general)
+    self.schedule_private = htmlParser.unescape(self.schedule_private)
+    self.schedule_vip     = htmlParser.unescape(self.schedule_vip)
+
     rub = True
     usd = False
     eur = False
@@ -147,8 +151,8 @@ class CashPoint:
     self.point_type = t[1]
     self.bank_id = int(t[2])
     self.town_id = int(t[3])
-    self.longitude = float(t[4]) if t[4] is not None else 0.0
-    self.latitude = float(t[5]) if t[5] is not None else 0.0
+    self.longitude = float(t[4]) if t[4] is not None else None
+    self.latitude = float(t[5]) if t[5] is not None else None
     self.address = t[6]
     self.address_comment = t[7]
     self.metro_name = t[8]
@@ -163,6 +167,31 @@ class CashPoint:
     self.tel = t[17]
     self.additional = t[18]
     self.cash_in = t[19]
+
+  def fromTupleNew(self, t):
+    self.point_id = int(t[0]),
+    self.point_type = t[1],
+    self.bank_id = int(t[2]),
+    self.town_id = int(t[3]),
+    self.longitude = float(t[4]) if t[4] is not None else None,
+    self.latitude = float(t[5]) if t[5] is not None else None,
+    self.address,
+    self.address_comment,
+    self.metro_name,
+    self.free_access,
+    self.main_office,
+    self.without_weekend,
+    self.round_the_clock,
+    self.works_as_shop,
+    self.schedule_general,
+    self.schedule_private,
+    self.schedule_vip,
+    self.tel,
+    self.additional,
+    self.rub,
+    self.usd,
+    self.eur,
+    self.cash_in
 
 def createJsonDataPrefetch(townId):
   return {
