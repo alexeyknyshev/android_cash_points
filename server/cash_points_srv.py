@@ -44,11 +44,11 @@ def town(id):
     json = {
                    "id" : row[0],
                  "name" : row[1],
-              "name_rt" : row[2],
+              "name_tr" : row[2],
             "region_id" : row[3],
       "regional_center" : row[4],
              "latitude" : row[5],
-           "longtitude" : row[6],
+            "longitude" : row[6],
                  "zoom" : row[7]
     }
   else:
