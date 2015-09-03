@@ -4,6 +4,7 @@ import (
     "os"
     "fmt"
     "log"
+    "strconv"
     "net/http"
     "database/sql"
     "encoding/json"
@@ -42,6 +43,12 @@ type CashPoint struct {
     Usd            bool    `json:"usd"`
     Eur            bool    `json:"eur"`
     CashIn         bool    `json:"cash_in"`
+}
+
+type CashPointIdsInTown struct {
+    TownId        uint32   `json:"town_id"`
+    BankId        uint32   `json:"bank_id"`
+    CashPointIds  []uint32 `json:"cash_points"`
 }
 
 var towns_db *sql.DB
@@ -105,6 +112,36 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, string(jsonStr))
 }
 
+func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
+    params := mux.Vars(r)
+    townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
+    bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
+
+    stmt, err := cp_db.Prepare("SELECT id FROM cashpoints WHERE town_id = ? AND bank_id = ?")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer stmt.Close()
+
+    rows, err := stmt.Query(params["town_id"], params["bank_id"])
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
+
+    for rows.Next() {
+        var id uint32
+        if err := rows.Scan(&id); err != nil {
+            log.Fatal(err)
+        }
+        ids.CashPointIds = append(ids.CashPointIds, id)
+    }
+
+    jsonStr, _ := json.Marshal(ids)
+    fmt.Fprintf(w, string(jsonStr))
+}
+
 func main() {
     args := os.Args[1:]
 
@@ -136,6 +173,7 @@ func main() {
     router := mux.NewRouter()
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
+    router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 
     http.Handle("/", router)
     http.ListenAndServe(":8080", nil)
