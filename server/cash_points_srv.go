@@ -145,14 +145,20 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 func main() {
     args := os.Args[1:]
 
+    if len(args) == 0 {
+        log.Fatal("towns database path is not specified")
+    }
+
+    if len(args) == 1 {
+        log.Fatal("cashpoints database path is not specified")
+    }
+
     if _, err := os.Stat(args[0]); os.IsNotExist(err) {
         log.Fatal("no such file or directory: %s\n", args[0])
-        os.Exit(1)
     }
 
     if _, err := os.Stat(args[1]); os.IsNotExist(err) {
         log.Fatal("no such file or directory: %s\n", args[1])
-        os.Exit(2)
     }
 
     var err error
@@ -178,3 +184,4 @@ func main() {
     http.Handle("/", router)
     http.ListenAndServe(":8080", nil)
 }
+
