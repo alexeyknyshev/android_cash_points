@@ -2,8 +2,9 @@ package main
 
 import (
     "os"
-    "fmt"
+    "io"
     "log"
+    "path"
     "strconv"
     "net/http"
     "database/sql"
@@ -11,6 +12,20 @@ import (
     "github.com/gorilla/mux"
     _ "github.com/mattn/go-sqlite3"
 )
+
+func prepareResponse(w http.ResponseWriter, r *http.Request) bool {
+    w.Header().Set("Content-Type", "application/json; charset=utf-8")
+    requestId, err := strconv.ParseUint(r.Header.Get("Id"), 10, 32)
+    if err != nil {
+        log.Println(`Request header val "Id" is not set`)
+        io.WriteString(w, `{"id":null}`)
+        return false
+    }
+    w.Header().Set("Id", strconv.FormatUint(requestId, 10))
+    return true
+}
+
+// ========================================================
 
 type Town struct {
     Id        uint32  `json:"id"`
@@ -54,7 +69,13 @@ type CashPointIdsInTown struct {
 var towns_db *sql.DB
 var cp_db *sql.DB
 
+// ========================================================
+
 func handlerTown(w http.ResponseWriter, r *http.Request) {
+    if prepareResponse(w, r) == false {
+        return
+    }
+
     params := mux.Vars(r)
     townId := params["id"]
 
@@ -68,7 +89,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr, &town.Latitude, &town.Longitude, &town.Zoom)
     if err != nil {
         if err == sql.ErrNoRows {
-            fmt.Fprintf(w, "{ id: null }")
+            io.WriteString(w, `{"id":null}`)
             return
         } else {
             log.Fatal(err)
@@ -76,10 +97,14 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     }
 
     jsonStr, _ := json.Marshal(town)
-    fmt.Fprintf(w, string(jsonStr))
+    io.WriteString(w, string(jsonStr))
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
+    if prepareResponse(w, r) == false {
+        return
+    }
+
     params := mux.Vars(r)
     cashPointId := params["id"]
 
@@ -101,7 +126,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
                                           &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
     if err != nil {
         if err == sql.ErrNoRows {
-            fmt.Fprintf(w, "{ id: null }")
+            io.WriteString(w, `{"id":null}`)
             return
         } else {
             log.Fatal(err)
@@ -109,10 +134,14 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     }
 
     jsonStr, _ := json.Marshal(cp)
-    fmt.Fprintf(w, string(jsonStr))
+    io.WriteString(w, string(jsonStr))
 }
 
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
+    if prepareResponse(w, r) == false {
+        return
+    }
+
     params := mux.Vars(r)
     townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
     bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
@@ -139,7 +168,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     }
 
     jsonStr, _ := json.Marshal(ids)
-    fmt.Fprintf(w, string(jsonStr))
+    io.WriteString(w, string(jsonStr))
 }
 
 func main() {
@@ -153,26 +182,39 @@ func main() {
         log.Fatal("cashpoints database path is not specified")
     }
 
-    if _, err := os.Stat(args[0]); os.IsNotExist(err) {
-        log.Fatal("no such file or directory: %s\n", args[0])
+    if len(args) == 2 {
+        log.Fatal("cert folder path is not specified")
     }
 
-    if _, err := os.Stat(args[1]); os.IsNotExist(err) {
-        log.Fatal("no such file or directory: %s\n", args[1])
+    for i := 0; i < 3; i++ {
+//        print(args[i] + "\n")
+        if _, err := os.Stat(args[i]); os.IsNotExist(err) {
+            log.Fatal("no such file or directory: %s\n", args[i])
+        }
+    }
+
+    certDirPath := args[2]
+    certPath := path.Join(certDirPath, "cert.pem")
+    pkeyPath := path.Join(certDirPath, "key.pem")
+
+    if _, err := os.Stat(certPath); os.IsNotExist(err) {
+        log.Fatal("no such cert file for tls: %s\n", certPath)
+    }
+
+    if _, err := os.Stat(pkeyPath); os.IsNotExist(err) {
+        log.Fatal("no such private key file for tls: %s\n", pkeyPath)
     }
 
     var err error
     towns_db, err = sql.Open("sqlite3", args[0])
     if err != nil {
         log.Fatal(err)
-        os.Exit(3)
     }
     defer towns_db.Close()
 
     cp_db, err = sql.Open("sqlite3", args[1])
     if err != nil {
         log.Fatal(err)
-        os.Exit(4)
     }
     defer cp_db.Close()
 
@@ -181,7 +223,10 @@ func main() {
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 
+    port := ":8081"
+    //print("127.0.0.1" + port + "\n")
+
     http.Handle("/", router)
-    http.ListenAndServe(":8080", nil)
+    http.ListenAndServeTLS(port, certPath, pkeyPath, nil)
 }
 
