@@ -5,7 +5,7 @@ QT += qml quick location sql svg
 SOURCES += src/main.cpp \
     src/banklistsqlmodel.cpp \
     src/townlistsqlmodel.cpp \
-    src/srvapi.cpp
+    src/serverapi.cpp
 
 RESOURCES += qml.qrc
 
@@ -29,6 +29,6 @@ ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
 HEADERS += \
     src/banklistsqlmodel.h \
     src/townlistsqlmodel.h \
-    src/srvapi.h
+    src/serverapi.h
 
 QMAKE_CXXFLAGS += -std=c++11
