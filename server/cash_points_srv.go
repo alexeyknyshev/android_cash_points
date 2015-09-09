@@ -13,12 +13,25 @@ import (
     _ "github.com/mattn/go-sqlite3"
 )
 
+const JsonNullResponse string = `{"id":null}`
+
+func getRequestContexString(r *http.Request) string {
+    return r.RemoteAddr
+}
+
 func prepareResponse(w http.ResponseWriter, r *http.Request) bool {
+    contextStr := getRequestContexString(r)
+
     w.Header().Set("Content-Type", "application/json; charset=utf-8")
-    requestId, err := strconv.ParseUint(r.Header.Get("Id"), 10, 32)
+    requestIdStr := r.Header.Get("Id")
+    if requestIdStr == "" {
+        log.Println(contextStr + ` Request header val "Id" is not set`)
+        return false
+    }
+    requestId, err := strconv.ParseUint(requestIdStr, 10, 32)
     if err != nil {
-        log.Println(`Request header val "Id" is not set`)
-        io.WriteString(w, `{"id":null}`)
+        log.Println(contextStr + ` Request header val "Id" uint conversion failed: ` + requestIdStr)
+        io.WriteString(w, JsonNullResponse)
         return false
     }
     w.Header().Set("Id", strconv.FormatUint(requestId, 10))
@@ -81,7 +94,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 
     stmt, err := towns_db.Prepare("SELECT id, name, name_tr, latitude, longitude, zoom FROM towns WHERE id = ?")
     if err != nil {
-        log.Fatal(err)
+        log.Fatalf("%s %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
@@ -89,10 +102,10 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr, &town.Latitude, &town.Longitude, &town.Zoom)
     if err != nil {
         if err == sql.ErrNoRows {
-            io.WriteString(w, `{"id":null}`)
+            io.WriteString(w, JsonNullResponse)
             return
         } else {
-            log.Fatal(err)
+            log.Fatalf("%s %v", getRequestContexString(r), err)
         }
     }
 
@@ -108,9 +121,15 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     cashPointId := params["id"]
 
-    stmt, err := cp_db.Prepare("SELECT id, type, bank_id, town_id, longitude, latitude, address, address_comment, metro_name, free_access, main_office, without_weekend, round_the_clock, works_as_shop, schedule_general, tel, additional, rub, usd, eur, cash_in FROM cashpoints WHERE id = ?")
+    stmt, err := cp_db.Prepare(`SELECT id, type, bank_id, town_id, longitude,
+                                       latitude, address, address_comment,
+                                       metro_name, free_access, main_office,
+                                       without_weekend, round_the_clock,
+                                       works_as_shop, schedule_general, tel,
+                                       additional, rub, usd, eur,
+                                       cash_in FROM cashpoints WHERE id = ?`)
     if err != nil {
-        log.Fatal(err)
+        log.Fatalf("%s %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
@@ -126,10 +145,10 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
                                           &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
     if err != nil {
         if err == sql.ErrNoRows {
-            io.WriteString(w, `{"id":null}`)
+            io.WriteString(w, JsonNullResponse)
             return
         } else {
-            log.Fatal(err)
+            log.Fatalf("%s %v", getRequestContexString(r), err)
         }
     }
 
@@ -148,13 +167,18 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 
     stmt, err := cp_db.Prepare("SELECT id FROM cashpoints WHERE town_id = ? AND bank_id = ?")
     if err != nil {
-        log.Fatal(err)
+        log.Fatalf("%s %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
     rows, err := stmt.Query(params["town_id"], params["bank_id"])
     if err != nil {
-        log.Fatal(err)
+        if err == sql.ErrNoRows {
+            io.WriteString(w, JsonNullResponse)
+            return
+        } else {
+            log.Fatalf("%s %v", getRequestContexString(r), err)
+        }
     }
 
     ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
@@ -162,7 +186,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     for rows.Next() {
         var id uint32
         if err := rows.Scan(&id); err != nil {
-            log.Fatal(err)
+            log.Fatalf("%s %v", getRequestContexString(r), err)
         }
         ids.CashPointIds = append(ids.CashPointIds, id)
     }
