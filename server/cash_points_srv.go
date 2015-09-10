@@ -92,14 +92,16 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     townId := params["id"]
 
-    stmt, err := towns_db.Prepare("SELECT id, name, name_tr, latitude, longitude, zoom FROM towns WHERE id = ?")
+    stmt, err := towns_db.Prepare(`SELECT id, name, name_tr, latitude,
+                                          longitude, zoom FROM towns WHERE id = ?`)
     if err != nil {
         log.Fatalf("%s %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
     town := new(Town)
-    err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr, &town.Latitude, &town.Longitude, &town.Zoom)
+    err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr,
+                                     &town.Latitude, &town.Longitude, &town.Zoom)
     if err != nil {
         if err == sql.ErrNoRows {
             io.WriteString(w, JsonNullResponse)
