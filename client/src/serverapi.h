@@ -5,18 +5,25 @@
 
 #include <QtCore/QObject>
 #include <QtCore/QUrl>
-
+#include <QtCore/QDateTime>
 #include <QtCore/QJsonObject>
 
 class QNetworkAccessManager;
 class QNetworkReply;
+class QSslConfiguration;
+class QSslCertificate;
+class QIODevice;
 
 class ServerApi : public QObject
 {
     Q_OBJECT
 
 public:
-    ServerApi(const QString &host);
+    ServerApi(const QString &host, int port,
+              QIODevice *sslCertSource, QObject *parent = nullptr);
+
+    ServerApi(const QString &host, int port,
+              const QByteArray &sslCertData, QObject *parent = nullptr);
 
     void setHost(const QString &host);
     void setPort(int port);
@@ -26,20 +33,43 @@ public:
 
     qint64 uniqueRequestId() const;
 
-    typedef std::function<void(QString data, bool ok)> Callback;
+    void setCallbacksExpireTime(quint32 msec);
+    quint32 getCallbacksExpireTime() const;
+
+    typedef std::function<void(const QByteArray &data, bool timeOut)> Callback;
+
+signals:
+    void responseReceived(qint64 requestId);
+    void requestTimedout(qint64 requestId);
 
 public slots:
-    void sendRequest(QString path, QJsonObject data, ServerApi::Callback callback);
+    qint64 sendRequest(QString path, QJsonObject data, ServerApi::Callback callback);
+    void update();
 
 private slots:
-    void responseReceived(QNetworkReply *);
+    void onResponseReceived(QNetworkReply *);
 
 private:
     mutable qint64 mNextUniqueId;
     QUrl mSrvUrl;
     QNetworkAccessManager *mNetworkMgr;
+    QSslConfiguration *mSslConfig;
 
-    std::map<qint64, ServerApi::Callback> mCallbacks;
+    struct ExpCallback {
+        ExpCallback(const QDateTime &dt_, const ServerApi::Callback &callback_)
+            : dt(dt_), callback(callback_)
+        { }
+
+        QDateTime dt;
+        Callback callback;
+    };
+
+    std::map<qint64, ExpCallback> mCallbacks;
+
+    void _eraseExpiredCallbacks();
+    void _init(const QString &host, int port, const QSslCertificate &cert);
+
+    quint32 mCallbacksExpiteTime;
 };
 
 #endif // SERVERAPI_H
