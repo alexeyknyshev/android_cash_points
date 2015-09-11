@@ -13,6 +13,15 @@ import (
     _ "github.com/mattn/go-sqlite3"
 )
 
+// ========================================================
+
+type ServerConfig struct {
+    TownsDataBase      string `json:"TownsDataBase"`
+    CashPointsDataBase string `json:"CashPointsDataBase"`
+    CertificateDir     string `json:"CertificateDir"`
+    Port               uint64 `json:"Port"`
+}
+
 const JsonNullResponse string = `{"id":null}`
 
 func getRequestContexString(r *http.Request) string {
@@ -198,47 +207,45 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+    log.SetFlags(log.Flags() | log.Lmicroseconds)
+
     args := os.Args[1:]
 
     if len(args) == 0 {
-        log.Fatal("towns database path is not specified")
+        log.Fatal("Config file path is not specified")
     }
 
-    if len(args) == 1 {
-        log.Fatal("cashpoints database path is not specified")
+    configFilePath := args[0]
+    if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
+        log.Fatalf("No such config file: %s\n", configFilePath)
     }
 
-    if len(args) == 2 {
-        log.Fatal("cert folder path is not specified")
+    configFile, _ := os.Open(configFilePath)
+    decoder := json.NewDecoder(configFile)
+    serverConfig := ServerConfig{}
+    err := decoder.Decode(&serverConfig)
+    if err != nil {
+        log.Fatalf("Failed to decode config file: %s\nError: %v\n", configFilePath, err)
     }
 
-    for i := 0; i < 3; i++ {
-//        print(args[i] + "\n")
-        if _, err := os.Stat(args[i]); os.IsNotExist(err) {
-            log.Fatal("no such file or directory: %s\n", args[i])
-        }
-    }
-
-    certDirPath := args[2]
-    certPath := path.Join(certDirPath, "cert.pem")
-    pkeyPath := path.Join(certDirPath, "key.pem")
+    certPath := path.Join(serverConfig.CertificateDir, "cert.pem")
+    pkeyPath := path.Join(serverConfig.CertificateDir, "key.pem")
 
     if _, err := os.Stat(certPath); os.IsNotExist(err) {
-        log.Fatal("no such cert file for tls: %s\n", certPath)
+        log.Fatalf("No such cert file for tls: %s\n", certPath)
     }
 
     if _, err := os.Stat(pkeyPath); os.IsNotExist(err) {
-        log.Fatal("no such private key file for tls: %s\n", pkeyPath)
+        log.Fatalf("No such private key file for tls: %s\n", pkeyPath)
     }
 
-    var err error
-    towns_db, err = sql.Open("sqlite3", args[0])
+    towns_db, err = sql.Open("sqlite3", serverConfig.TownsDataBase)
     if err != nil {
         log.Fatal(err)
     }
     defer towns_db.Close()
 
-    cp_db, err = sql.Open("sqlite3", args[1])
+    cp_db, err = sql.Open("sqlite3", serverConfig.CashPointsDataBase)
     if err != nil {
         log.Fatal(err)
     }
@@ -249,10 +256,15 @@ func main() {
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 
-    port := ":8081"
-    //print("127.0.0.1" + port + "\n")
+    port := ":" + strconv.FormatUint(serverConfig.Port, 10)
+    log.Println("Certificate path: " + certPath)
+    log.Println("Private key path: " + pkeyPath)
+    log.Println("Listening 127.0.0.1" + port)
 
     http.Handle("/", router)
-    http.ListenAndServeTLS(port, certPath, pkeyPath, nil)
+    err = http.ListenAndServeTLS(port, certPath, pkeyPath, nil)
+    if err != nil {
+        log.Fatal(err)
+    }
 }
 
