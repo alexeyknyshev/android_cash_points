@@ -6,13 +6,22 @@
 
 #include <QtCore/QJsonDocument>
 
-ServerApi::ServerApi(const QString &host)
-    : mNextUniqueId(0)
+ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QObject *parent)
+    : QObject(parent),
+      mNextUniqueId(0),
+      mNetworkMgr(nullptr),
+      mSslConfig(nullptr)
 {
-    mSrvUrl.setScheme("https");
-    setHost(host);
-    mNetworkMgr = new QNetworkAccessManager(this);
-    connect(mNetworkMgr, SIGNAL(finished(QNetworkReply*)), this, SLOT(responseReceived(QNetworkReply*)));
+    _init(host, port, QSslCertificate(sslCertSource));
+}
+
+ServerApi::ServerApi(const QString &host, int port, const QByteArray &sslCertData, QObject *parent)
+    : QObject(parent),
+      mNextUniqueId(0),
+      mNetworkMgr(nullptr),
+      mSslConfig(nullptr)
+{
+    _init(host, port, QSslCertificate(sslCertData));
 }
 
 void ServerApi::setHost(const QString &host)
@@ -25,6 +34,16 @@ QString ServerApi::getHost() const
     return mSrvUrl.host();
 }
 
+void ServerApi::setPort(int port)
+{
+    mSrvUrl.setPort(port);
+}
+
+int ServerApi::getPort() const
+{
+    return mSrvUrl.port();
+}
+
 qint64 ServerApi::uniqueRequestId() const
 {
     if (std::numeric_limits<qint64>::max() != mNextUniqueId) {
@@ -35,11 +54,23 @@ qint64 ServerApi::uniqueRequestId() const
     }
 }
 
-void ServerApi::sendRequest(QString path, QJsonObject data,
-                            std::function<void (QString, bool)> callback)
+void ServerApi::setCallbacksExpireTime(quint32 msec)
 {
+    mCallbacksExpiteTime = msec;
+}
+
+quint32 ServerApi::getCallbacksExpireTime() const
+{
+    return mCallbacksExpiteTime;
+}
+
+qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback)
+{
+    _eraseExpiredCallbacks();
+
     qint64 requestId = uniqueRequestId();
-    mCallbacks.insert({ requestId, callback });
+    mCallbacks.insert(std::make_pair(requestId, ExpCallback(QDateTime::currentDateTime(),
+                                                            callback)));
 
     QUrl requestUrl(mSrvUrl);
     requestUrl.setPath(path);
@@ -47,21 +78,74 @@ void ServerApi::sendRequest(QString path, QJsonObject data,
     QNetworkRequest req;
     req.setUrl(requestUrl);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json; charset=utf-8");
-    data.insert("id", requestId);
+    req.setRawHeader(QByteArray("Id"), QString::number(requestId).toUtf8());
+
+
+    req.setSslConfiguration(*mSslConfig);
 
     if (data.isEmpty()) {
         mNetworkMgr->get(req);
     } else {
         mNetworkMgr->post(req, QJsonDocument(data).toJson(QJsonDocument::Compact));
     }
+
+    return requestId;
 }
 
-void ServerApi::responseReceived(QNetworkReply *rep)
+void ServerApi::update()
 {
-    if (rep->error() == QNetworkReply::NoError) {
+    _eraseExpiredCallbacks();
+}
 
+void ServerApi::onResponseReceived(QNetworkReply *rep)
+{
+    _eraseExpiredCallbacks();
+
+    if (rep->error() == QNetworkReply::NoError) {
+        bool ok = false;
+        qint64 requestId = rep->rawHeader(QByteArray("Id")).toLongLong(&ok);
+        const auto it = mCallbacks.find(requestId);
+        if (it != mCallbacks.cend()) {
+            Callback &callback = it->second.callback;
+            callback(rep->readAll(), false);
+            mCallbacks.erase(it);
+        } else {
+            qWarning() << "Unknown request id: " << requestId;
+        }
     } else {
 
     }
+}
+
+void ServerApi::_eraseExpiredCallbacks()
+{
+    QDateTime now = QDateTime::currentDateTime();
+    auto it = mCallbacks.begin();
+    while (it != mCallbacks.end()) {
+        if (qAbs(it->second.dt.msecsTo(now)) > static_cast<qint64>(getCallbacksExpireTime())) {
+            qint64 requestId = it->first;
+            Callback &callback = it->second.callback;
+            callback(QByteArray(), true);
+            mCallbacks.erase(it);
+            emit requestTimedout(requestId);
+            return;
+        }
+        ++it;
+    }
+}
+
+void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert)
+{
+    mSslConfig = new QSslConfiguration;
+    mSslConfig->setCaCertificates({ cert });
+    mSslConfig->setProtocol(QSsl::TlsV1_2);
+
+    setCallbacksExpireTime(1000);
+
+    mSrvUrl.setScheme("https");
+    setHost(host);
+    setPort(port);
+    mNetworkMgr = new QNetworkAccessManager(this);
+    connect(mNetworkMgr, SIGNAL(finished(QNetworkReply*)), this, SLOT(onResponseReceived(QNetworkReply*)));
 }
 
