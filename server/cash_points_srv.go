@@ -4,8 +4,10 @@ import (
     "os"
     "io"
     "log"
+    "fmt"
     "path"
     "strconv"
+    "unicode"
     "net/http"
     "database/sql"
     "encoding/json"
@@ -13,7 +15,26 @@ import (
     _ "github.com/mattn/go-sqlite3"
 )
 
-const JsonNullResponse string = `{"id":null}`
+// ========================================================
+
+func isAlphaNumeric(s string) bool {
+    for _, c := range s {
+        if !unicode.IsLetter(c) || !unicode.IsNumber(c) || c != '_' {
+            return false
+        }
+    }
+    return true
+}
+
+// ========================================================
+
+const JsonNullResponse string      = `{"id":null}`
+const JsonLoginTooShortResponse    = `{"id":null,"msg":"Login is too short"}`
+const JsonLoginInvalidCharResponse = `{"id":null,"msg":"Login contains invalid characters"}`
+const JsonPwdTooShortResponse      = `{"id":null,"msg":"Password is too short"}`
+const JsonPwdInvalidCharResponse   = `{"id":null,"msg":"Password contains invalid characters"}`
+
+// ========================================================
 
 func getRequestContexString(r *http.Request) string {
     return r.RemoteAddr
@@ -39,6 +60,11 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // ========================================================
+
+type User struct {
+    Login    string `json:"login"`
+    Password string `json:"password"`
+}
 
 type Town struct {
     Id        uint32  `json:"id"`
@@ -81,6 +107,62 @@ type CashPointIdsInTown struct {
 
 var towns_db *sql.DB
 var cp_db *sql.DB
+var users_db *sql.DB
+
+var MIN_LOGIN_LENGTH int = 4
+var MIN_PWD_LENGTH int = 4
+
+// ========================================================
+
+func handlerUser(w http.ResponseWriter, r *http.Request) {
+    if prepareResponse(w, r) == false {
+        return
+    }
+
+    decoder := json.NewDecoder(r.Body)
+    var user User
+    err := decoder.Decode(&user)
+    if err != nil {
+        log.Println("Malformed User json")
+        io.WriteString(w, JsonNullResponse)
+        return
+    }
+
+    if len(user.Login) < MIN_LOGIN_LENGTH {
+        io.WriteString(w, JsonLoginTooShortResponse)
+        return
+    }
+
+    if !isAlphaNumeric(user.Login) {
+        io.WriteString(w, JsonLoginInvalidCharResponse)
+        return
+    }
+
+    if len(user.Password) < MIN_PWD_LENGTH {
+        io.WriteString(w, JsonPwdTooShortResponse)
+        return
+    }
+
+    if !isAlphaNumeric(user.Password) {
+        io.WriteString(w, JsonPwdInvalidCharResponse)
+        return
+    }
+
+    stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
+    if err != nil {
+        log.Fatalf("%s %v", getRequestContexString(r), err)
+    }
+    defer stmt.Close()
+
+    res, err2 := stmt.Exec(user.Login, user.Password)
+    if err != nil {
+        log.Printf("%s %v\n", getRequestContexString(r), err2)
+        io.WriteString(w, JsonNullResponse)
+        return
+    }
+
+    fmt.Printf(w, `{"id":%v}`, res)
+}
 
 // ========================================================
 
@@ -245,6 +327,7 @@ func main() {
     defer cp_db.Close()
 
     router := mux.NewRouter()
+    router.HandleFunc("/user", handlerUser)
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
