@@ -6,6 +6,7 @@ import (
     "log"
     "fmt"
     "path"
+    "time"
     "strconv"
     "unicode"
     "net/http"
@@ -43,6 +44,7 @@ type ServerConfig struct {
     Port               uint64 `json:"Port"`
     UserLoginMinLength uint64 `json:"UserLoginMinLength"`
     UserPwdMinLength   uint64 `json:"UserPwdMinLength"`
+    UseTLS             bool   `json:"UseTLS"`
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -343,12 +345,25 @@ func main() {
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 
     port := ":" + strconv.FormatUint(serverConfig.Port, 10)
-    log.Println("Certificate path: " + certPath)
-    log.Println("Private key path: " + pkeyPath)
     log.Println("Listening 127.0.0.1" + port)
 
-    http.Handle("/", router)
-    err = http.ListenAndServeTLS(port, certPath, pkeyPath, nil)
+    server := &http.Server{
+        Addr:           port,
+        Handler:        router,
+        ReadTimeout:    10 * time.Second,
+        WriteTimeout:   10 * time.Second,
+        MaxHeaderBytes: 1 << 20,
+    }
+
+    //http.Handle("/", router)
+    if serverConfig.UseTLS {
+        log.Println("Using TLS encryption")
+        log.Println("Certificate path: " + certPath)
+        log.Println("Private key path: " + pkeyPath)
+        err = server.ListenAndServeTLS(certPath, pkeyPath)
+    } else {
+        err = server.ListenAndServe()
+    }
     if err != nil {
         log.Fatal(err)
     }
