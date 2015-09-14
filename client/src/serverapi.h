@@ -20,10 +20,10 @@ class ServerApi : public QObject
 
 public:
     ServerApi(const QString &host, int port,
-              QIODevice *sslCertSource, QObject *parent = nullptr);
+              QIODevice *sslCertSource = nullptr, QObject *parent = nullptr);
 
     ServerApi(const QString &host, int port,
-              const QByteArray &sslCertData, QObject *parent = nullptr);
+              const QByteArray &sslCertData = QByteArray(), QObject *parent = nullptr);
 
     void setHost(const QString &host);
     void setPort(int port);
@@ -68,6 +68,7 @@ private:
 
     void _eraseExpiredCallbacks();
     void _init(const QString &host, int port, const QSslCertificate &cert);
+    void _init(const QString &host, int port);
 
     quint32 mCallbacksExpiteTime;
 };

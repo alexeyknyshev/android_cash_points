@@ -12,7 +12,12 @@ ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QO
       mNetworkMgr(nullptr),
       mSslConfig(nullptr)
 {
-    _init(host, port, QSslCertificate(sslCertSource));
+    // use secure connection
+    if (sslCertSource) {
+        _init(host, port, QSslCertificate(sslCertSource));
+    } else {
+        _init(host, port);
+    }
 }
 
 ServerApi::ServerApi(const QString &host, int port, const QByteArray &sslCertData, QObject *parent)
@@ -80,8 +85,9 @@ qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callbac
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json; charset=utf-8");
     req.setRawHeader(QByteArray("Id"), QString::number(requestId).toUtf8());
 
-
-    req.setSslConfiguration(*mSslConfig);
+    if (mSslConfig) {
+        req.setSslConfiguration(*mSslConfig);
+    }
 
     if (data.isEmpty()) {
         mNetworkMgr->get(req);
@@ -140,12 +146,18 @@ void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert
     mSslConfig->setCaCertificates({ cert });
     mSslConfig->setProtocol(QSsl::TlsV1_2);
 
-    setCallbacksExpireTime(1000);
+    _init(host, port);
 
     mSrvUrl.setScheme("https");
+}
+
+void ServerApi::_init(const QString &host, int port)
+{
+    setCallbacksExpireTime(1000);
+
+    mSrvUrl.setScheme("http");
     setHost(host);
     setPort(port);
     mNetworkMgr = new QNetworkAccessManager(this);
     connect(mNetworkMgr, SIGNAL(finished(QNetworkReply*)), this, SLOT(onResponseReceived(QNetworkReply*)));
 }
-
