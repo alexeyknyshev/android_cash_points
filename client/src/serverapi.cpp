@@ -16,7 +16,7 @@ ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QO
     if (sslCertSource) {
         _init(host, port, QSslCertificate(sslCertSource));
     } else {
-        _init(host, port);
+        _init(host, port, QSslCertificate());
     }
 }
 
@@ -142,22 +142,21 @@ void ServerApi::_eraseExpiredCallbacks()
 
 void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert)
 {
-    mSslConfig = new QSslConfiguration;
-    mSslConfig->setCaCertificates({ cert });
-    mSslConfig->setProtocol(QSsl::TlsV1_2);
+    if (!cert.isNull()) {
+        mSslConfig = new QSslConfiguration;
+        mSslConfig->setCaCertificates({ cert });
+        mSslConfig->setProtocol(QSsl::TlsV1_2);
+    }
 
-    _init(host, port);
-
-    mSrvUrl.setScheme("https");
-}
-
-void ServerApi::_init(const QString &host, int port)
-{
     setCallbacksExpireTime(1000);
-
-    mSrvUrl.setScheme("http");
     setHost(host);
     setPort(port);
     mNetworkMgr = new QNetworkAccessManager(this);
     connect(mNetworkMgr, SIGNAL(finished(QNetworkReply*)), this, SLOT(onResponseReceived(QNetworkReply*)));
+
+    if (cert.isNull()) {
+        mSrvUrl.setScheme("http");
+    } else {
+        mSrvUrl.setScheme("https");
+    }
 }
