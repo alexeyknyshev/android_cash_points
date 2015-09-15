@@ -161,13 +161,13 @@ func handlerUser(w http.ResponseWriter, r *http.Request) {
 
     stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
     if err != nil {
-        log.Fatalf("%s %v", getRequestContexString(r), err)
+        log.Fatalf("%s users: %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
     res, err2 := stmt.Exec(user.Login, user.Password)
     if err != nil {
-        log.Printf("%s %v\n", getRequestContexString(r), err2)
+        log.Printf("%s users: %v\n", getRequestContexString(r), err2)
         io.WriteString(w, JsonNullResponse)
         return
     }
@@ -188,7 +188,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     stmt, err := towns_db.Prepare(`SELECT id, name, name_tr, latitude,
                                           longitude, zoom FROM towns WHERE id = ?`)
     if err != nil {
-        log.Fatalf("%s %v", getRequestContexString(r), err)
+        log.Fatalf("%s towns: %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
@@ -200,7 +200,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
             io.WriteString(w, JsonNullResponse)
             return
         } else {
-            log.Fatalf("%s %v", getRequestContexString(r), err)
+            log.Fatalf("%s towns: %v", getRequestContexString(r), err)
         }
     }
 
@@ -224,7 +224,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
                                        additional, rub, usd, eur,
                                        cash_in FROM cashpoints WHERE id = ?`)
     if err != nil {
-        log.Fatalf("%s %v", getRequestContexString(r), err)
+        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
@@ -243,7 +243,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
             io.WriteString(w, JsonNullResponse)
             return
         } else {
-            log.Fatalf("%s %v", getRequestContexString(r), err)
+            log.Fatalf("%s cashpoints: %v",getRequestContexString(r), err)
         }
     }
 
@@ -262,7 +262,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 
     stmt, err := cp_db.Prepare("SELECT id FROM cashpoints WHERE town_id = ? AND bank_id = ?")
     if err != nil {
-        log.Fatalf("%s %v", getRequestContexString(r), err)
+        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
     }
     defer stmt.Close()
 
@@ -272,7 +272,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
             io.WriteString(w, JsonNullResponse)
             return
         } else {
-            log.Fatalf("%s %v", getRequestContexString(r), err)
+            log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
         }
     }
 
@@ -281,7 +281,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     for rows.Next() {
         var id uint32
         if err := rows.Scan(&id); err != nil {
-            log.Fatalf("%s %v", getRequestContexString(r), err)
+            log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
         }
         ids.CashPointIds = append(ids.CashPointIds, id)
     }
