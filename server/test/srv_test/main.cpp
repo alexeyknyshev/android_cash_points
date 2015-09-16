@@ -47,7 +47,7 @@ int main(int argc, char **argv)
         app.quit();
     });
 
-    timer->start(15000);
+    timer->start(1000);
 
     app.exec();
 
