@@ -1,6 +1,7 @@
 {
     "TownsDataBase": "./data/towns.db",
     "CashPointsDataBase": "./data/cp.db",
+    "RequestsDataBase": "./logs/requests.db",
     "CertificateDir": "./cert",
     "Port": 8080,
     "UserLoginMinLength": 4,

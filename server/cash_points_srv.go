@@ -7,6 +7,7 @@ import (
     "fmt"
     "path"
     "time"
+    "errors"
     "strconv"
     "unicode"
     "net/http"
@@ -40,6 +41,7 @@ const JsonPwdInvalidCharResponse   = `{"id":null,"msg":"Password contains invali
 type ServerConfig struct {
     TownsDataBase      string `json:"TownsDataBase"`
     CashPointsDataBase string `json:"CashPointsDataBase"`
+    RequestsDataBase   string `json:"RequestsDataBase"`
     CertificateDir     string `json:"CertificateDir"`
     Port               uint64 `json:"Port"`
     UserLoginMinLength uint64 `json:"UserLoginMinLength"`
@@ -51,23 +53,83 @@ func getRequestContexString(r *http.Request) string {
     return r.RemoteAddr
 }
 
-func prepareResponse(w http.ResponseWriter, r *http.Request) bool {
-    contextStr := getRequestContexString(r)
-
-    w.Header().Set("Content-Type", "application/json; charset=utf-8")
+func getRequestUserId(r *http.Request) (int64, error) {
     requestIdStr := r.Header.Get("Id")
     if requestIdStr == "" {
-        log.Println(contextStr + ` Request header val "Id" is not set`)
-        return false
+        return 0, errors.New(`Request header val "Id" is not set`)
     }
-    requestId, err := strconv.ParseUint(requestIdStr, 10, 32)
+    requestId, err := strconv.ParseInt(requestIdStr, 10, 64)
     if err != nil {
-        log.Println(contextStr + ` Request header val "Id" uint conversion failed: ` + requestIdStr)
-        io.WriteString(w, JsonNullResponse)
-        return false
+        return 0, errors.New(`Request header val "Id" uint conversion failed: ` + requestIdStr)
     }
-    w.Header().Set("Id", strconv.FormatUint(requestId, 10))
-    return true
+    return requestId, nil
+}
+
+func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
+    stmt, err := requests_db.Prepare(`INSERT INTO requests (path, data, time, user_id) VALUES (?, ?, ?, ?)`)
+    if err != nil {
+        log.Fatalf("%s requests: %v", getRequestContexString(r), err)
+        io.WriteString(w, JsonNullResponse)
+        return err
+    }
+    defer stmt.Close()
+
+    path := r.URL.Path
+
+    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
+    reqBody := sql.NullString{ String: requestBody, Valid: requestBody != "" }
+
+    _, err2 := stmt.Exec(path, reqBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
+    if err2 != nil {
+        log.Printf("%s requests: %v\n", getRequestContexString(r), err2)
+        io.WriteString(w, JsonNullResponse)
+        return err2
+    }
+    
+    return nil
+}
+
+func logResponse(context string, requestId int64, responseBody string) error {
+    stmt, err := requests_db.Prepare(`INSERT INTO responses (data, time, user_id) VALUES (?, ?, ?)`)
+    if err != nil {
+        log.Fatalf("%s responses: %v", context, err)
+        return err
+    }
+    defer stmt.Close()
+
+    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
+    resBody := sql.NullString{ String: responseBody, Valid: responseBody != "" }
+
+    _, err2 := stmt.Exec(resBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
+    if err2 != nil {
+        log.Printf("%s responses: %v\n", context, err2)
+        return err2
+    }
+    
+    return nil
+}
+
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
+    io.WriteString(w, responseBody)
+    go logResponse(getRequestContexString(r), requestId, responseBody)
+}
+
+func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
+    requestId, err := getRequestUserId(r)
+    if err != nil {
+        log.Printf("%s prepareResponse %v\n", getRequestContexString(r), err)
+        writeResponse(w, r, 0, JsonNullResponse)
+        return false, 0
+    }
+    if requestId == 0 {
+        log.Printf("%s prepareResponse unexpected requestId: %d\n", getRequestContexString(r), requestId)
+        writeResponse(w, r, 0, JsonNullResponse)
+        return false, 0
+    }
+
+    w.Header().Set("Content-Type", "application/json; charset=utf-8")
+    w.Header().Set("Id", strconv.FormatInt(requestId, 10))
+    return true, requestId
 }
 
 // ========================================================
@@ -121,14 +183,16 @@ var BuildDate string
 var towns_db *sql.DB
 var cp_db *sql.DB
 var users_db *sql.DB
+var requests_db *sql.DB
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
 
 // ========================================================
 
-func handlerUser(w http.ResponseWriter, r *http.Request) {
-    if prepareResponse(w, r) == false {
+func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
         return
     }
 
@@ -136,53 +200,61 @@ func handlerUser(w http.ResponseWriter, r *http.Request) {
     var user User
     err := decoder.Decode(&user)
     if err != nil {
+        go logRequest(w, r, requestId, "")
         log.Println("Malformed User json")
-        io.WriteString(w, JsonNullResponse)
+        writeResponse(w, r, requestId, JsonNullResponse)
         return
     }
+    userJsonStr, _ := json.Marshal(user)
+    go logRequest(w, r, requestId, string(userJsonStr))
 
     if len(user.Login) < int(MIN_LOGIN_LENGTH) {
-        io.WriteString(w, JsonLoginTooShortResponse)
+        writeResponse(w, r, requestId, JsonLoginTooShortResponse)
         return
     }
 
     if !isAlphaNumeric(user.Login) {
-        io.WriteString(w, JsonLoginInvalidCharResponse)
+        writeResponse(w, r, requestId, JsonLoginInvalidCharResponse)
         return
     }
 
     if len(user.Password) < int(MIN_PWD_LENGTH) {
-        io.WriteString(w, JsonPwdTooShortResponse)
+        writeResponse(w, r, requestId, JsonPwdTooShortResponse)
         return
     }
 
     if !isAlphaNumeric(user.Password) {
-        io.WriteString(w, JsonPwdInvalidCharResponse)
+        writeResponse(w, r, requestId, JsonPwdInvalidCharResponse)
         return
     }
 
     stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
     if err != nil {
         log.Fatalf("%s users: %v", getRequestContexString(r), err)
+        writeResponse(w, r, requestId, JsonNullResponse)
+        return
     }
     defer stmt.Close()
 
     res, err2 := stmt.Exec(user.Login, user.Password)
     if err != nil {
         log.Printf("%s users: %v\n", getRequestContexString(r), err2)
-        io.WriteString(w, JsonNullResponse)
+        writeResponse(w, r, requestId, JsonNullResponse)
         return
     }
 
-    fmt.Fprintf(w, `{"id":%v}`, res)
+    jsonStr := fmt.Sprintf(`{"id":%v}`, res)
+    writeResponse(w, r, requestId, jsonStr)
 }
 
 // ========================================================
 
 func handlerTown(w http.ResponseWriter, r *http.Request) {
-    if prepareResponse(w, r) == false {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
         return
     }
+    go logRequest(w, r, requestId, "")
 
     params := mux.Vars(r)
     townId := params["id"]
@@ -199,21 +271,24 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
                                      &town.Latitude, &town.Longitude, &town.Zoom)
     if err != nil {
         if err == sql.ErrNoRows {
-            io.WriteString(w, JsonNullResponse)
+            writeResponse(w, r, requestId, JsonNullResponse)
             return
         } else {
             log.Fatalf("%s towns: %v", getRequestContexString(r), err)
         }
     }
 
-    jsonStr, _ := json.Marshal(town)
-    io.WriteString(w, string(jsonStr))
+    jsonByteArr, _ := json.Marshal(town)
+    jsonStr := string(jsonByteArr)
+    writeResponse(w, r, requestId, jsonStr)
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
-    if prepareResponse(w, r) == false {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
         return
     }
+    go logRequest(w, r, requestId, "")
 
     params := mux.Vars(r)
     cashPointId := params["id"]
@@ -242,21 +317,24 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
                                           &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
     if err != nil {
         if err == sql.ErrNoRows {
-            io.WriteString(w, JsonNullResponse)
+            writeResponse(w, r, requestId, JsonNullResponse)
             return
         } else {
             log.Fatalf("%s cashpoints: %v",getRequestContexString(r), err)
         }
     }
 
-    jsonStr, _ := json.Marshal(cp)
-    io.WriteString(w, string(jsonStr))
+    jsonByteArr, _ := json.Marshal(cp)
+    jsonStr := string(jsonByteArr)
+    writeResponse(w, r, requestId, jsonStr)
 }
 
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
-    if prepareResponse(w, r) == false {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
         return
     }
+    go logRequest(w, r, requestId, "")
 
     params := mux.Vars(r)
     townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
@@ -271,7 +349,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     rows, err := stmt.Query(params["town_id"], params["bank_id"])
     if err != nil {
         if err == sql.ErrNoRows {
-            io.WriteString(w, JsonNullResponse)
+            writeResponse(w, r, requestId, JsonNullResponse)
             return
         } else {
             log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
@@ -288,8 +366,9 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
         ids.CashPointIds = append(ids.CashPointIds, id)
     }
 
-    jsonStr, _ := json.Marshal(ids)
-    io.WriteString(w, string(jsonStr))
+    jsonByteArr, _ := json.Marshal(ids)
+    jsonStr := string(jsonByteArr)
+    writeResponse(w, r, requestId, jsonStr)
 }
 
 func main() {
@@ -341,8 +420,14 @@ func main() {
     }
     defer cp_db.Close()
 
+    requests_db, err = sql.Open("sqlite3", serverConfig.RequestsDataBase)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer requests_db.Close()
+
     router := mux.NewRouter()
-    router.HandleFunc("/user", handlerUser)
+    router.HandleFunc("/user", handlerUserCreate).Methods("POST")
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
