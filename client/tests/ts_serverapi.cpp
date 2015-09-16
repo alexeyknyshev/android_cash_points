@@ -21,6 +21,7 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void testUserCreateRequest();
     void testTownsRequest();
     void testCashpointRequest();
 };
@@ -31,6 +32,20 @@ void ServerApiTest::initTestCase()
 
 void ServerApiTest::cleanupTestCase()
 {
+}
+
+void ServerApiTest::testUserCreateRequest()
+{
+    const QString path = "/user";
+    QJsonObject req
+    {
+        {"login", "testUser"},
+        {"password", "testPassword"}
+    };
+
+    const Response res = sendRequest(path, req, false);
+
+    qDebug() << res.ok << "\n" << res.data;
 }
 
 void ServerApiTest::testTownsRequest()
