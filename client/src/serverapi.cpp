@@ -8,7 +8,6 @@
 
 ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QObject *parent)
     : QObject(parent),
-      mNextUniqueId(0),
       mNetworkMgr(nullptr),
       mSslConfig(nullptr)
 {
@@ -22,7 +21,6 @@ ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QO
 
 ServerApi::ServerApi(const QString &host, int port, const QByteArray &sslCertData, QObject *parent)
     : QObject(parent),
-      mNextUniqueId(0),
       mNetworkMgr(nullptr),
       mSslConfig(nullptr)
 {
@@ -54,7 +52,7 @@ qint64 ServerApi::uniqueRequestId() const
     if (std::numeric_limits<qint64>::max() != mNextUniqueId) {
         return mNextUniqueId++;
     } else {
-        mNextUniqueId = 0;
+        mNextUniqueId = 1;
         return mNextUniqueId;
     }
 }
@@ -142,6 +140,8 @@ void ServerApi::_eraseExpiredCallbacks()
 
 void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert)
 {
+    mNextUniqueId = 1;
+
     if (!cert.isNull()) {
         mSslConfig = new QSslConfiguration;
         mSslConfig->setCaCertificates({ cert });
