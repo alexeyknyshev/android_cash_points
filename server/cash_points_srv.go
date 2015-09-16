@@ -116,6 +116,8 @@ type CashPointIdsInTown struct {
     CashPointIds  []uint32 `json:"cash_points"`
 }
 
+var BuildDate string
+
 var towns_db *sql.DB
 var cp_db *sql.DB
 var users_db *sql.DB
@@ -292,6 +294,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 
 func main() {
     log.SetFlags(log.Flags() | log.Lmicroseconds)
+    log.Println("CashPoints server build: " + BuildDate)
 
     args := os.Args[1:]
 
