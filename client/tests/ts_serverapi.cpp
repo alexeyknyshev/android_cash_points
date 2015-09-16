@@ -4,6 +4,11 @@
 
 #include "../src/serverapi.h"
 
+bool floatCompare(float a, float b)
+{
+    return qAbs(a - b) < 0.0001f;
+}
+
 class ServerApiTest : public QObject
 {
     Q_OBJECT
@@ -77,8 +82,8 @@ void ServerApiTest::testCashpointRequest()
         QCOMPARE(res.data["type"].toString(), QString("atm"));
         QCOMPARE(res.data["bank_id"].toInt(), 3425);
         QCOMPARE(res.data["town_id"].toInt(), 4);
-//        QVERIFY(qFuzzyCompare(res.data["longitude"].toDouble(), 37.699253076057));
-//        QVERIFY(qFuzzyCompare(res.data["latitude"].toDouble(), 55.7949921030773));
+        QVERIFY(floatCompare(res.data["longitude"].toDouble(), 37.699253076057));
+        QVERIFY(floatCompare(res.data["latitude"].toDouble(), 55.7949921030773));
 //        QCOMPARE(res.data["address"].toString(), QString("г.Москва, ул. Стромынка, д. 21 корп. 1"));
         QCOMPARE(res.data["address_comment"].toString(), QString("Управление социальной защиты населения района «Преображенский»"));
         QCOMPARE(res.data["metro_name"].toString(), QString("Преображенская площадь"));
