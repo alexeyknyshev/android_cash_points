@@ -178,11 +178,14 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
                         &cp.Schedule, &cp.Tel, &cp.Additional,
                         &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
         if err != nil {
-	    print(cp.Id, "\n")
             log.Fatal(err)
         }
 
-        err = redisCli.Cmd("HMSET", "cp:" + strconv.FormatUint(uint64(cp.Id), 10),
+        cashpointIdStr := strconv.FormatUint(uint64(cp.Id), 10)
+        townIdStr := strconv.FormatUint(uint64(cp.TownId), 10)
+        bankIdStr := strconv.FormatUint(uint64(cp.BankId), 10)
+
+        err = redisCli.Cmd("HMSET", "cp:" + cashpointIdStr,
                                     "bank_id", cp.BankId,
                                     "town_id", cp.TownId,
                                     "longitude", cp.Longitude,
@@ -203,6 +206,16 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
                                     "eur", boolToInt(cp.Eur),
                                     "cash_id", boolToInt(cp.CashIn)).Err
 
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SADD", "town:" + townIdStr + ":cp", cp.Id).Err
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SADD", "bank:" + bankIdStr + ":cp", cp.Id).Err
         if err != nil {
             log.Fatal(err)
         }
