@@ -406,15 +406,20 @@ func main() {
     MIN_LOGIN_LENGTH = serverConfig.UserLoginMinLength
     MIN_PWD_LENGTH = serverConfig.UserPwdMinLength
 
-    certPath := path.Join(serverConfig.CertificateDir, "cert.pem")
-    pkeyPath := path.Join(serverConfig.CertificateDir, "key.pem")
+    certPath := ""
+    pkeyPath := ""
 
-    if _, err := os.Stat(certPath); os.IsNotExist(err) {
-        log.Fatalf("No such cert file for tls: %s\n", certPath)
-    }
+    if serverConfig.UseTLS {
+        certPath = path.Join(serverConfig.CertificateDir, "cert.pem")
+        pkeyPath = path.Join(serverConfig.CertificateDir, "key.pem")
 
-    if _, err := os.Stat(pkeyPath); os.IsNotExist(err) {
-        log.Fatalf("No such private key file for tls: %s\n", pkeyPath)
+        if _, err := os.Stat(certPath); os.IsNotExist(err) {
+            log.Fatalf("No such cert file for tls: %s\n", certPath)
+        }
+
+        if _, err := os.Stat(pkeyPath); os.IsNotExist(err) {
+            log.Fatalf("No such private key file for tls: %s\n", pkeyPath)
+        }
     }
 
     towns_db, err = sql.Open("sqlite3", serverConfig.TownsDataBase)
