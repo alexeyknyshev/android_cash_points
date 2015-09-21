@@ -15,6 +15,7 @@ import (
     "encoding/json"
     "github.com/gorilla/mux"
     _ "github.com/mattn/go-sqlite3"
+    "github.com/mediocregopher/radix.v2/redis"
 )
 
 // ========================================================
@@ -41,12 +42,13 @@ const JsonPwdInvalidCharResponse   = `{"id":null,"msg":"Password contains invali
 type ServerConfig struct {
     TownsDataBase      string `json:"TownsDataBase"`
     CashPointsDataBase string `json:"CashPointsDataBase"`
-    RequestsDataBase   string `json:"RequestsDataBase"`
     CertificateDir     string `json:"CertificateDir"`
     Port               uint64 `json:"Port"`
     UserLoginMinLength uint64 `json:"UserLoginMinLength"`
     UserPwdMinLength   uint64 `json:"UserPwdMinLength"`
     UseTLS             bool   `json:"UseTLS"`
+    RedisHost          string `json:"RedisHost"`
+    ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -65,48 +67,50 @@ func getRequestUserId(r *http.Request) (int64, error) {
     return requestId, nil
 }
 
+// ========================================================
+
 func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
-    stmt, err := requests_db.Prepare(`INSERT INTO requests (path, data, time, user_id) VALUES (?, ?, ?, ?)`)
+    path := r.URL.Path
+    timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
+    requestStr := "request:" + timeStr
+
+    err := redis_cli.Cmd("HMSET", requestStr,
+                                  "path", path,
+                                  "data", requestBody,
+                                  "time", timeStr,
+                                  "user_id", requestId).Err
     if err != nil {
-        log.Fatalf("%s requests: %v", getRequestContexString(r), err)
-        io.WriteString(w, JsonNullResponse)
+        log.Printf("logRequest: %v\n", err)
         return err
     }
-    defer stmt.Close()
 
-    path := r.URL.Path
-
-    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
-    reqBody := sql.NullString{ String: requestBody, Valid: requestBody != "" }
-
-    _, err2 := stmt.Exec(path, reqBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
-    if err2 != nil {
-        log.Printf("%s requests: %v\n", getRequestContexString(r), err2)
-        io.WriteString(w, JsonNullResponse)
-        return err2
+    err = redis_cli.Cmd("EXPIRE", requestStr, REQ_RES_LOG_TTL).Err
+    if err != nil {
+        log.Printf("logRequest: %v\n", err)
     }
-    
-    return nil
+
+    return err
 }
 
 func logResponse(context string, requestId int64, responseBody string) error {
-    stmt, err := requests_db.Prepare(`INSERT INTO responses (data, time, user_id) VALUES (?, ?, ?)`)
+    timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
+    responseStr := "response:" + timeStr
+
+    err := redis_cli.Cmd("HMSET", responseStr,
+                                  "data", responseBody,
+                                  "time", timeStr,
+                                  "user_id", requestId).Err
     if err != nil {
-        log.Fatalf("%s responses: %v", context, err)
+        log.Printf("logResponse: %v\n", err)
         return err
     }
-    defer stmt.Close()
 
-    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
-    resBody := sql.NullString{ String: responseBody, Valid: responseBody != "" }
-
-    _, err2 := stmt.Exec(resBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
-    if err2 != nil {
-        log.Printf("%s responses: %v\n", context, err2)
-        return err2
+    err = redis_cli.Cmd("EXPIRE", responseStr, REQ_RES_LOG_TTL).Err
+    if err != nil {
+        log.Printf("logResponse: %v\n", err)
     }
-    
-    return nil
+
+    return err
 }
 
 func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
@@ -183,10 +187,12 @@ var BuildDate string
 var towns_db *sql.DB
 var cp_db *sql.DB
 var users_db *sql.DB
-var requests_db *sql.DB
+var redis_cli *redis.Client
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
+
+var REQ_RES_LOG_TTL uint64 = 60
 
 // ========================================================
 
@@ -329,6 +335,9 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     writeResponse(w, r, requestId, jsonStr)
 }
 
+func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
+}
+
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     ok, requestId := prepareResponse(w, r)
     if ok == false {
@@ -420,15 +429,18 @@ func main() {
     }
     defer cp_db.Close()
 
-    requests_db, err = sql.Open("sqlite3", serverConfig.RequestsDataBase)
+    redis_cli, err = redis.Dial("tcp", serverConfig.RedisHost)
     if err != nil {
         log.Fatal(err)
     }
-    defer requests_db.Close()
+    defer redis_cli.Close()
+
+    REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
     router := mux.NewRouter()
     router.HandleFunc("/user", handlerUserCreate).Methods("POST")
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
+    router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 
