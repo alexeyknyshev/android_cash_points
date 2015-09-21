@@ -69,7 +69,26 @@ func getRequestUserId(r *http.Request) (int64, error) {
 
 // ========================================================
 
+func checkConvertionUint(val uint32, err error, context string) uint32 {
+    if err != nil {
+        log.Printf("%s: uint conversion err => %v\n", context, err)
+        return 0
+    }
+    return val
+}
+
+func checkConvertionFloat(val float32, err error, context string) float32 {
+    if err != nil {
+        log.Printf("%s: float conversion err => %v\n", context, err)
+        return 0.0
+    }
+    return val
+}
+
+// ========================================================
+
 func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
+/*
     path := r.URL.Path
     timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
     requestStr := "request:" + timeStr
@@ -90,9 +109,12 @@ func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, request
     }
 
     return err
+*/
+    return nil
 }
 
 func logResponse(context string, requestId int64, responseBody string) error {
+/*
     timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
     responseStr := "response:" + timeStr
 
@@ -111,6 +133,8 @@ func logResponse(context string, requestId int64, responseBody string) error {
     }
 
     return err
+*/
+    return nil
 }
 
 func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
@@ -265,24 +289,43 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     townId := params["id"]
 
-    stmt, err := towns_db.Prepare(`SELECT id, name, name_tr, latitude,
-                                          longitude, zoom FROM towns WHERE id = ?`)
-    if err != nil {
-        log.Fatalf("%s towns: %v", getRequestContexString(r), err)
+    result := redis_cli.Cmd("HGETALL", "town:" + townId)
+    if result.Err != nil {
+        log.Printf("handlerTown: %v\n", result.Err)
+        writeResponse(w, r, requestId, JsonNullResponse)
+        return
     }
-    defer stmt.Close()
+
+    data, err := result.Map()
+    if err != nil {
+        log.Printf("handlerTown: %v\n", err)
+        writeResponse(w, r, requestId, JsonNullResponse)
+        return
+    }
+
+    context := getRequestContexString(r) + " handlerTown:" + townId
+
+    if len(data) == 0 {
+        log.Printf("%s: no such town id\n", context)
+        w.WriteHeader(404)
+        return
+    }
 
     town := new(Town)
-    err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr,
-                                     &town.Latitude, &town.Longitude, &town.Zoom)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s towns: %v", getRequestContexString(r), err)
-        }
-    }
+    town.Name, _   = data["name"]
+    town.NameTr, _ = data["name_tr"]
+
+    id, err := strconv.ParseUint(townId, 10, 32)
+    town.Id = checkConvertionUint(uint32(id), err, context + " => Town.Id")
+
+    latitude, err := strconv.ParseFloat(data["latitude"], 32)
+    town.Latitude = checkConvertionFloat(float32(latitude), err, context + " => Town.Latitude")
+
+    longitude, err := strconv.ParseFloat(data["longitude"], 32)
+    town.Longitude = checkConvertionFloat(float32(longitude), err, context + " => Town.Longitude")
+
+    zoom, err := strconv.ParseUint(data["zoom"], 10, 32)
+    town.Zoom = checkConvertionUint(uint32(zoom), err, context + " => Town.Zoom")
 
     jsonByteArr, _ := json.Marshal(town)
     jsonStr := string(jsonByteArr)
