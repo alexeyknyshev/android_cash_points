@@ -6,5 +6,7 @@
     "Port": 8080,
     "UserLoginMinLength": 4,
     "UserPwdMinLength": 4,
-    "UseTLS": false
+    "UseTLS": false,
+    "RedisHost": "localhost:6379",
+    "ReqResLogTTL": 60
 }

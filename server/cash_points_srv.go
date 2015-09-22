@@ -15,9 +15,17 @@ import (
     "encoding/json"
     "github.com/gorilla/mux"
     _ "github.com/mattn/go-sqlite3"
+    "github.com/mediocregopher/radix.v2/redis"
 )
 
 // ========================================================
+
+func uintToBool(val uint32) bool {
+    if (val > 0) {
+        return true
+    }
+    return false
+}
 
 func isAlphaNumeric(s string) bool {
     for _, c := range s {
@@ -41,16 +49,29 @@ const JsonPwdInvalidCharResponse   = `{"id":null,"msg":"Password contains invali
 type ServerConfig struct {
     TownsDataBase      string `json:"TownsDataBase"`
     CashPointsDataBase string `json:"CashPointsDataBase"`
-    RequestsDataBase   string `json:"RequestsDataBase"`
     CertificateDir     string `json:"CertificateDir"`
     Port               uint64 `json:"Port"`
     UserLoginMinLength uint64 `json:"UserLoginMinLength"`
     UserPwdMinLength   uint64 `json:"UserPwdMinLength"`
     UseTLS             bool   `json:"UseTLS"`
+    RedisHost          string `json:"RedisHost"`
+    ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
 }
 
 func getRequestContexString(r *http.Request) string {
     return r.RemoteAddr
+}
+
+func getHandlerContextString(funcName string, requestId int64, idList ...string) string {
+    result := funcName + ":" + strconv.FormatInt(requestId, 10)
+    if len(idList) > 0 {
+        result = result + "("
+        for _, id := range idList {
+            result = result + id + ","
+        }
+        result = result + ")"
+    }
+    return result
 }
 
 func getRequestUserId(r *http.Request) (int64, error) {
@@ -65,47 +86,73 @@ func getRequestUserId(r *http.Request) (int64, error) {
     return requestId, nil
 }
 
-func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
-    stmt, err := requests_db.Prepare(`INSERT INTO requests (path, data, time, user_id) VALUES (?, ?, ?, ?)`)
+// ========================================================
+
+func checkConvertionUint(val uint32, err error, context string) uint32 {
     if err != nil {
-        log.Fatalf("%s requests: %v", getRequestContexString(r), err)
-        io.WriteString(w, JsonNullResponse)
+        log.Printf("%s: uint conversion err => %v\n", context, err)
+        return 0
+    }
+    return val
+}
+
+func checkConvertionFloat(val float32, err error, context string) float32 {
+    if err != nil {
+        log.Printf("%s: float conversion err => %v\n", context, err)
+        return 0.0
+    }
+    return val
+}
+
+// ========================================================
+
+func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
+/*
+    path := r.URL.Path
+    timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
+    requestStr := "request:" + timeStr
+
+    err := redis_cli.Cmd("HMSET", requestStr,
+                                  "path", path,
+                                  "data", requestBody,
+                                  "time", timeStr,
+                                  "user_id", requestId).Err
+    if err != nil {
+        log.Printf("logRequest: %v\n", err)
         return err
     }
-    defer stmt.Close()
 
-    path := r.URL.Path
-
-    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
-    reqBody := sql.NullString{ String: requestBody, Valid: requestBody != "" }
-
-    _, err2 := stmt.Exec(path, reqBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
-    if err2 != nil {
-        log.Printf("%s requests: %v\n", getRequestContexString(r), err2)
-        io.WriteString(w, JsonNullResponse)
-        return err2
+    err = redis_cli.Cmd("EXPIRE", requestStr, REQ_RES_LOG_TTL).Err
+    if err != nil {
+        log.Printf("logRequest: %v\n", err)
     }
 
+    return err
+*/
     return nil
 }
 
 func logResponse(context string, requestId int64, responseBody string) error {
-    stmt, err := requests_db.Prepare(`INSERT INTO responses (data, time, user_id) VALUES (?, ?, ?)`)
+/*
+    timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
+    responseStr := "response:" + timeStr
+
+    err := redis_cli.Cmd("HMSET", responseStr,
+                                  "data", responseBody,
+                                  "time", timeStr,
+                                  "user_id", requestId).Err
     if err != nil {
-        log.Fatalf("%s responses: %v", context, err)
+        log.Printf("logResponse: %v\n", err)
         return err
     }
-    defer stmt.Close()
 
-    reqId := sql.NullInt64{ Int64: requestId, Valid: requestId != 0 }
-    resBody := sql.NullString{ String: responseBody, Valid: responseBody != "" }
-
-    _, err2 := stmt.Exec(resBody, strconv.FormatInt(time.Now().Unix(), 10), reqId)
-    if err2 != nil {
-        log.Printf("%s responses: %v\n", context, err2)
-        return err2
+    err = redis_cli.Cmd("EXPIRE", responseStr, REQ_RES_LOG_TTL).Err
+    if err != nil {
+        log.Printf("logResponse: %v\n", err)
     }
-    
+
+    return err
+*/
     return nil
 }
 
@@ -180,13 +227,14 @@ type CashPointIdsInTown struct {
 
 var BuildDate string
 
-var towns_db *sql.DB
 var cp_db *sql.DB
 var users_db *sql.DB
-var requests_db *sql.DB
+var redis_cli *redis.Client
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
+
+var REQ_RES_LOG_TTL uint64 = 60
 
 // ========================================================
 
@@ -259,24 +307,43 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     townId := params["id"]
 
-    stmt, err := towns_db.Prepare(`SELECT id, name, name_tr, latitude,
-                                          longitude, zoom FROM towns WHERE id = ?`)
-    if err != nil {
-        log.Fatalf("%s towns: %v", getRequestContexString(r), err)
+    result := redis_cli.Cmd("HGETALL", "town:" + townId)
+    if result.Err != nil {
+        log.Printf("handlerTown: %v\n", result.Err)
+        writeResponse(w, r, requestId, JsonNullResponse)
+        return
     }
-    defer stmt.Close()
+
+    data, err := result.Map()
+    if err != nil {
+        log.Printf("handlerTown: %v\n", err)
+        writeResponse(w, r, requestId, JsonNullResponse)
+        return
+    }
+
+    context := getRequestContexString(r) + " handlerTown:" + townId
+
+    if len(data) == 0 {
+        log.Printf("%s: no such town id\n", context)
+        w.WriteHeader(404)
+        return
+    }
 
     town := new(Town)
-    err = stmt.QueryRow(townId).Scan(&town.Id, &town.Name, &town.NameTr,
-                                     &town.Latitude, &town.Longitude, &town.Zoom)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s towns: %v", getRequestContexString(r), err)
-        }
-    }
+    town.Name, _   = data["name"]
+    town.NameTr, _ = data["name_tr"]
+
+    id, err := strconv.ParseUint(townId, 10, 32)
+    town.Id = checkConvertionUint(uint32(id), err, context + " => Town.Id")
+
+    latitude, err := strconv.ParseFloat(data["latitude"], 32)
+    town.Latitude = checkConvertionFloat(float32(latitude), err, context + " => Town.Latitude")
+
+    longitude, err := strconv.ParseFloat(data["longitude"], 32)
+    town.Longitude = checkConvertionFloat(float32(longitude), err, context + " => Town.Longitude")
+
+    zoom, err := strconv.ParseUint(data["zoom"], 10, 32)
+    town.Zoom = checkConvertionUint(uint32(zoom), err, context + " => Town.Zoom")
 
     jsonByteArr, _ := json.Marshal(town)
     jsonStr := string(jsonByteArr)
@@ -293,40 +360,86 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     cashPointId := params["id"]
 
-    stmt, err := cp_db.Prepare(`SELECT id, type, bank_id, town_id, longitude,
-                                       latitude, address, address_comment,
-                                       metro_name, free_access, main_office,
-                                       without_weekend, round_the_clock,
-                                       works_as_shop, schedule_general, tel,
-                                       additional, rub, usd, eur,
-                                       cash_in FROM cashpoints WHERE id = ?`)
-    if err != nil {
-        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
+    context := getRequestContexString(r) + " handlerCashpoint:" + cashPointId
+
+    result := redis_cli.Cmd("HGETALL", "cp:" + cashPointId)
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
     }
-    defer stmt.Close()
+
+    data, err := result.Map()
+    if err != nil {
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if len(data) == 0 {
+        log.Printf("%s => no such cashpoint id\n", context)
+        w.WriteHeader(404)
+        return
+    }
 
     cp := new(CashPoint)
-    // Todo: parsing schedule
-    err = stmt.QueryRow(cashPointId).Scan(&cp.Id, &cp.Type, &cp.BankId,
-                                          &cp.TownId, &cp.Longitude, &cp.Latitude,
-                                          &cp.Address, &cp.AddressComment,
-                                          &cp.MetroName, &cp.FreeAccess,
-                                          &cp.MainOffice, &cp.WithoutWeekend,
-                                          &cp.RoundTheClock, &cp.WorksAsShop,
-                                          &cp.Schedule, &cp.Tel, &cp.Additional,
-                                          &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s cashpoints: %v",getRequestContexString(r), err)
-        }
-    }
+
+    cp.Type           = data["type"]
+    cp.Address        = data["address"]
+    cp.AddressComment = data["address_comment"]
+    cp.MetroName      = data["metro_name"]
+    cp.Schedule       = data["schedule"]
+    cp.Tel            = data["tel"]
+    cp.Additional     = data["additional"]
+
+    id, err := strconv.ParseUint(cashPointId, 10, 32)
+    cp.Id = checkConvertionUint(uint32(id), err, context + " => CashPoint.Id")
+
+    bankId, err := strconv.ParseUint(data["bank_id"], 10, 32)
+    cp.BankId = checkConvertionUint(uint32(bankId), err, context + " => CashPoint.BankId")
+
+    townId, err := strconv.ParseUint(data["town_id"], 10, 32)
+    cp.TownId = checkConvertionUint(uint32(townId), err, context + " => CashPoint.TownId")
+
+    latitude, err := strconv.ParseFloat(data["latitude"], 32)
+    cp.Latitude = checkConvertionFloat(float32(latitude), err, context + " => CashPoint.Latitude")
+
+    longitude, err := strconv.ParseFloat(data["longitude"], 32)
+    cp.Longitude = checkConvertionFloat(float32(longitude), err, context + " => CashPoint.Longitude")
+
+    freeAccess, err := strconv.ParseUint(data["free_access"], 10, 32)
+    cp.FreeAccess = uintToBool(checkConvertionUint(uint32(freeAccess), err, context + " => CashPoint.FreeAccess"))
+
+    mainOffice, err := strconv.ParseUint(data["main_office"], 10, 32)
+    cp.MainOffice = uintToBool(checkConvertionUint(uint32(mainOffice), err, context + " => CashPoint.MainOffice"))
+
+    withoutWeekend, err := strconv.ParseUint(data["without_weekend"], 10, 32)
+    cp.WithoutWeekend = uintToBool(checkConvertionUint(uint32(withoutWeekend), err, context + " => CashPoint.WithoutWeekend"))
+
+    roundTheClock, err := strconv.ParseUint(data["round_the_clock"], 10, 32)
+    cp.RoundTheClock = uintToBool(checkConvertionUint(uint32(roundTheClock), err, context + " => CashPoint.RoundTheClock"))
+
+    worksAsShop, err := strconv.ParseUint(data["works_as_shop"], 10, 32)
+    cp.WorksAsShop = uintToBool(checkConvertionUint(uint32(worksAsShop), err, context + " => CashPoint.WorksAsShop"))
+
+    rub, err := strconv.ParseUint(data["rub"], 10, 32)
+    cp.Rub = uintToBool(checkConvertionUint(uint32(rub), err, context + " => CashPoint.Rub"))
+
+    usd, err := strconv.ParseUint(data["usd"], 10, 32)
+    cp.Usd = uintToBool(checkConvertionUint(uint32(usd), err, context + " => CashPoint.Usd"))
+
+    eur, err := strconv.ParseUint(data["eur"], 10, 32)
+    cp.Eur = uintToBool(checkConvertionUint(uint32(eur), err, context + " => CashPoint.Eur"))
+
+    cashIn, err := strconv.ParseUint(data["cash_in"], 10, 32)
+    cp.CashIn = uintToBool(checkConvertionUint(uint32(cashIn), err, context + " => CashPoint.CashIn"))
 
     jsonByteArr, _ := json.Marshal(cp)
     jsonStr := string(jsonByteArr)
     writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
@@ -340,20 +453,25 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
     bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
 
-    stmt, err := cp_db.Prepare("SELECT id FROM cashpoints WHERE town_id = ? AND bank_id = ?")
-    if err != nil {
-        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
-    }
-    defer stmt.Close()
+    context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, params["town_id"], params["bank_id"])
 
-    rows, err := stmt.Query(params["town_id"], params["bank_id"])
+    result := redis_cli.Cmd("SINTER", "town:" + params["town_id"] + ":cp",
+                                      "bank:" + params["bank_id"] + ":cp")
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    data, err := result.List()
     if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
-        }
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if len(data) == 0 {
+        log.Printf
     }
 
     ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
@@ -413,27 +531,24 @@ func main() {
         }
     }
 
-    towns_db, err = sql.Open("sqlite3", serverConfig.TownsDataBase)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer towns_db.Close()
-
     cp_db, err = sql.Open("sqlite3", serverConfig.CashPointsDataBase)
     if err != nil {
         log.Fatal(err)
     }
     defer cp_db.Close()
 
-    requests_db, err = sql.Open("sqlite3", serverConfig.RequestsDataBase)
+    redis_cli, err = redis.Dial("tcp", serverConfig.RedisHost)
     if err != nil {
         log.Fatal(err)
     }
-    defer requests_db.Close()
+    defer redis_cli.Close()
+
+    REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
     router := mux.NewRouter()
     router.HandleFunc("/user", handlerUserCreate).Methods("POST")
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
+    router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 

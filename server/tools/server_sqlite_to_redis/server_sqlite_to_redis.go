@@ -186,6 +186,7 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
         bankIdStr := strconv.FormatUint(uint64(cp.BankId), 10)
 
         err = redisCli.Cmd("HMSET", "cp:" + cashpointIdStr,
+                                    "type", cp.Type,
                                     "bank_id", cp.BankId,
                                     "town_id", cp.TownId,
                                     "longitude", cp.Longitude,
@@ -204,7 +205,7 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
                                     "rub", boolToInt(cp.Rub),
                                     "usd", boolToInt(cp.Usd),
                                     "eur", boolToInt(cp.Eur),
-                                    "cash_id", boolToInt(cp.CashIn)).Err
+                                    "cash_in", boolToInt(cp.CashIn)).Err
 
         if err != nil {
             log.Fatal(err)
