@@ -20,6 +20,13 @@ import (
 
 // ========================================================
 
+func uintToBool(val uint32) bool {
+    if (val > 0) {
+        return true
+    }
+    return false
+}
+
 func isAlphaNumeric(s string) bool {
     for _, c := range s {
         if !unicode.IsLetter(c) || !unicode.IsNumber(c) || c != '_' {
@@ -53,6 +60,18 @@ type ServerConfig struct {
 
 func getRequestContexString(r *http.Request) string {
     return r.RemoteAddr
+}
+
+func getHandlerContextString(funcName string, requestId int64, idList ...string) string {
+    result := funcName + ":" + strconv.FormatInt(requestId, 10)
+    if len(idList) > 0 {
+        result = result + "("
+        for _, id := range idList {
+            result = result + id + ","
+        }
+        result = result + ")"
+    }
+    return result
 }
 
 func getRequestUserId(r *http.Request) (int64, error) {
@@ -208,7 +227,6 @@ type CashPointIdsInTown struct {
 
 var BuildDate string
 
-var towns_db *sql.DB
 var cp_db *sql.DB
 var users_db *sql.DB
 var redis_cli *redis.Client
@@ -342,36 +360,79 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
     params := mux.Vars(r)
     cashPointId := params["id"]
 
-    stmt, err := cp_db.Prepare(`SELECT id, type, bank_id, town_id, longitude,
-                                       latitude, address, address_comment,
-                                       metro_name, free_access, main_office,
-                                       without_weekend, round_the_clock,
-                                       works_as_shop, schedule_general, tel,
-                                       additional, rub, usd, eur,
-                                       cash_in FROM cashpoints WHERE id = ?`)
-    if err != nil {
-        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
+    context := getRequestContexString(r) + " handlerCashpoint:" + cashPointId
+
+    result := redis_cli.Cmd("HGETALL", "cp:" + cashPointId)
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
     }
-    defer stmt.Close()
+
+    data, err := result.Map()
+    if err != nil {
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if len(data) == 0 {
+        log.Printf("%s => no such cashpoint id\n", context)
+        w.WriteHeader(404)
+        return
+    }
 
     cp := new(CashPoint)
-    // Todo: parsing schedule
-    err = stmt.QueryRow(cashPointId).Scan(&cp.Id, &cp.Type, &cp.BankId,
-                                          &cp.TownId, &cp.Longitude, &cp.Latitude,
-                                          &cp.Address, &cp.AddressComment,
-                                          &cp.MetroName, &cp.FreeAccess,
-                                          &cp.MainOffice, &cp.WithoutWeekend,
-                                          &cp.RoundTheClock, &cp.WorksAsShop,
-                                          &cp.Schedule, &cp.Tel, &cp.Additional,
-                                          &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s cashpoints: %v",getRequestContexString(r), err)
-        }
-    }
+
+    cp.Type           = data["type"]
+    cp.Address        = data["address"]
+    cp.AddressComment = data["address_comment"]
+    cp.MetroName      = data["metro_name"]
+    cp.Schedule       = data["schedule"]
+    cp.Tel            = data["tel"]
+    cp.Additional     = data["additional"]
+
+    id, err := strconv.ParseUint(cashPointId, 10, 32)
+    cp.Id = checkConvertionUint(uint32(id), err, context + " => CashPoint.Id")
+
+    bankId, err := strconv.ParseUint(data["bank_id"], 10, 32)
+    cp.BankId = checkConvertionUint(uint32(bankId), err, context + " => CashPoint.BankId")
+
+    townId, err := strconv.ParseUint(data["town_id"], 10, 32)
+    cp.TownId = checkConvertionUint(uint32(townId), err, context + " => CashPoint.TownId")
+
+    latitude, err := strconv.ParseFloat(data["latitude"], 32)
+    cp.Latitude = checkConvertionFloat(float32(latitude), err, context + " => CashPoint.Latitude")
+
+    longitude, err := strconv.ParseFloat(data["longitude"], 32)
+    cp.Longitude = checkConvertionFloat(float32(longitude), err, context + " => CashPoint.Longitude")
+
+    freeAccess, err := strconv.ParseUint(data["free_access"], 10, 32)
+    cp.FreeAccess = uintToBool(checkConvertionUint(uint32(freeAccess), err, context + " => CashPoint.FreeAccess"))
+
+    mainOffice, err := strconv.ParseUint(data["main_office"], 10, 32)
+    cp.MainOffice = uintToBool(checkConvertionUint(uint32(mainOffice), err, context + " => CashPoint.MainOffice"))
+
+    withoutWeekend, err := strconv.ParseUint(data["without_weekend"], 10, 32)
+    cp.WithoutWeekend = uintToBool(checkConvertionUint(uint32(withoutWeekend), err, context + " => CashPoint.WithoutWeekend"))
+
+    roundTheClock, err := strconv.ParseUint(data["round_the_clock"], 10, 32)
+    cp.RoundTheClock = uintToBool(checkConvertionUint(uint32(roundTheClock), err, context + " => CashPoint.RoundTheClock"))
+
+    worksAsShop, err := strconv.ParseUint(data["works_as_shop"], 10, 32)
+    cp.WorksAsShop = uintToBool(checkConvertionUint(uint32(worksAsShop), err, context + " => CashPoint.WorksAsShop"))
+
+    rub, err := strconv.ParseUint(data["rub"], 10, 32)
+    cp.Rub = uintToBool(checkConvertionUint(uint32(rub), err, context + " => CashPoint.Rub"))
+
+    usd, err := strconv.ParseUint(data["usd"], 10, 32)
+    cp.Usd = uintToBool(checkConvertionUint(uint32(usd), err, context + " => CashPoint.Usd"))
+
+    eur, err := strconv.ParseUint(data["eur"], 10, 32)
+    cp.Eur = uintToBool(checkConvertionUint(uint32(eur), err, context + " => CashPoint.Eur"))
+
+    cashIn, err := strconv.ParseUint(data["cash_in"], 10, 32)
+    cp.CashIn = uintToBool(checkConvertionUint(uint32(cashIn), err, context + " => CashPoint.CashIn"))
 
     jsonByteArr, _ := json.Marshal(cp)
     jsonStr := string(jsonByteArr)
@@ -392,20 +453,25 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
     townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
     bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
 
-    stmt, err := cp_db.Prepare("SELECT id FROM cashpoints WHERE town_id = ? AND bank_id = ?")
-    if err != nil {
-        log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
-    }
-    defer stmt.Close()
+    context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, params["town_id"], params["bank_id"])
 
-    rows, err := stmt.Query(params["town_id"], params["bank_id"])
+    result := redis_cli.Cmd("SINTER", "town:" + params["town_id"] + ":cp",
+                                      "bank:" + params["bank_id"] + ":cp")
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    data, err := result.List()
     if err != nil {
-        if err == sql.ErrNoRows {
-            writeResponse(w, r, requestId, JsonNullResponse)
-            return
-        } else {
-            log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
-        }
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if len(data) == 0 {
+        log.Printf
     }
 
     ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
@@ -464,12 +530,6 @@ func main() {
             log.Fatalf("No such private key file for tls: %s\n", pkeyPath)
         }
     }
-
-    towns_db, err = sql.Open("sqlite3", serverConfig.TownsDataBase)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer towns_db.Close()
 
     cp_db, err = sql.Open("sqlite3", serverConfig.CashPointsDataBase)
     if err != nil {
