@@ -227,7 +227,6 @@ type CashPointIdsInTown struct {
 
 var BuildDate string
 
-var cp_db *sql.DB
 var users_db *sql.DB
 var redis_cli *redis.Client
 
@@ -470,18 +469,15 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
     if len(data) == 0 {
-        log.Printf
+        ids.CashPointIds = make([]uint32, 0)
     }
 
-    ids := CashPointIdsInTown{ TownId: uint32(townId), BankId: uint32(bankId) }
-
-    for rows.Next() {
-        var id uint32
-        if err := rows.Scan(&id); err != nil {
-            log.Fatalf("%s cashpoints: %v", getRequestContexString(r), err)
-        }
-        ids.CashPointIds = append(ids.CashPointIds, id)
+    for i, idStr := range data {
+        id, err := strconv.ParseUint(idStr, 10, 32)
+        id32 := checkConvertionUint(uint32(id), err, context + " => CashPointIds[" + strconv.FormatInt(int64(i), 10) + "] = " + idStr)
+        ids.CashPointIds = append(ids.CashPointIds, id32)
     }
 
     jsonByteArr, _ := json.Marshal(ids)
@@ -530,12 +526,6 @@ func main() {
             log.Fatalf("No such private key file for tls: %s\n", pkeyPath)
         }
     }
-
-    cp_db, err = sql.Open("sqlite3", serverConfig.CashPointsDataBase)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer cp_db.Close()
 
     redis_cli, err = redis.Dial("tcp", serverConfig.RedisHost)
     if err != nil {
