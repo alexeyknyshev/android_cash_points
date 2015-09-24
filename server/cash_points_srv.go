@@ -256,7 +256,7 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
     if err != nil {
         go logRequest(w, r, requestId, "")
         log.Println("Malformed User json")
-        writeResponse(w, r, requestId, JsonNullResponse)
+        w.WriteHeader(400)
         return
     }
     userJsonStr, _ := json.Marshal(user)
@@ -402,6 +402,25 @@ func handlerBank(w http.ResponseWriter, r * http.Request) {
     jsonByteArr, _ := json.Marshal(bank)
     jsonStr := string(jsonByteArr)
     writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
+        return
+    }
+
+    decoder := json.NewDecoder(r.Body)
+    var bank Bank
+    err := decoder.Decode(&bank)
+    if err != nil {
+        go logRequest(w, r, requestId, "")
+        log.Println("Malformed User json")
+        w.WriteHeader(400)
+        return
+    }
+    userJsonStr, _ := json.Marshal(bank)
+    go logRequest(w, r, requestId, string(userJsonStr))
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -594,6 +613,7 @@ func main() {
     router.HandleFunc("/user", handlerUserCreate).Methods("POST")
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
     router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
+    router.HandleFunc("/bank", handlerBankCreate).Methods("POST")
     router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
