@@ -4,7 +4,7 @@ import (
     "os"
     "io"
     "log"
-    "fmt"
+//    "fmt"
     "path"
     "time"
     "errors"
@@ -27,9 +27,14 @@ func uintToBool(val uint32) bool {
     return false
 }
 
-func isAlphaNumeric(s string) bool {
+func isAlphaNumeric(r rune) bool {
+    return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func isAlphaNumericString(s string) bool {
     for _, c := range s {
-        if !unicode.IsLetter(c) || !unicode.IsNumber(c) || c != '_' {
+//        print("\\u" + strconv.FormatInt(int64(c), 16) + "\n")
+        if !isAlphaNumeric(c) {
             return false
         }
     }
@@ -181,6 +186,27 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 
 // ========================================================
 
+func preloadRedisScripts(redisCli *redis.Client) {
+    redis_scripts = make(map[string]string)
+    response := redisCli.Cmd("SCRIPT", "LOAD", "if redis.call('EXISTS', 'user:' .. ARGV[1]) == 1 then\n" +
+                                               "    return 1\n" +
+                                               "end\n" +
+                                               "if redis.call('HMSET', 'user:' .. ARGV[1], 'password', ARGV[2]) == 1 then\n" +
+                                               "    return 2\n" +
+                                               "end\n" +
+                                               "return 0")
+    if response.Err != nil {
+        log.Fatalf("preloadRedisScripts: %v\n", response.Err)
+    }
+    scriptSha, err := response.Str()
+    if err != nil {
+        log.Fatalf("preloadRedisScripts: %v\n", err)
+    }
+    redis_scripts[script_user_create] = scriptSha
+}
+
+// ========================================================
+
 type User struct {
     Login    string `json:"login"`
     Password string `json:"password"`
@@ -230,6 +256,9 @@ var BuildDate string
 var users_db *sql.DB
 var redis_cli *redis.Client
 
+var redis_scripts map[string]string
+const script_user_create = "USERCREATE"
+
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
 
@@ -243,13 +272,15 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    context := getRequestContexString(r) + " handlerUserCreate:"
+
     decoder := json.NewDecoder(r.Body)
     var user User
     err := decoder.Decode(&user)
     if err != nil {
         go logRequest(w, r, requestId, "")
-        log.Println("Malformed User json")
-        writeResponse(w, r, requestId, JsonNullResponse)
+        log.Printf("%s %s\n", context, "malformed User json")
+        w.WriteHeader(400)
         return
     }
     userJsonStr, _ := json.Marshal(user)
@@ -260,7 +291,7 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if !isAlphaNumeric(user.Login) {
+    if !isAlphaNumericString(user.Login) {
         writeResponse(w, r, requestId, JsonLoginInvalidCharResponse)
         return
     }
@@ -270,12 +301,37 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    if !isAlphaNumeric(user.Password) {
+    if !isAlphaNumericString(user.Password) {
         writeResponse(w, r, requestId, JsonPwdInvalidCharResponse)
         return
     }
 
-    stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
+    result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_create], 0,
+                                       user.Login, user.Password)
+    if result.Err != nil {
+        log.Printf("%s %v\n", context, result.Err)
+        w.WriteHeader(400)
+        return
+    }
+
+    retcode, err := result.Int()
+    if err != nil {
+        log.Printf("%s %v: redis retcode cannot be converted to int", context, result.Err)
+        w.WriteHeader(400)
+        return
+    }
+
+    if retcode == 1 {
+        // user already exists
+        w.WriteHeader(409)
+        return
+    } else if retcode == 2 {
+        // redis HMSET internall err
+        w.WriteHeader(400)
+        return
+    }
+
+/*    stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
     if err != nil {
         log.Fatalf("%s users: %v", getRequestContexString(r), err)
         writeResponse(w, r, requestId, JsonNullResponse)
@@ -288,10 +344,9 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
         log.Printf("%s users: %v\n", getRequestContexString(r), err2)
         writeResponse(w, r, requestId, JsonNullResponse)
         return
-    }
+    }*/
 
-    jsonStr := fmt.Sprintf(`{"id":%v}`, res)
-    writeResponse(w, r, requestId, jsonStr)
+    w.WriteHeader(200)
 }
 
 // ========================================================
@@ -532,6 +587,8 @@ func main() {
         log.Fatal(err)
     }
     defer redis_cli.Close()
+
+    preloadRedisScripts(redis_cli)
 
     REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
