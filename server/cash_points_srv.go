@@ -221,6 +221,13 @@ type Town struct {
     Zoom      uint32  `json:"zoom"`
 }
 
+type Bank struct {
+    Id       uint32 `json:"id"`
+    Name     string `json:"name"`
+    NameTr   string `json:"name_tr"`
+    RegionId uint32 `json:"region_id"`
+}
+
 type CashPoint struct {
     Id             uint32  `json:"id"`
     Type           string  `json:"type"`
@@ -402,6 +409,73 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
     jsonByteArr, _ := json.Marshal(town)
     jsonStr := string(jsonByteArr)
     writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerBank(w http.ResponseWriter, r * http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
+        return
+    }
+    go logRequest(w, r, requestId, "")
+
+    params := mux.Vars(r)
+    bankId := params["id"]
+
+    context := getRequestContexString(r) + " handlerBank:" + bankId
+
+    result := redis_cli.Cmd("HGETALL", "bank:" + bankId)
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    data, err := result.Map()
+    if err != nil {
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if len(data) == 0 {
+        log.Printf("%s => no such bank id\n", context)
+        w.WriteHeader(404)
+        return
+    }
+
+    bank := new(Bank)
+
+    bank.Name   = data["name"]
+    bank.NameTr = data["name_tr"]
+
+    id, err := strconv.ParseUint(bankId, 10, 32)
+    bank.Id = checkConvertionUint(uint32(id), err, context + " => Bank.Id")
+
+    regionId, err := strconv.ParseUint(data["region_id"], 10, 32)
+    bank.RegionId = checkConvertionUint(uint32(regionId), err, context + " => Bank.RegionId")
+
+    jsonByteArr, _ := json.Marshal(bank)
+    jsonStr := string(jsonByteArr)
+    writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
+        return
+    }
+
+    decoder := json.NewDecoder(r.Body)
+    var bank Bank
+    err := decoder.Decode(&bank)
+    if err != nil {
+        go logRequest(w, r, requestId, "")
+        log.Println("Malformed User json")
+        w.WriteHeader(400)
+        return
+    }
+    userJsonStr, _ := json.Marshal(bank)
+    go logRequest(w, r, requestId, string(userJsonStr))
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -595,6 +669,8 @@ func main() {
     router := mux.NewRouter()
     router.HandleFunc("/user", handlerUserCreate).Methods("POST")
     router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
+    router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
+    router.HandleFunc("/bank", handlerBankCreate).Methods("POST")
     router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
     router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
     router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
