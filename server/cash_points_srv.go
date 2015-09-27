@@ -267,6 +267,8 @@ var redis_scripts map[string]string
 
 const script_user_create = "USERCREATE"
 
+const SERVER_DEFAULT_CONFIG = "config.json"
+
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
 
@@ -621,11 +623,14 @@ func main() {
 
 	args := os.Args[1:]
 
-	if len(args) == 0 {
-		log.Fatal("Config file path is not specified")
+	configFilePath := SERVER_DEFAULT_CONFIG
+	if len(args) > 0 {
+		configFilePath = args[0]
+		log.Printf("Loading config file: %s\n", configFilePath)
+	} else {
+		log.Printf("Loading default config file: %s\n", configFilePath)
 	}
 
-	configFilePath := args[0]
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
 		log.Fatalf("No such config file: %s\n", configFilePath)
 	}
@@ -687,7 +692,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	//http.Handle("/", router)
 	if serverConfig.UseTLS {
 		log.Println("Using TLS encryption")
 		log.Println("Certificate path: " + certPath)
