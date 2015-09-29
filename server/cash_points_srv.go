@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mediocregopher/radix.v2/redis"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strconv"
@@ -19,13 +20,6 @@ import (
 )
 
 // ========================================================
-
-func uintToBool(val uint32) bool {
-	if val > 0 {
-		return true
-	}
-	return false
-}
 
 func isAlphaNumeric(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
@@ -289,25 +283,15 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&user)
 	if err != nil {
 		go logRequest(w, r, requestId, "")
-		log.Printf("%s %s\n", context, "malformed User json")
+		log.Printf("%s => malformed json\n", context)
 		w.WriteHeader(400)
 		return
 	}
 	userJsonStr, _ := json.Marshal(user)
 	go logRequest(w, r, requestId, string(userJsonStr))
 
-	if len(user.Login) < int(MIN_LOGIN_LENGTH) {
-		writeResponse(w, r, requestId, JsonLoginTooShortResponse)
-		return
-	}
-
 	if !isAlphaNumericString(user.Login) {
 		writeResponse(w, r, requestId, JsonLoginInvalidCharResponse)
-		return
-	}
-
-	if len(user.Password) < int(MIN_PWD_LENGTH) {
-		writeResponse(w, r, requestId, JsonPwdTooShortResponse)
 		return
 	}
 
@@ -319,15 +303,15 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_create], 0,
 		user.Login, user.Password)
 	if result.Err != nil {
-		log.Printf("%s %v\n", context, result.Err)
-		w.WriteHeader(400)
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
 		return
 	}
 
 	retcode, err := result.Int()
 	if err != nil {
-		log.Printf("%s %v: redis retcode cannot be converted to int", context, result.Err)
-		w.WriteHeader(400)
+		log.Printf("%s => %v: redis retcode cannot be converted to int\n", context, result.Err)
+		w.WriteHeader(500)
 		return
 	}
 
@@ -337,24 +321,9 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if retcode == 2 {
 		// redis HMSET internall err
-		w.WriteHeader(400)
+		w.WriteHeader(500)
 		return
 	}
-
-	/*    stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
-	      if err != nil {
-	          log.Fatalf("%s users: %v", getRequestContexString(r), err)
-	          writeResponse(w, r, requestId, JsonNullResponse)
-	          return
-	      }
-	      defer stmt.Close()
-
-	      res, err2 := stmt.Exec(user.Login, user.Password)
-	      if err != nil {
-	          log.Printf("%s users: %v\n", getRequestContexString(r), err2)
-	          writeResponse(w, r, requestId, JsonNullResponse)
-	          return
-	      }*/
 
 	w.WriteHeader(200)
 }
@@ -371,46 +340,28 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	townId := params["id"]
 
-	result := redis_cli.Cmd("HGETALL", "town:"+townId)
-	if result.Err != nil {
-		log.Printf("handlerTown: %v\n", result.Err)
-		writeResponse(w, r, requestId, JsonNullResponse)
-		return
-	}
-
-	data, err := result.Map()
-	if err != nil {
-		log.Printf("handlerTown: %v\n", err)
-		writeResponse(w, r, requestId, JsonNullResponse)
-		return
-	}
-
 	context := getRequestContexString(r) + " handlerTown:" + townId
 
-	if len(data) == 0 {
-		log.Printf("%s: no such town id\n", context)
+	result := redis_cli.Cmd("GET", "town:"+townId)
+	if result.Err != nil {
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such town id\n", context)
 		w.WriteHeader(404)
 		return
 	}
 
-	town := new(Town)
-	town.Name, _ = data["name"]
-	town.NameTr, _ = data["name_tr"]
+	jsonStr, err := result.Str()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
 
-	id, err := strconv.ParseUint(townId, 10, 32)
-	town.Id = checkConvertionUint(uint32(id), err, context+" => Town.Id")
-
-	latitude, err := strconv.ParseFloat(data["latitude"], 32)
-	town.Latitude = checkConvertionFloat(float32(latitude), err, context+" => Town.Latitude")
-
-	longitude, err := strconv.ParseFloat(data["longitude"], 32)
-	town.Longitude = checkConvertionFloat(float32(longitude), err, context+" => Town.Longitude")
-
-	zoom, err := strconv.ParseUint(data["zoom"], 10, 32)
-	town.Zoom = checkConvertionUint(uint32(zoom), err, context+" => Town.Zoom")
-
-	jsonByteArr, _ := json.Marshal(town)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -426,39 +377,26 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 
 	context := getRequestContexString(r) + " handlerBank:" + bankId
 
-	result := redis_cli.Cmd("HGETALL", "bank:"+bankId)
+	result := redis_cli.Cmd("GET", "bank:"+bankId)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
-	data, err := result.Map()
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such bank id\n", context)
+		w.WriteHeader(404)
+		return
+	}
+
+	jsonStr, err := result.Str()
 	if err != nil {
 		log.Printf("%s => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
 
-	if len(data) == 0 {
-		log.Printf("%s => no such bank id\n", context)
-		w.WriteHeader(404)
-		return
-	}
-
-	bank := new(Bank)
-
-	bank.Name = data["name"]
-	bank.NameTr = data["name_tr"]
-
-	id, err := strconv.ParseUint(bankId, 10, 32)
-	bank.Id = checkConvertionUint(uint32(id), err, context+" => Bank.Id")
-
-	regionId, err := strconv.ParseUint(data["region_id"], 10, 32)
-	bank.RegionId = checkConvertionUint(uint32(regionId), err, context+" => Bank.RegionId")
-
-	jsonByteArr, _ := json.Marshal(bank)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -468,17 +406,17 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	var bank Bank
-	err := decoder.Decode(&bank)
+	context := getRequestContexString(r) + " handlerBankCreate"
+
+	jsonStr, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		go logRequest(w, r, requestId, "")
-		log.Println("Malformed User json")
+		log.Printf("%s => malformed json\n", context)
 		w.WriteHeader(400)
 		return
 	}
-	userJsonStr, _ := json.Marshal(bank)
-	go logRequest(w, r, requestId, string(userJsonStr))
+
+	go logRequest(w, r, requestId, string(jsonStr))
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -493,80 +431,26 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 
 	context := getRequestContexString(r) + " handlerCashpoint:" + cashPointId
 
-	result := redis_cli.Cmd("HGETALL", "cp:"+cashPointId)
+	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
-	data, err := result.Map()
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such cashpoint id\n", context)
+		w.WriteHeader(404)
+		return
+	}
+
+	jsonStr, err := result.Str()
 	if err != nil {
 		log.Printf("%s => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
 
-	if len(data) == 0 {
-		log.Printf("%s => no such cashpoint id\n", context)
-		w.WriteHeader(404)
-		return
-	}
-
-	cp := new(CashPoint)
-
-	cp.Type = data["type"]
-	cp.Address = data["address"]
-	cp.AddressComment = data["address_comment"]
-	cp.MetroName = data["metro_name"]
-	cp.Schedule = data["schedule"]
-	cp.Tel = data["tel"]
-	cp.Additional = data["additional"]
-
-	id, err := strconv.ParseUint(cashPointId, 10, 32)
-	cp.Id = checkConvertionUint(uint32(id), err, context+" => CashPoint.Id")
-
-	bankId, err := strconv.ParseUint(data["bank_id"], 10, 32)
-	cp.BankId = checkConvertionUint(uint32(bankId), err, context+" => CashPoint.BankId")
-
-	townId, err := strconv.ParseUint(data["town_id"], 10, 32)
-	cp.TownId = checkConvertionUint(uint32(townId), err, context+" => CashPoint.TownId")
-
-	latitude, err := strconv.ParseFloat(data["latitude"], 32)
-	cp.Latitude = checkConvertionFloat(float32(latitude), err, context+" => CashPoint.Latitude")
-
-	longitude, err := strconv.ParseFloat(data["longitude"], 32)
-	cp.Longitude = checkConvertionFloat(float32(longitude), err, context+" => CashPoint.Longitude")
-
-	freeAccess, err := strconv.ParseUint(data["free_access"], 10, 32)
-	cp.FreeAccess = uintToBool(checkConvertionUint(uint32(freeAccess), err, context+" => CashPoint.FreeAccess"))
-
-	mainOffice, err := strconv.ParseUint(data["main_office"], 10, 32)
-	cp.MainOffice = uintToBool(checkConvertionUint(uint32(mainOffice), err, context+" => CashPoint.MainOffice"))
-
-	withoutWeekend, err := strconv.ParseUint(data["without_weekend"], 10, 32)
-	cp.WithoutWeekend = uintToBool(checkConvertionUint(uint32(withoutWeekend), err, context+" => CashPoint.WithoutWeekend"))
-
-	roundTheClock, err := strconv.ParseUint(data["round_the_clock"], 10, 32)
-	cp.RoundTheClock = uintToBool(checkConvertionUint(uint32(roundTheClock), err, context+" => CashPoint.RoundTheClock"))
-
-	worksAsShop, err := strconv.ParseUint(data["works_as_shop"], 10, 32)
-	cp.WorksAsShop = uintToBool(checkConvertionUint(uint32(worksAsShop), err, context+" => CashPoint.WorksAsShop"))
-
-	rub, err := strconv.ParseUint(data["rub"], 10, 32)
-	cp.Rub = uintToBool(checkConvertionUint(uint32(rub), err, context+" => CashPoint.Rub"))
-
-	usd, err := strconv.ParseUint(data["usd"], 10, 32)
-	cp.Usd = uintToBool(checkConvertionUint(uint32(usd), err, context+" => CashPoint.Usd"))
-
-	eur, err := strconv.ParseUint(data["eur"], 10, 32)
-	cp.Eur = uintToBool(checkConvertionUint(uint32(eur), err, context+" => CashPoint.Eur"))
-
-	cashIn, err := strconv.ParseUint(data["cash_in"], 10, 32)
-	cp.CashIn = uintToBool(checkConvertionUint(uint32(cashIn), err, context+" => CashPoint.CashIn"))
-
-	jsonByteArr, _ := json.Marshal(cp)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -643,9 +527,6 @@ func main() {
 		log.Fatalf("Failed to decode config file: %s\nError: %v\n", configFilePath, err)
 	}
 
-	MIN_LOGIN_LENGTH = serverConfig.UserLoginMinLength
-	MIN_PWD_LENGTH = serverConfig.UserPwdMinLength
-
 	certPath := ""
 	pkeyPath := ""
 
@@ -667,6 +548,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer redis_cli.Close()
+
+	redis_cli.Cmd("HMSET", "settings", "user_login_min_length", serverConfig.UserLoginMinLength,
+		"user_pwd_min_length", serverConfig.UserPwdMinLength)
 
 	preloadRedisScripts(redis_cli)
 
