@@ -85,6 +85,15 @@ func getRequestUserId(r *http.Request) (int64, error) {
 	return requestId, nil
 }
 
+func getRequestJsonStr(r *http.Request, context string) (string, error) {
+	jsonStr, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("%s => malformed json\n", context)
+		return "", err
+	}
+	return string(jsonStr), nil
+}
+
 // ========================================================
 
 func checkConvertionUint(val uint32, err error, context string) uint32 {
@@ -222,6 +231,16 @@ type Bank struct {
 	RegionId uint32 `json:"region_id"`
 }
 
+type SearchNearbyRequest struct {
+	Longitude float32 `json:"longitude"`
+	Latitude  float32 `json:"latitude"`
+	Radius    float32 `json:"radius"`
+}
+
+type SearchNearbyResponse struct {
+    CashPointIds []uint32 `json:"cash_points"`
+}
+
 type CashPoint struct {
 	Id             uint32  `json:"id"`
 	Type           string  `json:"type"`
@@ -276,7 +295,7 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " handlerUserCreate:"
+	context := getRequestContexString(r) + getHandlerContextString("handlerUserCreate", requestId)
 
 	decoder := json.NewDecoder(r.Body)
 	var user User
@@ -340,7 +359,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	townId := params["id"]
 
-	context := getRequestContexString(r) + " handlerTown:" + townId
+	context := getRequestContexString(r) + getHandlerContextString("handlerTown", requestId, townId)
 
 	result := redis_cli.Cmd("GET", "town:"+townId)
 	if result.Err != nil {
@@ -375,7 +394,7 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	bankId := params["id"]
 
-	context := getRequestContexString(r) + " handlerBank:" + bankId
+	context := getRequestContexString(r) + getHandlerContextString("handlerBank", requestId, bankId)
 
 	result := redis_cli.Cmd("GET", "bank:"+bankId)
 	if result.Err != nil {
@@ -408,15 +427,14 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 
 	context := getRequestContexString(r) + " handlerBankCreate"
 
-	jsonStr, err := ioutil.ReadAll(r.Body)
+	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
 		go logRequest(w, r, requestId, "")
-		log.Printf("%s => malformed json\n", context)
 		w.WriteHeader(400)
 		return
 	}
 
-	go logRequest(w, r, requestId, string(jsonStr))
+	go logRequest(w, r, requestId, jsonStr)
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +447,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	cashPointId := params["id"]
 
-	context := getRequestContexString(r) + " handlerCashpoint:" + cashPointId
+	context := getRequestContexString(r) + getHandlerContextString("handlerCashpoint", requestId, cashPointId)
 
 	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
@@ -465,13 +483,12 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	go logRequest(w, r, requestId, "")
 
 	params := mux.Vars(r)
-	townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
-	bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
+	townIdStr := params["town_id"]
+	bankIdStr := params["bank_id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, params["town_id"], params["bank_id"])
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, townIdStr, bankIdStr)
 
-	result := redis_cli.Cmd("SINTER", "town:"+params["town_id"]+":cp",
-		"bank:"+params["bank_id"]+":cp")
+	result := redis_cli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -485,7 +502,13 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ids := CashPointIdsInTown{TownId: uint32(townId), BankId: uint32(bankId)}
+	id, err := strconv.ParseUint(townIdStr, 10, 32)
+	townId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.TownId")
+
+	id, err = strconv.ParseUint(bankIdStr, 10, 32)
+	bankId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.BankId")
+
+	ids := CashPointIdsInTown{TownId: townId, BankId: bankId}
 	if len(data) == 0 {
 		ids.CashPointIds = make([]uint32, 0)
 	}
@@ -499,6 +522,50 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	jsonByteArr, _ := json.Marshal(ids)
 	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerSearchCashPoinstsNearby", requestId)
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	go logRequest(w, r, requestId, jsonStr)
+
+    result := redis_cli.Cmd("CPSEARCHNEARBY", jsonStr)
+    if result.Err != nil {
+        log.Printf("%s => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    data, err := result.List()
+    if err != nil {
+        log.Printf("%s => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    res := SearchNearbyResponse{CashPointIds: make([]uint32, 0)}
+
+    for i, idStr := range data {
+        id, err := strconv.ParseUint(idStr, 10, 32)
+        id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+        res.CashPointIds = append(res.CashPointIds, id32)
+    }
+
+    jsonByteArr, _ := json.Marshal(res)
+    writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 func main() {
@@ -564,6 +631,7 @@ func main() {
 	router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
 	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
 	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
+	router.HandleFunc("/search/caspoints/nearby", handlerSearchCashPoinstsNearby).Methods("POST")
 
 	port := ":" + strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening 127.0.0.1" + port)
