@@ -6,7 +6,9 @@ import (
     "log"
 //    "fmt"
     "path"
+    "path/filepath"
     "time"
+    "bytes"
     "errors"
     "strconv"
     "unicode"
@@ -16,6 +18,7 @@ import (
     "github.com/gorilla/mux"
     _ "github.com/mattn/go-sqlite3"
     "github.com/mediocregopher/radix.v2/redis"
+    "github.com/fiam/gounidecode/unidecode"
 )
 
 // ========================================================
@@ -60,6 +63,7 @@ type ServerConfig struct {
     UserPwdMinLength   uint64 `json:"UserPwdMinLength"`
     UseTLS             bool   `json:"UseTLS"`
     RedisHost          string `json:"RedisHost"`
+    RedisScriptsDir    string `json:"RedisScriptsDir"`
     ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
 }
 
@@ -186,23 +190,41 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 
 // ========================================================
 
-func preloadRedisScripts(redisCli *redis.Client) {
-    redis_scripts = make(map[string]string)
-    response := redisCli.Cmd("SCRIPT", "LOAD", "if redis.call('EXISTS', 'user:' .. ARGV[1]) == 1 then\n" +
-                                               "    return 1\n" +
-                                               "end\n" +
-                                               "if redis.call('HMSET', 'user:' .. ARGV[1], 'password', ARGV[2]) == 1 then\n" +
-                                               "    return 2\n" +
-                                               "end\n" +
-                                               "return 0")
+func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
+    context := "preloadRedisScripts: " + srcFilePath + ":"
+
+    buf := bytes.NewBuffer(nil)
+    file, err := os.Open(srcFilePath)
+    if err != nil {
+        log.Fatalf("%s %v\n", context, err)
+    }
+    io.Copy(buf, file)
+    file.Close()
+    src := string(buf.Bytes())
+
+    response := redisCli.Cmd("SCRIPT", "LOAD", src)
     if response.Err != nil {
-        log.Fatalf("preloadRedisScripts: %v\n", response.Err)
+        log.Fatalf("%s %v\n", context, response.Err)
     }
     scriptSha, err := response.Str()
     if err != nil {
-        log.Fatalf("preloadRedisScripts: %v\n", err)
+        log.Fatalf("%s %v\n", context, err)
     }
-    redis_scripts[script_user_create] = scriptSha
+    return scriptSha
+}
+
+func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
+    redis_scripts = make(map[string]string)
+
+    filepath.Walk(scriptsDir, func (path string, fi os.FileInfo, _ error) error {
+        if fi.IsDir() == false {
+            log.Printf("Loading redis script: %s\n", path)
+            preloadRedisScriptSrc(redisCli, path)
+        }
+        return nil
+    })
+
+    return
 }
 
 // ========================================================
@@ -226,6 +248,13 @@ type Bank struct {
     Name     string `json:"name"`
     NameTr   string `json:"name_tr"`
     RegionId uint32 `json:"region_id"`
+}
+
+type BankCreateRequest struct {
+    Name     string `json:"name"`
+    Licence  uint32 `json:"licence"`
+    RegionId uint32 `json:"region_id"`
+    Tel      string `json:"tel"`
 }
 
 type CashPoint struct {
@@ -265,6 +294,7 @@ var redis_cli *redis.Client
 
 var redis_scripts map[string]string
 const script_user_create = "USERCREATE"
+const script_bank_create = "BANKCREATE"
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
@@ -337,21 +367,6 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(400)
         return
     }
-
-/*    stmt, err := users_db.Prepare(`INSERT INTO users (login, password) VALUES (?, ?)`)
-    if err != nil {
-        log.Fatalf("%s users: %v", getRequestContexString(r), err)
-        writeResponse(w, r, requestId, JsonNullResponse)
-        return
-    }
-    defer stmt.Close()
-
-    res, err2 := stmt.Exec(user.Login, user.Password)
-    if err != nil {
-        log.Printf("%s users: %v\n", getRequestContexString(r), err2)
-        writeResponse(w, r, requestId, JsonNullResponse)
-        return
-    }*/
 
     w.WriteHeader(200)
 }
@@ -465,17 +480,42 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    context := getRequestContexString(r) + " handlerBankCreate:"
+
     decoder := json.NewDecoder(r.Body)
-    var bank Bank
-    err := decoder.Decode(&bank)
+    var request BankCreateRequest
+    err := decoder.Decode(&request)
     if err != nil {
         go logRequest(w, r, requestId, "")
-        log.Println("Malformed User json")
+        log.Printf("%s %s\n", context, "malformed BankCreateRequest json")
         w.WriteHeader(400)
         return
     }
-    userJsonStr, _ := json.Marshal(bank)
-    go logRequest(w, r, requestId, string(userJsonStr))
+    bankJsonStr, _ := json.Marshal(request)
+    go logRequest(w, r, requestId, string(bankJsonStr))
+
+    nameTr := unidecode.Unidecode(request.Name)
+
+    result := redis_cli.Cmd("HEXISTS", "banks", nameTr)
+    if result.Err != nil {
+        log.Printf("%s %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    exists, err := result.Int()
+    if err != nil {
+        log.Printf("%s %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if exists == 1 {
+        w.WriteHeader(409)
+        return
+    }
+
+    result = redis_cli.Cmd("H")
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -662,7 +702,7 @@ func main() {
     }
     defer redis_cli.Close()
 
-    preloadRedisScripts(redis_cli)
+    preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
 
     REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 

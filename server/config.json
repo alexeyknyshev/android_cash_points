@@ -8,5 +8,6 @@
     "UserPwdMinLength": 4,
     "UseTLS": false,
     "RedisHost": "localhost:6379",
+    "RedisScriptsDir": "./redis_scripts",
     "ReqResLogTTL": 60
 }
