@@ -27,10 +27,10 @@ end
 
 -- check user already exists
 if redis.call('EXISTS', 'user:' .. user.login) == 1 then
-  return 'User with login: "' .. user.login .. '" already exists'
+  return 'User with already exists: ' .. user.login
 end
 
 -- save user data
 redis.call('SET', 'user:' .. user.login, userPayload)
 
-return ""
+return ''

@@ -6,13 +6,13 @@ import (
 	"os"
 	//    "fmt"
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/fiam/gounidecode/unidecode"
+	"strings"
+	//	"github.com/fiam/gounidecode/unidecode"
 	"github.com/gorilla/mux"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/mediocregopher/radix.v2/redis"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -22,13 +22,6 @@ import (
 )
 
 // ========================================================
-
-func uintToBool(val uint32) bool {
-	if val > 0 {
-		return true
-	}
-	return false
-}
 
 func isAlphaNumeric(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
@@ -93,6 +86,15 @@ func getRequestUserId(r *http.Request) (int64, error) {
 		return 0, errors.New(`Request header val "Id" uint conversion failed: ` + requestIdStr)
 	}
 	return requestId, nil
+}
+
+func getRequestJsonStr(r *http.Request, context string) (string, error) {
+	jsonStr, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("%s => malformed json\n", context)
+		return "", err
+	}
+	return string(jsonStr), nil
 }
 
 // ========================================================
@@ -191,7 +193,7 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 // ========================================================
 
 func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
-	context := "preloadRedisScripts: " + srcFilePath + ":"
+	context := "preloadRedisScripts: " + srcFilePath
 
 	buf := bytes.NewBuffer(nil)
 	file, err := os.Open(srcFilePath)
@@ -204,11 +206,11 @@ func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
 
 	response := redisCli.Cmd("SCRIPT", "LOAD", src)
 	if response.Err != nil {
-		log.Fatalf("%s %v\n", context, response.Err)
+		log.Fatalf("%s => %v\n", context, response.Err)
 	}
 	scriptSha, err := response.Str()
 	if err != nil {
-		log.Fatalf("%s %v\n", context, err)
+		log.Fatalf("%s => %v\n", context, err)
 	}
 	return scriptSha
 }
@@ -218,8 +220,14 @@ func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 
 	filepath.Walk(scriptsDir, func(path string, fi os.FileInfo, _ error) error {
 		if fi.IsDir() == false {
-			log.Printf("Loading redis script: %s\n", path)
-			preloadRedisScriptSrc(redisCli, path)
+			fileBaseName := fi.Name()
+			fileExt := filepath.Ext(fileBaseName)
+			if strings.ToLower(fileExt) == ".lua" {
+				log.Printf("Loading redis script: %s\n", fileBaseName)
+				cmdName := strings.ToUpper(strings.TrimSuffix(fileBaseName, fileExt))
+				redis_scripts[cmdName] = preloadRedisScriptSrc(redisCli, path)
+				log.Printf("Registed redis command: %s => %s\n", fileBaseName, cmdName)
+			}
 		}
 		return nil
 	})
@@ -257,6 +265,16 @@ type BankCreateRequest struct {
 	Tel      string `json:"tel"`
 }
 
+type SearchNearbyRequest struct {
+	Longitude float32 `json:"longitude"`
+	Latitude  float32 `json:"latitude"`
+	Radius    float32 `json:"radius"`
+}
+
+type SearchNearbyResponse struct {
+	CashPointIds []uint32 `json:"cash_points"`
+}
+
 type CashPoint struct {
 	Id             uint32  `json:"id"`
 	Type           string  `json:"type"`
@@ -289,13 +307,15 @@ type CashPointIdsInTown struct {
 
 var BuildDate string
 
-var users_db *sql.DB
 var redis_cli *redis.Client
 
 var redis_scripts map[string]string
 
 const script_user_create = "USERCREATE"
 const script_bank_create = "BANKCREATE"
+const script_cp_search_nearby = "CPSEARCHNEARBY"
+
+const SERVER_DEFAULT_CONFIG = "config.json"
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
@@ -310,62 +330,38 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " handlerUserCreate:"
+	context := getRequestContexString(r) + getHandlerContextString("handlerUserCreate", requestId)
 
-	decoder := json.NewDecoder(r.Body)
-	var user User
-	err := decoder.Decode(&user)
+	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
 		go logRequest(w, r, requestId, "")
-		log.Printf("%s %s\n", context, "malformed User json")
 		w.WriteHeader(400)
 		return
 	}
-	userJsonStr, _ := json.Marshal(user)
-	go logRequest(w, r, requestId, string(userJsonStr))
 
-	if len(user.Login) < int(MIN_LOGIN_LENGTH) {
-		writeResponse(w, r, requestId, JsonLoginTooShortResponse)
-		return
-	}
+	go logRequest(w, r, requestId, string(jsonStr))
 
-	if !isAlphaNumericString(user.Login) {
-		writeResponse(w, r, requestId, JsonLoginInvalidCharResponse)
-		return
-	}
-
-	if len(user.Password) < int(MIN_PWD_LENGTH) {
-		writeResponse(w, r, requestId, JsonPwdTooShortResponse)
-		return
-	}
-
-	if !isAlphaNumericString(user.Password) {
-		writeResponse(w, r, requestId, JsonPwdInvalidCharResponse)
-		return
-	}
-
-	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_create], 0,
-		user.Login, user.Password)
+	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_create], 0, jsonStr)
 	if result.Err != nil {
-		log.Printf("%s %v\n", context, result.Err)
-		w.WriteHeader(400)
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
 		return
 	}
 
-	retcode, err := result.Int()
+	retcode, err := result.Str()
 	if err != nil {
-		log.Printf("%s %v: redis retcode cannot be converted to int", context, result.Err)
-		w.WriteHeader(400)
+		log.Printf("%s => %v: redis '%s' result cannot be converted to string\n", context, result.Err, script_user_create)
+		w.WriteHeader(500)
 		return
 	}
 
-	if retcode == 1 {
+	if retcode ==  {
 		// user already exists
 		w.WriteHeader(409)
 		return
-	} else if retcode == 2 {
+	} else if retcode ==  {
 		// redis HMSET internall err
-		w.WriteHeader(400)
+		w.WriteHeader(500)
 		return
 	}
 
@@ -384,46 +380,28 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	townId := params["id"]
 
-	result := redis_cli.Cmd("HGETALL", "town:"+townId)
+	context := getRequestContexString(r) + getHandlerContextString("handlerTown", requestId, townId)
+
+	result := redis_cli.Cmd("GET", "town:"+townId)
 	if result.Err != nil {
-		log.Printf("handlerTown: %v\n", result.Err)
-		writeResponse(w, r, requestId, JsonNullResponse)
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
 		return
 	}
 
-	data, err := result.Map()
-	if err != nil {
-		log.Printf("handlerTown: %v\n", err)
-		writeResponse(w, r, requestId, JsonNullResponse)
-		return
-	}
-
-	context := getRequestContexString(r) + " handlerTown:" + townId
-
-	if len(data) == 0 {
-		log.Printf("%s: no such town id\n", context)
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such town id\n", context)
 		w.WriteHeader(404)
 		return
 	}
 
-	town := new(Town)
-	town.Name, _ = data["name"]
-	town.NameTr, _ = data["name_tr"]
+	jsonStr, err := result.Str()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
 
-	id, err := strconv.ParseUint(townId, 10, 32)
-	town.Id = checkConvertionUint(uint32(id), err, context+" => Town.Id")
-
-	latitude, err := strconv.ParseFloat(data["latitude"], 32)
-	town.Latitude = checkConvertionFloat(float32(latitude), err, context+" => Town.Latitude")
-
-	longitude, err := strconv.ParseFloat(data["longitude"], 32)
-	town.Longitude = checkConvertionFloat(float32(longitude), err, context+" => Town.Longitude")
-
-	zoom, err := strconv.ParseUint(data["zoom"], 10, 32)
-	town.Zoom = checkConvertionUint(uint32(zoom), err, context+" => Town.Zoom")
-
-	jsonByteArr, _ := json.Marshal(town)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -437,41 +415,29 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	bankId := params["id"]
 
-	context := getRequestContexString(r) + " handlerBank:" + bankId
+	context := getRequestContexString(r) + getHandlerContextString("handlerBank", requestId, bankId)
 
-	result := redis_cli.Cmd("HGETALL", "bank:"+bankId)
+	result := redis_cli.Cmd("GET", "bank:"+bankId)
+
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
-	data, err := result.Map()
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such bank id\n", context)
+		w.WriteHeader(404)
+		return
+	}
+
+	jsonStr, err := result.Str()
 	if err != nil {
 		log.Printf("%s => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
 
-	if len(data) == 0 {
-		log.Printf("%s => no such bank id\n", context)
-		w.WriteHeader(404)
-		return
-	}
-
-	bank := new(Bank)
-
-	bank.Name = data["name"]
-	bank.NameTr = data["name_tr"]
-
-	id, err := strconv.ParseUint(bankId, 10, 32)
-	bank.Id = checkConvertionUint(uint32(id), err, context+" => Bank.Id")
-
-	regionId, err := strconv.ParseUint(data["region_id"], 10, 32)
-	bank.RegionId = checkConvertionUint(uint32(regionId), err, context+" => Bank.RegionId")
-
-	jsonByteArr, _ := json.Marshal(bank)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -481,42 +447,16 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " handlerBankCreate:"
+	context := getRequestContexString(r) + getHandlerContextString("handlerBankCreate", requestId)
 
-	decoder := json.NewDecoder(r.Body)
-	var request BankCreateRequest
-	err := decoder.Decode(&request)
+	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
 		go logRequest(w, r, requestId, "")
-		log.Printf("%s %s\n", context, "malformed BankCreateRequest json")
 		w.WriteHeader(400)
 		return
 	}
-	bankJsonStr, _ := json.Marshal(request)
-	go logRequest(w, r, requestId, string(bankJsonStr))
 
-	nameTr := unidecode.Unidecode(request.Name)
-
-	result := redis_cli.Cmd("HEXISTS", "banks", nameTr)
-	if result.Err != nil {
-		log.Printf("%s %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	exists, err := result.Int()
-	if err != nil {
-		log.Printf("%s %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if exists == 1 {
-		w.WriteHeader(409)
-		return
-	}
-
-	result = redis_cli.Cmd("H")
+	go logRequest(w, r, requestId, jsonStr)
 }
 
 func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
@@ -529,82 +469,28 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	cashPointId := params["id"]
 
-	context := getRequestContexString(r) + " handlerCashpoint:" + cashPointId
+	context := getRequestContexString(r) + getHandlerContextString("handlerCashpoint", requestId, cashPointId)
 
-	result := redis_cli.Cmd("HGETALL", "cp:"+cashPointId)
+	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
-	data, err := result.Map()
+	if result.IsType(redis.Nil) {
+		log.Printf("%s => no such cashpoint id\n", context)
+		w.WriteHeader(404)
+		return
+	}
+
+	jsonStr, err := result.Str()
 	if err != nil {
 		log.Printf("%s => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
 
-	if len(data) == 0 {
-		log.Printf("%s => no such cashpoint id\n", context)
-		w.WriteHeader(404)
-		return
-	}
-
-	cp := new(CashPoint)
-
-	cp.Type = data["type"]
-	cp.Address = data["address"]
-	cp.AddressComment = data["address_comment"]
-	cp.MetroName = data["metro_name"]
-	cp.Schedule = data["schedule"]
-	cp.Tel = data["tel"]
-	cp.Additional = data["additional"]
-
-	id, err := strconv.ParseUint(cashPointId, 10, 32)
-	cp.Id = checkConvertionUint(uint32(id), err, context+" => CashPoint.Id")
-
-	bankId, err := strconv.ParseUint(data["bank_id"], 10, 32)
-	cp.BankId = checkConvertionUint(uint32(bankId), err, context+" => CashPoint.BankId")
-
-	townId, err := strconv.ParseUint(data["town_id"], 10, 32)
-	cp.TownId = checkConvertionUint(uint32(townId), err, context+" => CashPoint.TownId")
-
-	latitude, err := strconv.ParseFloat(data["latitude"], 32)
-	cp.Latitude = checkConvertionFloat(float32(latitude), err, context+" => CashPoint.Latitude")
-
-	longitude, err := strconv.ParseFloat(data["longitude"], 32)
-	cp.Longitude = checkConvertionFloat(float32(longitude), err, context+" => CashPoint.Longitude")
-
-	freeAccess, err := strconv.ParseUint(data["free_access"], 10, 32)
-	cp.FreeAccess = uintToBool(checkConvertionUint(uint32(freeAccess), err, context+" => CashPoint.FreeAccess"))
-
-	mainOffice, err := strconv.ParseUint(data["main_office"], 10, 32)
-	cp.MainOffice = uintToBool(checkConvertionUint(uint32(mainOffice), err, context+" => CashPoint.MainOffice"))
-
-	withoutWeekend, err := strconv.ParseUint(data["without_weekend"], 10, 32)
-	cp.WithoutWeekend = uintToBool(checkConvertionUint(uint32(withoutWeekend), err, context+" => CashPoint.WithoutWeekend"))
-
-	roundTheClock, err := strconv.ParseUint(data["round_the_clock"], 10, 32)
-	cp.RoundTheClock = uintToBool(checkConvertionUint(uint32(roundTheClock), err, context+" => CashPoint.RoundTheClock"))
-
-	worksAsShop, err := strconv.ParseUint(data["works_as_shop"], 10, 32)
-	cp.WorksAsShop = uintToBool(checkConvertionUint(uint32(worksAsShop), err, context+" => CashPoint.WorksAsShop"))
-
-	rub, err := strconv.ParseUint(data["rub"], 10, 32)
-	cp.Rub = uintToBool(checkConvertionUint(uint32(rub), err, context+" => CashPoint.Rub"))
-
-	usd, err := strconv.ParseUint(data["usd"], 10, 32)
-	cp.Usd = uintToBool(checkConvertionUint(uint32(usd), err, context+" => CashPoint.Usd"))
-
-	eur, err := strconv.ParseUint(data["eur"], 10, 32)
-	cp.Eur = uintToBool(checkConvertionUint(uint32(eur), err, context+" => CashPoint.Eur"))
-
-	cashIn, err := strconv.ParseUint(data["cash_in"], 10, 32)
-	cp.CashIn = uintToBool(checkConvertionUint(uint32(cashIn), err, context+" => CashPoint.CashIn"))
-
-	jsonByteArr, _ := json.Marshal(cp)
-	jsonStr := string(jsonByteArr)
 	writeResponse(w, r, requestId, jsonStr)
 }
 
@@ -619,13 +505,12 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	go logRequest(w, r, requestId, "")
 
 	params := mux.Vars(r)
-	townId, _ := strconv.ParseUint(params["town_id"], 10, 32)
-	bankId, _ := strconv.ParseUint(params["bank_id"], 10, 32)
+	townIdStr := params["town_id"]
+	bankIdStr := params["bank_id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, params["town_id"], params["bank_id"])
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, townIdStr, bankIdStr)
 
-	result := redis_cli.Cmd("SINTER", "town:"+params["town_id"]+":cp",
-		"bank:"+params["bank_id"]+":cp")
+	result := redis_cli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -639,7 +524,13 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ids := CashPointIdsInTown{TownId: uint32(townId), BankId: uint32(bankId)}
+	id, err := strconv.ParseUint(townIdStr, 10, 32)
+	townId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.TownId")
+
+	id, err = strconv.ParseUint(bankIdStr, 10, 32)
+	bankId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.BankId")
+
+	ids := CashPointIdsInTown{TownId: townId, BankId: bankId}
 	if len(data) == 0 {
 		ids.CashPointIds = make([]uint32, 0)
 	}
@@ -655,17 +546,70 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, r, requestId, jsonStr)
 }
 
+func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerSearchCashPoinstsNearby", requestId)
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	go logRequest(w, r, requestId, jsonStr)
+
+	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_cp_search_nearby], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Str) {
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	res := SearchNearbyResponse{CashPointIds: make([]uint32, 0)}
+
+	for i, idStr := range data {
+		id, err := strconv.ParseUint(idStr, 10, 32)
+		id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+		res.CashPointIds = append(res.CashPointIds, id32)
+	}
+
+	jsonByteArr, _ := json.Marshal(res)
+	writeResponse(w, r, requestId, string(jsonByteArr))
+}
+
 func main() {
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
 	log.Println("CashPoints server build: " + BuildDate)
 
 	args := os.Args[1:]
 
-	if len(args) == 0 {
-		log.Fatal("Config file path is not specified")
+	configFilePath := SERVER_DEFAULT_CONFIG
+	if len(args) > 0 {
+		configFilePath = args[0]
+		log.Printf("Loading config file: %s\n", configFilePath)
+	} else {
+		log.Printf("Loading default config file: %s\n", configFilePath)
 	}
 
-	configFilePath := args[0]
 	if _, err := os.Stat(configFilePath); os.IsNotExist(err) {
 		log.Fatalf("No such config file: %s\n", configFilePath)
 	}
@@ -677,9 +621,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to decode config file: %s\nError: %v\n", configFilePath, err)
 	}
-
-	MIN_LOGIN_LENGTH = serverConfig.UserLoginMinLength
-	MIN_PWD_LENGTH = serverConfig.UserPwdMinLength
 
 	certPath := ""
 	pkeyPath := ""
@@ -703,6 +644,9 @@ func main() {
 	}
 	defer redis_cli.Close()
 
+	redis_cli.Cmd("HMSET", "settings", "user_login_min_length", serverConfig.UserLoginMinLength,
+		"user_pwd_min_length", serverConfig.UserPwdMinLength)
+
 	preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
 
 	REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
@@ -715,6 +659,7 @@ func main() {
 	router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
 	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
 	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
+	router.HandleFunc("/search/caspoints/nearby", handlerSearchCashPoinstsNearby).Methods("POST")
 
 	port := ":" + strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening 127.0.0.1" + port)
@@ -727,7 +672,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	//http.Handle("/", router)
 	if serverConfig.UseTLS {
 		log.Println("Using TLS encryption")
 		log.Println("Certificate path: " + certPath)
