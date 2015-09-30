@@ -58,6 +58,7 @@ type ServerConfig struct {
 	RedisHost          string `json:"RedisHost"`
 	RedisScriptsDir    string `json:"RedisScriptsDir"`
 	ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
+	UUID_TTL           uint64 `json:"UUID_TTL"`
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -312,10 +313,14 @@ var redis_cli *redis.Client
 var redis_scripts map[string]string
 
 const script_user_create = "USERCREATE"
+const script_user_login = "USERLOGIN"
 const script_bank_create = "BANKCREATE"
 const script_cp_search_nearby = "CPSEARCHNEARBY"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
+
+const UUID_TTL_MIN = 10
+const UUID_TTL_MAX = 1000
 
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
@@ -348,24 +353,50 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	retcode, err := result.Str()
+	ret, err := result.Str()
 	if err != nil {
 		log.Printf("%s => %v: redis '%s' result cannot be converted to string\n", context, result.Err, script_user_create)
 		w.WriteHeader(500)
 		return
 	}
 
-	if retcode ==  {
+	if strings.HasPrefix(ret, "User with already exists") {
 		// user already exists
 		w.WriteHeader(409)
 		return
-	} else if retcode ==  {
+	} else if ret != "" {
 		// redis HMSET internall err
+		log.Printf("%s => %s\n", context, ret)
 		w.WriteHeader(500)
 		return
 	}
 
 	w.WriteHeader(200)
+}
+
+func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+
+	context := getRequestContexString(r) + getHandlerContextString("handlerUserLogin", requestId)
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	// TODO
 }
 
 // ========================================================
@@ -644,8 +675,15 @@ func main() {
 	}
 	defer redis_cli.Close()
 
+	if serverConfig.UUID_TTL < UUID_TTL_MIN {
+		serverConfig.UUID_TTL = UUID_TTL_MIN
+	} else if serverConfig.UUID_TTL > UUID_TTL_MAX {
+		serverConfig.UUID_TTL = UUID_TTL_MAX
+	}
+
 	redis_cli.Cmd("HMSET", "settings", "user_login_min_length", serverConfig.UserLoginMinLength,
-		"user_pwd_min_length", serverConfig.UserPwdMinLength)
+		"user_password_min_length", serverConfig.UserPwdMinLength,
+		"uuid_ttl", serverConfig.UUID_TTL)
 
 	preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
 
@@ -653,6 +691,7 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
+	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
 	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")

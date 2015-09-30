@@ -1,5 +1,5 @@
-USER_LOGIN_MIN_LEN = 4
-USER_PASSWORD_MIN_LEN = 4
+USER_LOGIN_MIN_LEN = redis.call('HGET', 'settings', 'user_login_min_length') or 4
+USER_PASSWORD_MIN_LEN = redis.call('HGET', 'settings', 'user_password_min_length') or 4
 
 userPayload = ARGV[1]
 

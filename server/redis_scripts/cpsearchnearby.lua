@@ -1,10 +1,10 @@
 reqPayload = ARGV[1]
 
-if not requestPayload then
+if not reqPayload then
     return 'No json data'
 end
 
-req = cjson.decode(requestPayload)
+req = cjson.decode(reqPayload)
 
 if not req.longitude then
     return 'No such longitude'
