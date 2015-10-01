@@ -12,6 +12,7 @@ import (
 	//	"github.com/fiam/gounidecode/unidecode"
 	"github.com/gorilla/mux"
 	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/nu7hatch/gouuid"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -244,6 +245,10 @@ type User struct {
 	Password string `json:"password"`
 }
 
+type Session struct {
+	Key string `json:"key"`
+}
+
 type Town struct {
 	Id        uint32  `json:"id"`
 	Name      string  `json:"name"`
@@ -366,7 +371,7 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(409)
 		return
 	} else if ret != "" {
-		// redis HMSET internall err
+		// redis script internal err
 		log.Printf("%s => %s\n", context, ret)
 		w.WriteHeader(500)
 		return
@@ -390,14 +395,43 @@ func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr)
+	newUuid, err := uuid.NewV4()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		return
+	}
+
+	uuidStr := newUuid.String()
+	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr, uuidStr)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
-	// TODO
+	ret, err := result.Str()
+	if err != nil {
+		log.Printf("%s => %v: redis '%s' result cannot be converted to string\n", context, result.Err, script_user_login)
+		w.WriteHeader(500)
+		return
+	}
+
+	code := 500
+	switch ret {
+	case "":
+		sess := Session{Key: uuidStr}
+		jsonByteArr, _ := json.Marshal(sess)
+		writeResponse(w, r, requestId, string(jsonByteArr))
+	case "Invalid password":
+		code = 417
+	case "No such user account":
+		code = 417
+	default:
+		log.Printf("%s: redis => %s", context, ret)
+		return
+	}
+
+	w.WriteHeader(code)
 }
 
 // ========================================================
@@ -574,8 +608,7 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonByteArr, _ := json.Marshal(ids)
-	jsonStr := string(jsonByteArr)
-	writeResponse(w, r, requestId, jsonStr)
+	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {

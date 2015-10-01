@@ -32,8 +32,22 @@ end
 
 -- uuid is not valid => drop session
 if uuid_new == '' then
-    
+    redis.call('DEL', sessionKey)
+    return 'No uuid'
+end
+
+-- validate old session key
+sessionKeyVal = redis.call('GET', sessionKey)
+if sessionKeyVal == nil then
+    return 'User is not logged in'
+end
+
+if sessionKeyVal ~= uuid_old then
+    return 'Session keys do not match'
 end
 
 -- after this timeout user will be automatically logged out
 UUID_TTL = redis.call('HGET', 'settings', 'uuid_ttl') or 250
+redis.call('SETEX', sessionKey, UUID_TTL, uuid_new)
+
+return ''

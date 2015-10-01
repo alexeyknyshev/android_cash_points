@@ -36,4 +36,5 @@ end
 -- after this timeout user will be automatically logged out
 UUID_TTL = redis.call('HGET', 'settings', 'uuid_ttl') or 250
 redis.call('SETEX', 'user:' .. user.login .. ':session', UUID_TTL, uuid)
+
 return ''

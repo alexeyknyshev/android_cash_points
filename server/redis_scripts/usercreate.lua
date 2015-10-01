@@ -1,6 +1,3 @@
-USER_LOGIN_MIN_LEN = redis.call('HGET', 'settings', 'user_login_min_length') or 4
-USER_PASSWORD_MIN_LEN = redis.call('HGET', 'settings', 'user_password_min_length') or 4
-
 userPayload = ARGV[1]
 
 if userPayload == nil then
@@ -17,10 +14,12 @@ if not user.password then
     return 'No such key: password'
 end
 
+USER_LOGIN_MIN_LEN = redis.call('HGET', 'settings', 'user_login_min_length') or 4
 if string.len(user.login) < USER_LOGIN_MIN_LEN then
     return 'User login must be ' .. tostring(USER_LOGIN_MIN_LEN) .. ' characters at least'
 end
 
+USER_PASSWORD_MIN_LEN = redis.call('HGET', 'settings', 'user_password_min_length') or 4
 if string.len(user.password) < USER_PASSWORD_MIN_LEN then
     return 'User password must be ' .. tostring(USER_PASSWORD_MIN_LEN) .. ' characters at least'
 end
