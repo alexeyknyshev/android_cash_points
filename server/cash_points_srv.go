@@ -141,6 +141,7 @@ func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, request
 
 	   return err
 	*/
+	log.Printf("%s Request: %s", getRequestContexString(r), requestBody)
 	return nil
 }
 
@@ -335,7 +336,7 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerUserCreate", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserCreate", requestId)
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -380,7 +381,7 @@ func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerUserLogin", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", requestId)
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -411,11 +412,11 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	townId := params["id"]
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerTown", requestId, townId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", requestId, townId)
 
 	result := redis_cli.Cmd("GET", "town:"+townId)
 	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
+		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
@@ -446,12 +447,12 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	bankId := params["id"]
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerBank", requestId, bankId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBank", requestId, bankId)
 
 	result := redis_cli.Cmd("GET", "bank:"+bankId)
 
 	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
+		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
@@ -478,7 +479,7 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerBankCreate", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankCreate", requestId)
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -500,11 +501,11 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	cashPointId := params["id"]
 
-	context := getRequestContexString(r) + getHandlerContextString("handlerCashpoint", requestId, cashPointId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpoint", requestId, cashPointId)
 
 	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
+		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
@@ -517,7 +518,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 
 	jsonStr, err := result.Str()
 	if err != nil {
-		log.Printf("%s => %v\n", context, err)
+		log.Printf("%s: redis => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
@@ -543,14 +544,14 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 
 	result := redis_cli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
 	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
+		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
 	data, err := result.List()
 	if err != nil {
-		log.Printf("%s => %v\n", context, err)
+		log.Printf("%s: redis => %v\n", context, err)
 		w.WriteHeader(500)
 		return
 	}
@@ -597,13 +598,14 @@ func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {
 
 	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_cp_search_nearby], 0, jsonStr)
 	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
+		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
 
 	if result.IsType(redis.Str) {
-		log.Printf("%s => %v\n", context, result.Err)
+		errStr, _ := result.Str()
+		log.Printf("%s: redis => %s\n", context, errStr)
 		w.WriteHeader(500)
 		return
 	}
