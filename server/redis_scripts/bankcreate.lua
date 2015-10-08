@@ -1,17 +1,13 @@
-bankPayload = ARGV[1]
+local bankPayload = ARGV[1]
 
 if not bankPayload then
     return 'No json data'
 end
 
-bank = cjson.decode(bankPayload)
+local bank = cjson.decode(bankPayload)
 
 if not bank.name then
     return 'No such bank.name'
-end
-
-if not bank.name then
-    return 'Empty bank.name'
 end
 
 if not bank.name_tr then
@@ -30,7 +26,7 @@ if redis.call('HEXISTS', 'bank_ids', bank.name_tr) == 1 then
     return 'Bank is already exists: ' .. bank.name_tr
 end
 
-bankId = redis.call('INCR', 'bank_next_id')
+local bankId = redis.call('INCR', 'bank_next_id')
 redis.call('HMSET', 'bank_ids', bank.name, bankId)
 redis.call('SET', 'bank:' .. bankId, bankPayload)
 

@@ -1,6 +1,6 @@
-login = ARGV[1]
-uuid_old = ARGV[2]
-uuid_new = ARGV[3]
+local login = ARGV[1]
+local uuid_old = ARGV[2]
+local uuid_new = ARGV[3]
 
 if not login then 
     return 'No login'
@@ -10,7 +10,7 @@ if login == '' then
     return 'Empty login'
 end
 
-sessionKey = 'user:' .. user.login .. ':session'
+local sessionKey = 'user:' .. user.login .. ':session'
 
 -- uuid_old is not valid => drop session
 if not uuid_old then
@@ -37,7 +37,7 @@ if uuid_new == '' then
 end
 
 -- validate old session key
-sessionKeyVal = redis.call('GET', sessionKey)
+local sessionKeyVal = redis.call('GET', sessionKey)
 if sessionKeyVal == nil then
     return 'User is not logged in'
 end
@@ -47,7 +47,7 @@ if sessionKeyVal ~= uuid_old then
 end
 
 -- after this timeout user will be automatically logged out
-UUID_TTL = redis.call('HGET', 'settings', 'uuid_ttl') or 250
+local UUID_TTL = redis.call('HGET', 'settings', 'uuid_ttl') or 250
 redis.call('SETEX', sessionKey, UUID_TTL, uuid_new)
 
 return ''
