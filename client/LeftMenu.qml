@@ -12,9 +12,50 @@ Rectangle {
         colorGroup: SystemPalette.Active
     }
 
+    property bool hidden: false
+
+    states: State {
+        name: "hidden"
+        when: hidden
+        PropertyChanges {
+            target: topItem
+            width: 0
+            opacity: 0
+        }
+    }
+    transitions: [
+        Transition {
+            PropertyAnimation {
+                duration: 500
+                easing.type: Easing.InOutQuad
+                properties: "width, opacity"
+            }
+            onRunningChanged: {
+                if (topItem.state == "hidden") {
+                    console.log("hidden")
+                    topItem.visible = running
+                    registerInfo.visible = false
+                    if (running) {
+                        buttonText.visible = false
+                    }
+                } else {
+                    topItem.visible = true
+                    if (!running) {
+                        registerInfo.visible = true
+                        buttonText.visible = true
+                    }
+                }
+            }
+        }
+    ]
+
+    id: topItem
+
     color: sysPalette.window
 
     property bool isAboutToHide: false
+
+    signal itemClicked(string itemName)
 
     MultiPointTouchArea {
         anchors.fill: parent
@@ -69,6 +110,7 @@ Rectangle {
                 anchors.right: parent.right
     //            anchors.bottom: parent.bottom
                 anchors.margins: 20
+                visible: topItem.visible
 
                 height: buttonText.contentHeight * 5
 
@@ -83,6 +125,7 @@ Rectangle {
                     color: "white"
                     fontSizeMode: Text.VerticalFit
                     renderType: Text.NativeRendering
+                    visible: topItem.visible
                 }
 
                 states: State {
@@ -119,26 +162,31 @@ Rectangle {
                 name: "bankSelectionItem"
                 text: qsTr("Мои банки")
                 ico: "icon/bank.svg"
+                property string qmlfile: "BanksList.qml"
             }
             ListElement {
                 name: "townSelectionItem"
                 text: qsTr("Мои города")
                 ico: "icon/town.svg"
+                property string qmlfile: "TownList.qml"
             }
             ListElement {
                 name: "settingsSelectionItem"
                 text: qsTr("Настройки")
                 ico: "icon/settings.svg"
+                property string qmlfile: ""
             }
             ListElement {
                 name: "helpSelectonItem"
                 text: qsTr("Помощь")
                 ico: "icon/info.svg"
+                property string qmlfile: ""
             }
             ListElement {
                 name: "feedbackSelectionItem"
                 text: qsTr("Оставить отзыв")
                 ico: "icon/like.svg"
+                property string qmlfile: ""
             }
             ListElement {
                 name: "bugreportSelectionItem"
@@ -225,7 +273,8 @@ Rectangle {
                             }
                         }
                         onClicked: {
-                            console.log(model.name + " clicked")
+                            topItem.itemClicked(model.qmlfile)
+                            console.log(model.name + " clicked: loading " + model.qmlfile)
                         }
                     }
                 }

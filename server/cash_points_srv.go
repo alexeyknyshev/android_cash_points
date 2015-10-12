@@ -11,6 +11,7 @@ import (
 	"strings"
 	//	"github.com/fiam/gounidecode/unidecode"
 	"github.com/gorilla/mux"
+	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/nu7hatch/gouuid"
 	"io/ioutil"
@@ -325,7 +326,7 @@ type CashPointIdsInTown struct {
 
 var BuildDate string
 
-var redis_cli *redis.Client
+var redis_cli_pool *pool.Pool
 
 var redis_scripts map[string]string
 
@@ -365,7 +366,14 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 
 	go logRequest(w, r, requestId, string(jsonStr))
 
-	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_create], 0, jsonStr)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_user_create], 0, jsonStr)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -442,8 +450,15 @@ func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
 	uuidStr := newUuid.String()
-	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr, uuidStr)
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr, uuidStr)
 	if result.Err != nil {
 		log.Printf("%s => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -492,7 +507,14 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 		"townId":    townId,
 	})
 
-	result := redis_cli.Cmd("GET", "town:"+townId)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("GET", "town:"+townId)
 	if result.Err != nil {
 		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -530,7 +552,14 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 		"bankId":    bankId,
 	})
 
-	result := redis_cli.Cmd("GET", "bank:"+bankId)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("GET", "bank:"+bankId)
 
 	if result.Err != nil {
 		log.Printf("%s: redis => %v\n", context, result.Err)
@@ -589,7 +618,14 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 		"cashPointId": cashPointId,
 	})
 
-	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
 		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -632,7 +668,14 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 		"bankId":    bankIdStr,
 	})
 
-	result := redis_cli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
 	if result.Err != nil {
 		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -687,7 +730,14 @@ func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {
 
 	go logRequest(w, r, requestId, jsonStr)
 
-	result := redis_cli.Cmd("EVALSHA", redis_scripts[script_cp_search_nearby], 0, jsonStr)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_cp_search_nearby], 0, jsonStr)
 	if result.Err != nil {
 		log.Printf("%s: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
@@ -762,11 +812,12 @@ func main() {
 		}
 	}
 
-	redis_cli, err = redis.Dial("tcp", serverConfig.RedisHost)
+	redis_cli_pool, err = pool.New("tcp", serverConfig.RedisHost, 16)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer redis_cli.Close()
+	redis_cli, err := redis_cli_pool.Get()
+	defer redis_cli_pool.Put(redis_cli)
 
 	if serverConfig.UUID_TTL < UUID_TTL_MIN {
 		serverConfig.UUID_TTL = UUID_TTL_MIN
