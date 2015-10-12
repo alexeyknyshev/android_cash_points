@@ -2,10 +2,10 @@ import QtQuick 2.0
 import QtQuick.Controls 1.3
 import QtGraphicalEffects 1.0
 
-ApplicationWindow {
-    visible: true
-    width: 800
-    height: 600
+//ApplicationWindow {
+//    visible: true
+//    width: 800
+//    height: 600
 //    visibility: "FullScreen"
 
 Rectangle {
@@ -257,4 +257,4 @@ Rectangle {
         } // Rectangle
     }
 }
-} // ApplicationWindow
+//} // ApplicationWindow
