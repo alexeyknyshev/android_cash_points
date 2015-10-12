@@ -66,15 +66,19 @@ func getRequestContexString(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-func getHandlerContextString(funcName string, requestId int64, idList ...string) string {
-	result := funcName + ":" + strconv.FormatInt(requestId, 10)
-	if len(idList) > 0 {
-		result = result + "("
-		for _, id := range idList {
-			result = result + id + ","
+func getHandlerContextString(funcName string, args map[string]string) string {
+	result := funcName + "("
+	i := 0
+	argsCount := len(args)
+	for argName, argVal := range args {
+		result = result + argName + "=" + argVal
+		if i < argsCount-1 {
+			result = result + ","
 		}
-		result = result + ")"
+		i++
 	}
+	result = result + ")"
+
 	return result
 }
 
@@ -120,8 +124,8 @@ func checkConvertionFloat(val float32, err error, context string) float32 {
 // ========================================================
 
 func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
+	path := r.URL.Path
 	/*
-	   path := r.URL.Path
 	   timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
 	   requestStr := "request:" + timeStr
 
@@ -142,7 +146,11 @@ func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, request
 
 	   return err
 	*/
-	log.Printf("%s Request: %s", getRequestContexString(r), requestBody)
+	endpointStr := path
+	if requestBody != "" {
+		endpointStr = endpointStr + " => " + requestBody
+	}
+	log.Printf("%s Request: %s", getRequestContexString(r), endpointStr)
 	return nil
 }
 
@@ -179,12 +187,12 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 	requestId, err := getRequestUserId(r)
 	if err != nil {
 		log.Printf("%s prepareResponse %v\n", getRequestContexString(r), err)
-		writeResponse(w, r, 0, JsonNullResponse)
+		w.WriteHeader(401)
 		return false, 0
 	}
 	if requestId == 0 {
 		log.Printf("%s prepareResponse unexpected requestId: %d\n", getRequestContexString(r), requestId)
-		writeResponse(w, r, 0, JsonNullResponse)
+		w.WriteHeader(401)
 		return false, 0
 	}
 
@@ -201,7 +209,7 @@ func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
 	buf := bytes.NewBuffer(nil)
 	file, err := os.Open(srcFilePath)
 	if err != nil {
-		log.Fatalf("%s %v\n", context, err)
+		log.Fatalf("%s => %v\n", context, err)
 	}
 	io.Copy(buf, file)
 	file.Close()
@@ -226,10 +234,13 @@ func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 			fileBaseName := fi.Name()
 			fileExt := filepath.Ext(fileBaseName)
 			if strings.ToLower(fileExt) == ".lua" {
-				log.Printf("Loading redis script: %s\n", fileBaseName)
+				logStr := "Loading redis script: " + fileBaseName
+				defer func() {
+					log.Printf(logStr)
+				}()
 				cmdName := strings.ToUpper(strings.TrimSuffix(fileBaseName, fileExt))
 				redis_scripts[cmdName] = preloadRedisScriptSrc(redisCli, path)
-				log.Printf("Registed redis command: %s => %s\n", fileBaseName, cmdName)
+				logStr = logStr + " => " + cmdName
 			}
 		}
 		return nil
@@ -341,7 +352,9 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserCreate", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserCreate", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -370,6 +383,12 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 		// user already exists
 		w.WriteHeader(409)
 		return
+	} else if strings.HasPrefix(ret, "User login") {
+		w.WriteHeader(400)
+		return
+	} else if strings.HasPrefix(ret, "User password") {
+		w.WriteHeader(400)
+		return
 	} else if ret != "" {
 		// redis script internal err
 		log.Printf("%s => %s\n", context, ret)
@@ -380,13 +399,35 @@ func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 
+func handlerUserDelete(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	log.Printf("%s", jsonStr)
+}
+
 func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 	ok, requestId := prepareResponse(w, r)
 	if ok == false {
 		return
 	}
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -422,13 +463,13 @@ func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 		sess := Session{Key: uuidStr}
 		jsonByteArr, _ := json.Marshal(sess)
 		writeResponse(w, r, requestId, string(jsonByteArr))
+		return
 	case "Invalid password":
 		code = 417
 	case "No such user account":
 		code = 417
 	default:
 		log.Printf("%s: redis => %s", context, ret)
-		return
 	}
 
 	w.WriteHeader(code)
@@ -446,7 +487,10 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	townId := params["id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", requestId, townId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+		"townId":    townId,
+	})
 
 	result := redis_cli.Cmd("GET", "town:"+townId)
 	if result.Err != nil {
@@ -456,7 +500,7 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such town id\n", context)
+		log.Printf("%s => no such townId=%s\n", context, townId)
 		w.WriteHeader(404)
 		return
 	}
@@ -481,7 +525,10 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	bankId := params["id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBank", requestId, bankId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBank", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+		"bankId":    bankId,
+	})
 
 	result := redis_cli.Cmd("GET", "bank:"+bankId)
 
@@ -492,7 +539,7 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such bank id\n", context)
+		log.Printf("%s => no such bankId=%s\n", context, bankId)
 		w.WriteHeader(404)
 		return
 	}
@@ -513,7 +560,9 @@ func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankCreate", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankCreate", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -535,7 +584,10 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	cashPointId := params["id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpoint", requestId, cashPointId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpoint", map[string]string{
+		"requestId":   strconv.FormatInt(requestId, 10),
+		"cashPointId": cashPointId,
+	})
 
 	result := redis_cli.Cmd("GET", "cp:"+cashPointId)
 	if result.Err != nil {
@@ -545,7 +597,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such cashpoint id\n", context)
+		log.Printf("%s => no such cashPointI=-%s\n", context, cashPointId)
 		w.WriteHeader(404)
 		return
 	}
@@ -574,7 +626,11 @@ func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
 	townIdStr := params["town_id"]
 	bankIdStr := params["bank_id"]
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", requestId, townIdStr, bankIdStr)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+		"townId":    townIdStr,
+		"bankId":    bankIdStr,
+	})
 
 	result := redis_cli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
 	if result.Err != nil {
@@ -618,7 +674,9 @@ func handlerSearchCashPoinstsNearby(w http.ResponseWriter, r *http.Request) {
 	}
 	go logRequest(w, r, requestId, "")
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerSearchCashPoinstsNearby", requestId)
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerSearchCashPoinstsNearby", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
 
 	jsonStr, err := getRequestJsonStr(r, context)
 	if err != nil {
@@ -726,6 +784,7 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
+	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)

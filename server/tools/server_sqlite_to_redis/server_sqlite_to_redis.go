@@ -5,6 +5,7 @@ import (
     "log"
     "strconv"
     "database/sql"
+    "encoding/json"
     _ "github.com/mattn/go-sqlite3"
     "github.com/mediocregopher/radix.v2/redis"
 )
@@ -17,47 +18,47 @@ func boolToInt(val bool) uint {
 }
 
 type Town struct {
-    Id        uint32
-    Name      string
-    NameTr    string
-    RegionId  uint32
-    RegionalCenter bool
-    Latitude  float32
-    Longitude float32
-    Zoom      uint32
+	Id             uint32  `json:"id"`
+	Name           string  `json:"name"`
+	NameTr         string  `json:"name_tr"`
+	RegionId       uint32  `json:"region_id"`
+	RegionalCenter bool    `json:"regional_center"`
+	Latitude       float32 `json:"latitude"`
+	Longitude      float32 `json:"longitude"`
+	Zoom           uint32  `json:"zoom"`
 }
 
 type Region struct {
-    Id        uint32
-    Name      string
-    NameTr    string
-    Latitude  float32
-    Longitude float32
-    Zoom      uint32
+	Id        uint32  `json:"id"`
+	Name      string  `json:"name"`
+	NameTr    string  `json:"name_tr"`
+	Latitude  float32 `json:"latitude"`
+	Longitude float32 `json:"longitude"`
+	Zoom      uint32  `json:"zoom"`
 }
 
 type CashPoint struct {
-    Id             uint32
-    Type           string
-    BankId         uint32
-    TownId         uint32
-    Longitude      float32
-    Latitude       float32
-    Address        string
-    AddressComment string
-    MetroName      string
-    FreeAccess     bool
-    MainOffice     bool
-    WithoutWeekend bool
-    RoundTheClock  bool
-    WorksAsShop    bool
-    Schedule       string
-    Tel            string
-    Additional     string
-    Rub            bool
-    Usd            bool
-    Eur            bool
-    CashIn         bool
+	Id             uint32  `json:"id"`
+	Type           string
+	BankId         uint32
+	TownId         uint32
+	Longitude      float32
+	Latitude       float32
+	Address        string
+	AddressComment string
+	MetroName      string
+	FreeAccess     bool
+	MainOffice     bool
+	WithoutWeekend bool
+	RoundTheClock  bool
+	WorksAsShop    bool
+	Schedule       string
+	Tel            string
+	Additional     string
+	Rub            bool
+	Usd            bool
+	Eur            bool
+	CashIn         bool
 }
 
 
@@ -85,14 +86,12 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
             log.Fatal(err)
         }
 
-        err = redisCli.Cmd("HMSET", "town:" + strconv.FormatUint(uint64(town.Id), 10),
-                                    "name", town.Name,
-                                    "name_tr", town.NameTr,
-                                    "region_id", town.RegionId,
-                                    "regional_center", boolToInt(town.RegionalCenter),
-                                    "latitude", town.Latitude,
-                                    "longitude", town.Longitude,
-                                    "zoom", town.Zoom).Err
+        jsonData, err := json.Marshal(town)
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SET", "town:" + strconv.FormatUint(uint64(town.Id), 10), string(jsonData)).Err
         if err != nil {
             log.Fatal(err)
         }
@@ -128,12 +127,12 @@ func migrateRegions(townsDb *sql.DB, redisCli *redis.Client) {
             log.Fatal(err)
         }
 
-        err = redisCli.Cmd("HMSET", "region:" + strconv.FormatUint(uint64(region.Id), 10),
-                                    "name", region.Name,
-                                    "name_tr", region.NameTr,
-                                    "latitude", region.Latitude,
-                                    "longitude", region.Longitude,
-                                    "zoom", region.Zoom).Err
+        jsonData, err := json.Marshal(region)
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SET", "region:" + strconv.FormatUint(uint64(region.Id), 10), string(jsonData)).Err
         if err != nil {
             log.Fatal(err)
         }
@@ -185,27 +184,12 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
         townIdStr := strconv.FormatUint(uint64(cp.TownId), 10)
         bankIdStr := strconv.FormatUint(uint64(cp.BankId), 10)
 
-        err = redisCli.Cmd("HMSET", "cp:" + cashpointIdStr,
-                                    "type", cp.Type,
-                                    "bank_id", cp.BankId,
-                                    "town_id", cp.TownId,
-                                    "longitude", cp.Longitude,
-                                    "latitude", cp.Latitude,
-                                    "address", cp.Address,
-                                    "address_comment", cp.AddressComment,
-                                    "metro_name", cp.MetroName,
-                                    "free_access", boolToInt(cp.FreeAccess),
-                                    "main_office", boolToInt(cp.MainOffice),
-                                    "without_weekend", boolToInt(cp.WithoutWeekend),
-                                    "round_the_clock", boolToInt(cp.RoundTheClock),
-                                    "works_as_shop", boolToInt(cp.WorksAsShop),
-                                    "schedule", cp.Schedule,
-                                    "tel", cp.Tel,
-                                    "additional", cp.Additional,
-                                    "rub", boolToInt(cp.Rub),
-                                    "usd", boolToInt(cp.Usd),
-                                    "eur", boolToInt(cp.Eur),
-                                    "cash_in", boolToInt(cp.CashIn)).Err
+        jsonData, err := json.Marshal(cp)
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SET", "cp:" + cashpointIdStr, string(jsonData)).Err
 
         if err != nil {
             log.Fatal(err)

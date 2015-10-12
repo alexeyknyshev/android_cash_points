@@ -23,7 +23,7 @@ if not req.password then
     return 'No such password'
 end
 
-local userJson = redis.call('GET', 'user:' .. user.login)
+local userJson = redis.call('GET', 'user:' .. req.login)
 if not userJson then
     return 'No such user account'
 end
