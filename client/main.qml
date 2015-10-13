@@ -208,9 +208,9 @@ ApplicationWindow {
 
             LeftMenu {
                 id: leftMenu
+                x: 0
                 z: mapView.z + 10
                 anchors.top: parent.top
-                anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 width: parent.width * 0.6
 
@@ -232,7 +232,7 @@ ApplicationWindow {
                 spread: 0.1
                 color: "#0000000FF"
                 cornerRadius: glowRadius
-                opacity: leftMenu.width / (mapView.width * 0.6)
+                opacity: (leftMenu.x + leftMenu.width) / (mapView.width * 0.6)
             }
 
             onClicked: {

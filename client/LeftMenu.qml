@@ -19,31 +19,36 @@ Rectangle {
         when: hidden
         PropertyChanges {
             target: topItem
-            width: 0
-            opacity: 0
+            x: -width
         }
     }
     transitions: [
         Transition {
+            from: ""
+            to: "hidden"
             PropertyAnimation {
                 duration: 500
-                easing.type: Easing.InOutQuad
-                properties: "width, opacity"
+                easing.type: Easing.InQuad
+                properties: "x"
             }
             onRunningChanged: {
-                if (topItem.state == "hidden") {
-                    console.log("hidden")
-                    topItem.visible = running
-                    registerInfo.visible = false
-                    if (running) {
-                        buttonText.visible = false
-                    }
-                } else {
-                    topItem.visible = true
-                    if (!running) {
-                        registerInfo.visible = true
-                        buttonText.visible = true
-                    }
+                if (!running) {
+                    visible = false
+                }
+            }
+        },
+        Transition {
+            from: "hidden"
+            to: ""
+            PropertyAnimation {
+                duration: 500
+                easing.type: Easing.OutQuad
+                properties: "x"
+            }
+            onRunningChanged: {
+                if (running) {
+                    console.log("I'm here")
+                    visible = true
                 }
             }
         }
