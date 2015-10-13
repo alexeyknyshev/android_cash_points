@@ -39,26 +39,26 @@ type Region struct {
 
 type CashPoint struct {
 	Id             uint32  `json:"id"`
-	Type           string
-	BankId         uint32
-	TownId         uint32
-	Longitude      float32
-	Latitude       float32
-	Address        string
-	AddressComment string
-	MetroName      string
-	FreeAccess     bool
-	MainOffice     bool
-	WithoutWeekend bool
-	RoundTheClock  bool
-	WorksAsShop    bool
-	Schedule       string
-	Tel            string
-	Additional     string
-	Rub            bool
-	Usd            bool
-	Eur            bool
-	CashIn         bool
+	Type           string  `json:"type"`
+	BankId         uint32  `json:"bank_id"`
+	TownId         uint32  `json:"town_id"`
+	Longitude      float32 `json:"longitude"`
+	Latitude       float32 `json:"latitude"`
+	Address        string  `json:"address"`
+	AddressComment string  `json:"address_comment"`
+	MetroName      string  `json:"metro_name"`
+	FreeAccess     bool    `json:"free_access"`
+	MainOffice     bool    `json:"main_office"`
+	WithoutWeekend bool    `json:"without_weekend"`
+	RoundTheClock  bool    `json:"round_the_clock"`
+	WorksAsShop    bool    `json:"works_as_shop"`
+	Schedule       string  `json:"schedule"`
+	Tel            string  `json:"tel"`
+	Additional     string  `json:"additional"`
+	Rub            bool    `json:"rub"`
+	Usd            bool    `json:"usd"`
+	Eur            bool    `json:"eur"`
+	CashIn         bool    `json:"cash_in"`
 }
 
 
