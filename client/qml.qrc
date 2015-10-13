@@ -12,6 +12,7 @@
         <file>UpperSwitcher.qml</file>
         <file>viewloadercreator.js</file>
         <file>ViewLoader.qml</file>
+        <file>SettingsView.qml</file>
     </qresource>
     <qresource prefix="/ico">
         <file>marker.png</file>
