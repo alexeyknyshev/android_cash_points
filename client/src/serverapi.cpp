@@ -101,6 +101,16 @@ void ServerApi::update()
     _eraseExpiredCallbacks();
 }
 
+static ServerApi::HttpStatusCode getStatusCode(QNetworkReply *rep)
+{
+    bool convertOk = false;
+    int status = rep->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(&convertOk);
+    if (convertOk) {
+        return (ServerApi::HttpStatusCode)status;
+    }
+    return ServerApi::HSC_ServerError;
+}
+
 void ServerApi::onResponseReceived(QNetworkReply *rep)
 {
     _eraseExpiredCallbacks();
@@ -111,7 +121,9 @@ void ServerApi::onResponseReceived(QNetworkReply *rep)
         const auto it = mCallbacks.find(requestId);
         if (it != mCallbacks.cend()) {
             Callback &callback = it->second.callback;
-            callback(rep->readAll(), false);
+            callback(getStatusCode(rep),
+                     rep->readAll(),
+                     false);
             mCallbacks.erase(it);
         } else {
             qWarning() << "Unknown request id: " << requestId;
@@ -129,7 +141,7 @@ void ServerApi::_eraseExpiredCallbacks()
         if (qAbs(it->second.dt.msecsTo(now)) > static_cast<qint64>(getCallbacksExpireTime())) {
             qint64 requestId = it->first;
             Callback &callback = it->second.callback;
-            callback(QByteArray(), true);
+            callback(HSC_RequestTimeout, QByteArray(), true);
             mCallbacks.erase(it);
             emit requestTimedout(requestId);
             return;

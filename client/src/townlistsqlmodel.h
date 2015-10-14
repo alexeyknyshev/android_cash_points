@@ -4,6 +4,8 @@
 #include <QtGui/QStandardItemModel>
 #include <QtSql/QSqlQuery>
 
+class ServerApi;
+
 class TownListSqlModel : public QStandardItemModel
 {
     Q_OBJECT
@@ -23,12 +25,15 @@ public:
 public slots:
     void setFilter(QString filterStr);
 
+    void updateFromServer(ServerApi *api);
+
 protected:
     QHash<int, QByteArray> roleNames() const override;
 
 private:
     QHash<int, QByteArray> mRoleNames;
     QSqlQuery mQuery;
+    QSqlQuery mQueryUpdate;
 };
 
 #endif // TOWNLISTSQLMODEL_H

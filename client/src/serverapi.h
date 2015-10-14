@@ -25,6 +25,17 @@ public:
     ServerApi(const QString &host, int port,
               const QByteArray &sslCertData = QByteArray(), QObject *parent = nullptr);
 
+    enum HttpStatusCode {
+        HSC_Ok = 200,
+        HSC_BadRequest = 400,
+        HSC_Unauthorized = 401,
+        HSC_NotFound = 404,
+        HSC_RequestTimeout = 408,
+        HSC_Conflict = 409,
+        HSC_ServerError = 500,
+        HSC_NotImplemented = 501
+    };
+
     void setHost(const QString &host);
     void setPort(int port);
 
@@ -36,7 +47,7 @@ public:
     void setCallbacksExpireTime(quint32 msec);
     quint32 getCallbacksExpireTime() const;
 
-    typedef std::function<void(const QByteArray &data, bool timeOut)> Callback;
+    typedef std::function<void(HttpStatusCode code, const QByteArray &data, bool timeOut)> Callback;
 
 signals:
     void responseReceived(qint64 requestId);

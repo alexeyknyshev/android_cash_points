@@ -123,15 +123,20 @@ ServerApiTest::Response ServerApiTest::sendRequest(const QString &path, const QJ
         connect(apiUpdateTimer, SIGNAL(timeout()), &api, SLOT(update()));
 
         api.setCallbacksExpireTime(callbackExpireTime);
-        api.sendRequest(path, reqData, [&](const QByteArray &data, bool timeOut)
+        api.sendRequest(path, reqData,
+        [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut)
         {
+            response.ok = false;
             if (!timeOut) {
-                response.ok = true;
-                QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
-                response.data = jsonDoc.object().toVariantMap();
+                if (code == ServerApi::HSC_Ok) {
+                    response.ok = true;
+                    QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
+                    response.data = jsonDoc.object().toVariantMap();
+                } else {
+                    qWarning() << "Request status code: " << code;
+                }
             } else {
                 qWarning() << "Request timed out";
-                response.ok = false;
             }
             loop.quit();
         });

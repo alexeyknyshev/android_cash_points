@@ -1,12 +1,16 @@
 #include "townlistsqlmodel.h"
 
+#include "serverapi.h"
+
 #include <QtSql/QSqlRecord>
 #include <QtSql/QSqlError>
 #include <QDebug>
+#include <QJsonDocument>
 
 TownListSqlModel::TownListSqlModel(QString connectionName)
     : QStandardItemModel(0, 4, nullptr),
-      mQuery(QSqlDatabase::database(connectionName))
+      mQuery(QSqlDatabase::database(connectionName)),
+      mQueryUpdate(QSqlDatabase::database(connectionName))
 {
     mRoleNames[IdRole]     = "town_id";
     mRoleNames[NameRole]   = "town_name";
@@ -80,8 +84,6 @@ void TownListSqlModel::setFilter(QString filterStr)
     int row = 0;
     while (mQuery.next())
     {
-//        qDebug() << mQuery.value(0).toString() << mQuery.value(1).toString()
-//                 << mQuery.value(2).toString() << mQuery.value(3).toString();
         QStandardItem *itemId = new QStandardItem;
         QStandardItem *itemName = new QStandardItem;
         QStandardItem *itemNameTr = new QStandardItem;
@@ -97,3 +99,18 @@ void TownListSqlModel::setFilter(QString filterStr)
     }
 }
 
+static QList<int> getTownsIdList(const QJsonDocument &json)
+{
+
+}
+
+void TownListSqlModel::updateFromServer(ServerApi *api)
+{
+    api->sendRequest("/towns", {},
+    [this](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+        if (code != ServerApi::HSC_Ok) {
+            qDebug() << "Server request error: " << code;
+            return
+        }
+    });
+}
