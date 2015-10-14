@@ -324,6 +324,10 @@ type CashPointIdsInTown struct {
 	CashPointIds []uint32 `json:"cash_points"`
 }
 
+type TownIds struct {
+	TownIds []uint32 `json:"towns"`
+}
+
 var BuildDate string
 
 var redis_cli_pool *pool.Pool
@@ -491,6 +495,53 @@ func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 // ========================================================
+
+func handlerTownList(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("ZRANGE", "towns", 0, -1)
+	if result.Err != nil {
+		log.Fatal("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Printf("%s: redis => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	res := new(TownIds)
+	if len(data) == 0 {
+		res.TownIds = make([]uint32, 0)
+	}
+
+	for i, idStr := range data {
+		id, err := strconv.ParseUint(idStr, 10, 32)
+		id32 := checkConvertionUint(uint32(id), err, context+" => TownIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+		res.TownIds = append(res.TownIds, id32)
+	}
+
+	jsonByteArr, _ := json.Marshal(res)
+	writeResponse(w, r, requestId, string(jsonByteArr))
+}
 
 func handlerTown(w http.ResponseWriter, r *http.Request) {
 	ok, requestId := prepareResponse(w, r)
@@ -837,6 +888,7 @@ func main() {
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
 	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
+	router.HandleFunc("/towns", handlerTownList)
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
 	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")

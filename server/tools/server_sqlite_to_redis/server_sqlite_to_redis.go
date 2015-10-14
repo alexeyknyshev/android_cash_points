@@ -96,6 +96,11 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
             log.Fatal(err)
         }
 
+        err = redisCli.Cmd("GEOADD", "towns", town.Longitude, town.Latitude, town.Id).Err
+        if err != nil {
+            log.Fatal(err)
+        }
+
         currentTownIdx++
 
         if currentTownIdx % 500 == 0 {
