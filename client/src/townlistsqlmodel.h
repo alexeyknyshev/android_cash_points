@@ -25,15 +25,19 @@ public:
 public slots:
     void setFilter(QString filterStr);
 
-    void updateFromServer(ServerApi *api);
+    void updateFromServer(ServerApi *api, quint32 leftAttempts);
+
+signals:
+    void retryUpdate(ServerApi *api, quint32 leftAttempts);
 
 protected:
     QHash<int, QByteArray> roleNames() const override;
+    void emitRetryUpdate(ServerApi *api, quint32 leftAttempts);
 
 private:
     QHash<int, QByteArray> mRoleNames;
     QSqlQuery mQuery;
-    QSqlQuery mQueryUpdate;
+    QSqlQuery mQueryUpdateTowns;
 };
 
 #endif // TOWNLISTSQLMODEL_H

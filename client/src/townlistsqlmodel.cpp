@@ -6,11 +6,12 @@
 #include <QtSql/QSqlError>
 #include <QDebug>
 #include <QJsonDocument>
+#include <QJsonArray>
 
 TownListSqlModel::TownListSqlModel(QString connectionName)
     : QStandardItemModel(0, 4, nullptr),
       mQuery(QSqlDatabase::database(connectionName)),
-      mQueryUpdate(QSqlDatabase::database(connectionName))
+      mQueryUpdateTowns(QSqlDatabase::database(connectionName))
 {
     mRoleNames[IdRole]     = "town_id";
     mRoleNames[NameRole]   = "town_name";
@@ -25,6 +26,12 @@ TownListSqlModel::TownListSqlModel(QString connectionName)
                         "ORDER BY region_id, id"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
+    }
+
+    if (!mQueryUpdateTowns.prepare("INSERT INTO towns (id, name, name_tr, region_id) "
+                                   "VALUES (:id, :name, :name_tr, :region_id)"))
+    {
+        qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateTowns.lastError().databaseText();
     }
 
     setFilter("");
@@ -101,16 +108,49 @@ void TownListSqlModel::setFilter(QString filterStr)
 
 static QList<int> getTownsIdList(const QJsonDocument &json)
 {
+    QList<int> townIdList;
 
+    QJsonObject obj = json.object();
+    QJsonValue townsVal = obj["towns"];
+    if (!townsVal.isArray()) {
+        qDebug() << "Json field \"towns\" is not array";
+        return townIdList;
+    }
+
+    QJsonArray arr = townsVal.toArray();
+    auto end = arr.end();
+
+    for (auto it = arr.begin(); it != end; ++it) {
+        static const int invalidId = -1;
+        const int id = it->toInt(invalidId);
+        if (id > invalidId) {
+            townIdList.append(id);
+        }
+    }
+
+    return townIdList;
 }
 
-void TownListSqlModel::updateFromServer(ServerApi *api)
+void TownListSqlModel::updateFromServer(ServerApi *api, quint32 leftAttempts)
 {
     api->sendRequest("/towns", {},
-    [this](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+        if (timeOut) {
+            if (leftAttempts > 0) {
+                emit retryUpdate(api, leftAttempts - 1);
+            }
+        }
+
         if (code != ServerApi::HSC_Ok) {
             qDebug() << "Server request error: " << code;
-            return
+            return;
+        }
+
+        QJsonParseError err;
+        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            qDebug() << "Server response json parse error: " << err.errorString();
+            return;
         }
     });
 }

@@ -27,7 +27,8 @@ private slots:
     void cleanupTestCase();
 
     void testUserCreateRequest();
-    void testTownsRequest();
+    void testTownsListRequest();
+    void testTownByIdRequest();
     void testCashpointRequest();
 };
 
@@ -48,12 +49,28 @@ void ServerApiTest::testUserCreateRequest()
         {"password", "testPassword"}
     };
 
-    const Response res = sendRequest(path, req, false);
+    const Response res = sendRequest(path, req, false, 2000);
 
-    qDebug() << res.ok << "\n" << res.data;
+    QCOMPARE(res.ok, true);
 }
 
-void ServerApiTest::testTownsRequest()
+void ServerApiTest::testTownsListRequest()
+{
+    QBENCHMARK {
+        const QString path = "/towns";
+        const Response res = sendRequest(path, QJsonObject(), false);
+
+        QVariantList list = res.data["towns"].toList();
+        foreach (const QVariant &val, list) {
+            QCOMPARE(val.type(), QVariant::Double); // json numeric type is double
+        }
+
+        static const int expectedTownsCount = 10000;
+        QVERIFY2(list.size() > expectedTownsCount, "Towns count is not expected to be less");
+    }
+}
+
+void ServerApiTest::testTownByIdRequest()
 {
     const int townId = 32;
     const QString path = "/town/" + QString::number(townId);
