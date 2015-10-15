@@ -328,6 +328,10 @@ type TownIds struct {
 	TownIds []uint32 `json:"towns"`
 }
 
+type TownList struct {
+	TownList []string `json:"towns"`
+}
+
 var BuildDate string
 
 var redis_cli_pool *pool.Pool
@@ -589,6 +593,18 @@ func handlerTownsBatch(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
+
+	res := new(TownList)
+	if len(data) == 0 {
+		res.TownList = make([]string, 0)
+	}
+
+	for _, townJson := range data {
+		res.TownList = append(res.TownList, townJson)
+	}
+
+	jsonByteArr, _ := json.Marshal(res)
+	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 func handlerTown(w http.ResponseWriter, r *http.Request) {
