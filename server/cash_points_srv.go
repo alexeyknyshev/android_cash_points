@@ -338,6 +338,7 @@ const script_user_create = "USERCREATE"
 const script_user_login = "USERLOGIN"
 const script_bank_create = "BANKCREATE"
 const script_cp_search_nearby = "CPSEARCHNEARBY"
+const script_towns_batch = "TOWNSBATCH"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
@@ -541,6 +542,53 @@ func handlerTownList(w http.ResponseWriter, r *http.Request) {
 
 	jsonByteArr, _ := json.Marshal(res)
 	writeResponse(w, r, requestId, string(jsonByteArr))
+}
+
+func handlerTownsBatch(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_towns_batch], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Str) {
+		errStr, _ := result.Str()
+		log.Printf("%s: redis => %s\n", context, errStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
 }
 
 func handlerTown(w http.ResponseWriter, r *http.Request) {
@@ -889,6 +937,7 @@ func main() {
 	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
 	router.HandleFunc("/towns", handlerTownList)
+	router.HandleFunc("/towns", handlerTownsBatch).Methods("POST")
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
 	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")

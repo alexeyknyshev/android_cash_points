@@ -1,3 +1,7 @@
+#include "banklistsqlmodel.h"
+#include "townlistsqlmodel.h"
+#include "serverapi.h"
+
 #include <QApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -7,9 +11,6 @@
 #include <QFile>
 #include <QDebug>
 #include <QTableView>
-
-#include "banklistsqlmodel.h"
-#include "townlistsqlmodel.h"
 
 QStringList getSqlQuery(const QString &queryFileName)
 {
@@ -43,7 +44,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    foreach (QString sqlFile, QStringList() << ":/banks.sql" << ":/town.sql")
+    db.transaction();
+    db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, name_tr text, region text, raiting integer, name_tr_alt text, tel text)");
+    db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, region_id integer)");
+    db.exec("CREATE TABLE regions (id integer primary key, name text)");
+    db.commit();
+
+    foreach (QString sqlFile, QStringList() << ":/sql/banks.sql" /*<< ":/sql/town.sql"*/)
     {
         QStringList q_list = getSqlQuery(sqlFile);
         db.transaction();
@@ -54,8 +61,12 @@ int main(int argc, char *argv[])
         db.commit();
     }
 
+    ServerApi *api = new ServerApi("localhost", 8080);
+
     BankListSqlModel *bankListModel = new BankListSqlModel(banksConnName);
-    TownListSqlModel *townListModel = new TownListSqlModel(banksConnName);
+    TownListSqlModel *townListModel = new TownListSqlModel(banksConnName, api);
+
+    townListModel->updateFromServer();
 
     engine.rootContext()->setContextProperty("bankListModel", bankListModel);
     engine.rootContext()->setContextProperty("townListModel", townListModel);
@@ -66,6 +77,8 @@ int main(int argc, char *argv[])
 //    engine.load(QUrl(QStringLiteral("qrc:/UpperSwitcher.qml")));
 
     const int exitStatus = app.exec();
+
+    delete api;
 
     delete townListModel;
     delete bankListModel;

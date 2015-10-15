@@ -67,13 +67,17 @@ quint32 ServerApi::getCallbacksExpireTime() const
     return mCallbacksExpiteTime;
 }
 
+void ServerApi::postRequest(QString path, QJsonObject data, ServerApi::Callback callback)
+{
+
+}
+
 qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback)
 {
     _eraseExpiredCallbacks();
 
     qint64 requestId = uniqueRequestId();
-    mCallbacks.insert(std::make_pair(requestId, ExpCallback(QDateTime::currentDateTime(),
-                                                            callback)));
+    mCallbacks.insert(requestId, ExpCallback(QDateTime::currentDateTime(), callback));
 
     QUrl requestUrl(mSrvUrl);
     requestUrl.setPath(path);
@@ -120,7 +124,7 @@ void ServerApi::onResponseReceived(QNetworkReply *rep)
         qint64 requestId = rep->rawHeader(QByteArray("Id")).toLongLong(&ok);
         const auto it = mCallbacks.find(requestId);
         if (it != mCallbacks.cend()) {
-            Callback &callback = it->second.callback;
+            Callback &callback = it->callback;
             callback(getStatusCode(rep),
                      rep->readAll(),
                      false);
@@ -138,9 +142,9 @@ void ServerApi::_eraseExpiredCallbacks()
     QDateTime now = QDateTime::currentDateTime();
     auto it = mCallbacks.begin();
     while (it != mCallbacks.end()) {
-        if (qAbs(it->second.dt.msecsTo(now)) > static_cast<qint64>(getCallbacksExpireTime())) {
-            qint64 requestId = it->first;
-            Callback &callback = it->second.callback;
+        if (qAbs(it->dt.msecsTo(now)) > static_cast<qint64>(getCallbacksExpireTime())) {
+            qint64 requestId = it.key();
+            const Callback &callback = it->callback;
             callback(HSC_RequestTimeout, QByteArray(), true);
             mCallbacks.erase(it);
             emit requestTimedout(requestId);

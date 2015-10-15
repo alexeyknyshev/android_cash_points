@@ -1,4 +1,3 @@
-CREATE TABLE towns (id integer primary key, name text, name_tr text, region_id integer);
 INSERT INTO `towns` VALUES (4,'Москва','Moskva',0);
 INSERT INTO `towns` VALUES (5,'Долгопрудный','Dolgoprudnyiy',153);
 INSERT INTO `towns` VALUES (6,'Дубна','Dubna',153);
@@ -10611,7 +10610,6 @@ INSERT INTO `towns` VALUES (13263,'Ильинка','Ilinka',283);
 INSERT INTO `towns` VALUES (13264,'Красновосточный','Krasnovostochnyiy',121);
 INSERT INTO `towns` VALUES (13265,'Хасанья','Hasanya',29);
 INSERT INTO `towns` VALUES (13266,'Спутник','Sputnik',21);
-CREATE TABLE regions (id integer primary key, name text);
 INSERT INTO `regions` VALUES (0,'');
 INSERT INTO `regions` VALUES (1,'Алтайский край, Курьинский р-н');
 INSERT INTO `regions` VALUES (2,'Алтайский край, Поспелихинский р-н');

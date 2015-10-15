@@ -1,4 +1,3 @@
-CREATE TABLE banks (id integer primary key, name text, licence integer, name_tr text, region text, raiting integer, name_tr_alt text, tel text);
 INSERT INTO `banks` VALUES ('322','Сбербанк России','1481','Sberbank','Москва','1','sberbank','88005555550');
 INSERT INTO `banks` VALUES ('325','Альфа-Банк','1326','Alfa-Bank','Москва','7','alfabank','84957888878');
 INSERT INTO `banks` VALUES ('327','ВТБ','1000','VTB Bank','Санкт-Петербург','2','vtb','88002007799');

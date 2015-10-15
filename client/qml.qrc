@@ -53,7 +53,5 @@
     <qresource prefix="/sql">
         <file alias="banks.sql">sql/banks.sql</file>
         <file alias="town.sql">sql/town.sql</file>
-        <file alias="region.sql">sql/region.sql</file>
-        <file alias="bank.sql">sql/bank.sql</file>
     </qresource>
 </RCC>
