@@ -151,7 +151,7 @@ func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, request
 	if requestBody != "" {
 		endpointStr = endpointStr + " => " + requestBody
 	}
-	log.Printf("%s Request: %s", getRequestContexString(r), endpointStr)
+	log.Printf("%s Request: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	return nil
 }
 
@@ -240,8 +240,9 @@ func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 					log.Printf(logStr)
 				}()
 				cmdName := strings.ToUpper(strings.TrimSuffix(fileBaseName, fileExt))
-				redis_scripts[cmdName] = preloadRedisScriptSrc(redisCli, path)
-				logStr = logStr + " => " + cmdName
+				scriptSha := preloadRedisScriptSrc(redisCli, path)
+				redis_scripts[cmdName] = scriptSha
+				logStr = logStr + " => " + cmdName + "(" + scriptSha + ")"
 			}
 		}
 		return nil
@@ -514,7 +515,7 @@ func handlerTownList(w http.ResponseWriter, r *http.Request) {
 
 	redisCli, err := redis_cli_pool.Get()
 	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
+		log.Fatal("%s: => %v\n", context, err)
 		return
 	}
 	defer redis_cli_pool.Put(redisCli)
@@ -952,7 +953,7 @@ func main() {
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
 	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
-	router.HandleFunc("/towns", handlerTownList)
+	router.HandleFunc("/towns", handlerTownList).Methods("GET")
 	router.HandleFunc("/towns", handlerTownsBatch).Methods("POST")
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
