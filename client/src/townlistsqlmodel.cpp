@@ -111,17 +111,7 @@ QVariant TownListSqlModel::data(const QModelIndex &item, int role) const
         return item.row();
     }
 
-    QVariant data;
-
-    switch (role)
-    {
-    case IdRole:     data = QStandardItemModel::data(index(item.row(), 0), NameRole); break;
-    case NameRole:   data = QStandardItemModel::data(index(item.row(), 1), NameRole); break;
-    case NameTrRole: data = QStandardItemModel::data(index(item.row(), 2), NameRole); break;
-    case RegionRole: data = QStandardItemModel::data(index(item.row(), 3), NameRole); break;
-    }
-
-    return data;
+    return QStandardItemModel::data(index(item.row(), role - IdRole), role);
 }
 
 
@@ -210,7 +200,7 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
     }
 
     /// TODO: try to use /towns endpoint
-    mApi->sendRequest("/towns/list", {},
+    mApi->sendRequest("/towns", {},
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
             emitRetryUpdate(leftAttempts - 1);
