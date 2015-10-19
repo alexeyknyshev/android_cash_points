@@ -19,6 +19,7 @@ struct Town : public RpcType<Town>
     float longitude;
     float latitude;
     quint32 regionId;
+    bool regionalCenter;
 
     Town()
         : longitude(0.0f), latitude(0.0f)
@@ -32,7 +33,9 @@ struct Town : public RpcType<Town>
         result.nameTr    = obj["name_tr"].toString();
         result.latitude  = obj["latitude"].toDouble();
         result.longitude = obj["longitude"].toDouble();
-        result.regionId  = obj["region_id"].toInt();
+        result.regionId  = obj["region_id"].toInt(std::numeric_limits<int>::max());
+
+        result.regionalCenter = obj["regional_center"].toBool();
 
         return result;
     }
@@ -67,19 +70,20 @@ TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
     mRoleNames[NameRole]   = "town_name";
     mRoleNames[NameTrRole] = "town_name_tr";
     mRoleNames[RegionRole] = "town_region_id";
+    mRoleNames[CenterRole] = "town_regional_center";
 
-    mRoleNames[RegionRole + 1] = "index";
+    mRoleNames[RolesCount] = "index";
 
     if (!mQuery.prepare("SELECT id, name, name_tr FROM towns WHERE "
                         "name LIKE :filter_a or name_tr LIKE :filter_b or "
                         "region_id IN (SELECT id FROM regions WHERE name LIKE :filter_c) "
-                        "ORDER BY region_id, id"))
+                        "ORDER BY regional_center DESC, region_id, id"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
     }
 
-    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id) "
-                                   "VALUES (:id, :name, :name_tr, :region_id)"))
+    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, regional_center) "
+                                   "VALUES (:id, :name, :name_tr, :region_id, :regional_center)"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateTowns.lastError().databaseText();
     }
@@ -344,6 +348,7 @@ void TownListSqlModel::syncTowns(quint32 leftAttempts)
             mQueryUpdateTowns.bindValue(1, town.name);
             mQueryUpdateTowns.bindValue(2, town.nameTr);
             mQueryUpdateTowns.bindValue(3, town.regionId);
+            mQueryUpdateTowns.bindValue(4, town.regionalCenter);
 
             if (!mQueryUpdateTowns.exec()) {
                 qWarning() << "syncTowns: failed to update 'towns' table";

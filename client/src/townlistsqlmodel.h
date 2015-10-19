@@ -16,7 +16,8 @@ public:
         NameRole,
         NameTrRole,
         RegionRole,
-        RolesCount = 4
+        CenterRole,
+        RolesCount = 5
     };
 
     explicit TownListSqlModel(QString connctionName, ServerApi *api);

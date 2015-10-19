@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 
     db.transaction();
     db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, name_tr text, region text, raiting integer, name_tr_alt text, tel text)");
-    db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, region_id integer)");
+    db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, region_id integer, regional_center integer)");
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
     db.commit();
 

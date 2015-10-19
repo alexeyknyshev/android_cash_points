@@ -20,7 +20,7 @@ struct RpcType
     static T fromJsonObject(const QJsonObject &obj)
     {
         T result;
-        result.id = obj["id"].toInt(std::numeric_limits<quint32>::max());
+        result.id = obj["id"].toInt();
         return result;
     }
 
