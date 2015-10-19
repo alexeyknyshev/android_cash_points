@@ -21,7 +21,7 @@ type Town struct {
 	Id             uint32  `json:"id"`
 	Name           string  `json:"name"`
 	NameTr         string  `json:"name_tr"`
-	RegionId       uint32  `json:"region_id"`
+	RegionId       *uint32 `json:"region_id"`
 	RegionalCenter bool    `json:"regional_center"`
 	Latitude       float32 `json:"latitude"`
 	Longitude      float32 `json:"longitude"`
@@ -79,11 +79,17 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
     currentTownIdx := 1
     for rows.Next() {
         town := new(Town)
+        var regionId uint32 = 0
         err = rows.Scan(&town.Id, &town.Name, &town.NameTr,
-                        &town.RegionId, &town.RegionalCenter,
+                        &regionId, &town.RegionalCenter,
                         &town.Latitude, &town.Longitude, &town.Zoom)
         if err != nil {
             log.Fatal(err)
+        }
+
+        if regionId != 0 {
+            town.RegionId = new(uint32)
+            *town.RegionId = regionId
         }
 
         jsonData, err := json.Marshal(town)
@@ -141,6 +147,11 @@ func migrateRegions(townsDb *sql.DB, redisCli *redis.Client) {
         if err != nil {
             log.Fatal(err)
         }
+
+        err = redisCli.Cmd("GEOADD", "regions", region.Longitude, region.Latitude, region.Id).Err
+        if err != nil {
+            log.Fatal(err)
+	}
 
         currentRegionIdx++
 

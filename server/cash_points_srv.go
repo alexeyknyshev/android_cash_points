@@ -330,7 +330,11 @@ type TownIds struct {
 }
 
 type TownList struct {
-	TownList []string `json:"towns"`
+	TownList []map[string]*json.RawMessage `json:"towns"`
+}
+
+type RegionList struct {
+	RegionList []map[string]*json.RawMessage `json:"regions"`
 }
 
 var BuildDate string
@@ -344,6 +348,7 @@ const script_user_login = "USERLOGIN"
 const script_bank_create = "BANKCREATE"
 const script_cp_search_nearby = "CPSEARCHNEARBY"
 const script_towns_batch = "TOWNSBATCH"
+const script_regions_batch = "REGIONSBATCH"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
@@ -597,11 +602,14 @@ func handlerTownsBatch(w http.ResponseWriter, r *http.Request) {
 
 	res := new(TownList)
 	if len(data) == 0 {
-		res.TownList = make([]string, 0)
+		res.TownList = make([]map[string]*json.RawMessage, 0)
 	}
 
 	for _, townJson := range data {
-		res.TownList = append(res.TownList, townJson)
+		var town map[string]*json.RawMessage
+		//log.Printf("%s => %s\n", context, townJson)
+		json.Unmarshal([]byte(townJson), &town)
+		res.TownList = append(res.TownList, town)
 	}
 
 	jsonByteArr, _ := json.Marshal(res)
@@ -651,6 +659,53 @@ func handlerTown(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponse(w, r, requestId, jsonStr)
+}
+
+func handlerRegions(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_regions_batch], 0)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Printf("%s => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	res := new(RegionList)
+	if len(data) == 0 {
+		res.RegionList = make([]map[string]*json.RawMessage, 0)
+	}
+
+	for _, regionJson := range data {
+		var region map[string]*json.RawMessage
+		json.Unmarshal([]byte(regionJson), &region)
+		res.RegionList = append(res.RegionList, region)
+	}
+
+	jsonByteArr, _ := json.Marshal(res)
+	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 func handlerBank(w http.ResponseWriter, r *http.Request) {
@@ -749,7 +804,7 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such cashPointI=-%s\n", context, cashPointId)
+		log.Printf("%s => no such cashPointId=%s\n", context, cashPointId)
 		w.WriteHeader(404)
 		return
 	}
@@ -953,8 +1008,9 @@ func main() {
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
 	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
-	router.HandleFunc("/towns", handlerTownList).Methods("GET")
-	router.HandleFunc("/towns", handlerTownsBatch).Methods("POST")
+	router.HandleFunc("/towns/list", handlerTownList).Methods("GET")
+	router.HandleFunc("/towns", handlerTownsBatch)
+	router.HandleFunc("/regions", handlerRegions)
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
 	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")
