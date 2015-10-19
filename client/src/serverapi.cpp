@@ -143,6 +143,8 @@ void ServerApi::onResponseReceived(QNetworkReply *rep)
 static bool isCallbackExpired(const QDateTime &birthTime, qint64 expireTime)
 {
 #ifdef CP_DEBUG
+    Q_UNUSED(birthTime);
+    Q_UNUSED(expireTime);
     return false;
 #else // CP_DEBUG
     const QDateTime now = QDateTime::currentDateTime();

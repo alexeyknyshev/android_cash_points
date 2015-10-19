@@ -334,7 +334,7 @@ void TownListSqlModel::syncTowns(quint32 leftAttempts)
         }
 
         QList<Town> townList = getTownList(json);
-        if (!townList.isEmpty()) {
+        if (townList.isEmpty()) {
             qWarning() << "syncTowns: response is empty\n"
                        << QString::fromUtf8(data);
         }
