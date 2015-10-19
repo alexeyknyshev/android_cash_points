@@ -1,27 +1,10 @@
 #ifndef TOWNLISTSQLMODEL_H
 #define TOWNLISTSQLMODEL_H
 
-#include <QtCore/QQueue>
 #include <QtGui/QStandardItemModel>
 #include <QtSql/QSqlQuery>
 
 class ServerApi;
-
-struct Town
-{
-    quint32 id;
-    QString name;
-    QString nameTr;
-    float longitude;
-    float latitude;
-    quint32 regionId;
-
-    Town()
-        : id(0), longitude(0), latitude(0)
-    { }
-
-    bool isValid() const { return id != 0; }
-};
 
 class TownListSqlModel : public QStandardItemModel
 {
@@ -32,7 +15,8 @@ public:
         IdRole = Qt::UserRole,
         NameRole,
         NameTrRole,
-        RegionRole
+        RegionRole,
+        RolesCount = 4
     };
 
     explicit TownListSqlModel(QString connctionName, ServerApi *api);
@@ -53,6 +37,7 @@ signals:
 protected:
     QHash<int, QByteArray> roleNames() const override;
     int getAttemptsCount() const { return mRequestAttemptsCount; }
+    int getBatchSize() const { return mRequestBatchSize; }
 
 private slots:
     void emitRetryUpdate(quint32 leftAttempts);
@@ -64,10 +49,12 @@ private:
     QHash<int, QByteArray> mRoleNames;
     QSqlQuery mQuery;
     QSqlQuery mQueryUpdateTowns;
+    QSqlQuery mQueryUpdateRegions;
 
-    QQueue<int> mTownsToProcess;
+    QList<int> mTownsToProcess;
 
     int mRequestAttemptsCount;
+    int mRequestBatchSize;
 };
 
 #endif // TOWNLISTSQLMODEL_H

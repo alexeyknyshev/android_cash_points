@@ -29,6 +29,11 @@ ANDROID_PACKAGE_SOURCE_DIR = $$PWD/android
 HEADERS += \
     src/banklistsqlmodel.h \
     src/townlistsqlmodel.h \
-    src/serverapi.h
+    src/serverapi.h \
+    src/rpctype.h
 
 QMAKE_CXXFLAGS += -std=c++11
+
+debug {
+    DEFINES += CP_DEBUG
+}

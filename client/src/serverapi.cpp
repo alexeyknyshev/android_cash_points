@@ -6,6 +6,8 @@
 
 #include <QtCore/QJsonDocument>
 
+#define DEFAULT_CALLBACK_EXPIRE_TIME 1000
+
 ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QObject *parent)
     : QObject(parent),
       mNetworkMgr(nullptr),
@@ -69,7 +71,8 @@ quint32 ServerApi::getCallbacksExpireTime() const
 
 void ServerApi::postRequest(QString path, QJsonObject data, ServerApi::Callback callback)
 {
-
+    /// TODO: implement
+    Q_ASSERT_X(false, "ServerApi::postRequest", "not implemented yet");
 }
 
 qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback)
@@ -137,12 +140,21 @@ void ServerApi::onResponseReceived(QNetworkReply *rep)
     }
 }
 
+static bool isCallbackExpired(const QDateTime &birthTime, qint64 expireTime)
+{
+#ifdef CP_DEBUG
+    return false;
+#else // CP_DEBUG
+    const QDateTime now = QDateTime::currentDateTime();
+    return qAbs(birthTime.msecsTo(now)) > expireTime;
+#endif // CP_DEBUG
+}
+
 void ServerApi::_eraseExpiredCallbacks()
 {
-    QDateTime now = QDateTime::currentDateTime();
     auto it = mCallbacks.begin();
     while (it != mCallbacks.end()) {
-        if (qAbs(it->dt.msecsTo(now)) > static_cast<qint64>(getCallbacksExpireTime())) {
+        if (isCallbackExpired(it->dt, static_cast<qint64>(getCallbacksExpireTime()))) {
             qint64 requestId = it.key();
             const Callback &callback = it->callback;
             callback(HSC_RequestTimeout, QByteArray(), true);
@@ -164,7 +176,7 @@ void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert
         mSslConfig->setProtocol(QSsl::TlsV1_2);
     }
 
-    setCallbacksExpireTime(1000);
+    setCallbacksExpireTime(DEFAULT_CALLBACK_EXPIRE_TIME);
     setHost(host);
     setPort(port);
     mNetworkMgr = new QNetworkAccessManager(this);

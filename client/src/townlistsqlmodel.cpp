@@ -1,19 +1,67 @@
 #include "townlistsqlmodel.h"
 
-#include "serverapi.h"
-
 #include <QtSql/QSqlRecord>
 #include <QtSql/QSqlError>
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonArray>
 
+#include "serverapi.h"
+#include "rpctype.h"
+
+#define DEFAULT_ATTEMPTS_COUNT 3
+#define DEFAULT_BATCH_SIZE 128
+
+struct Town : public RpcType<Town>
+{
+    QString name;
+    QString nameTr;
+    float longitude;
+    float latitude;
+    quint32 regionId;
+
+    Town()
+        : longitude(0.0f), latitude(0.0f)
+    { }
+
+    static Town fromJsonObject(const QJsonObject &obj)
+    {
+        Town result = RpcType<Town>::fromJsonObject(obj);
+
+        result.name      = obj["name"].toString();
+        result.nameTr    = obj["name_tr"].toString();
+        result.latitude  = obj["latitude"].toDouble();
+        result.longitude = obj["longitude"].toDouble();
+        result.regionId  = obj["region_id"].toInt();
+
+        return result;
+    }
+};
+
+struct Region : public RpcType<Region>
+{
+    QString name;
+
+    static Region fromJsonObject(const QJsonObject &obj)
+    {
+        Region result = RpcType<Region>::fromJsonObject(obj);
+
+        result.name = obj["name"].toString();
+
+        return result;
+    }
+};
+
+/// ================================================
+
 TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
     : QStandardItemModel(0, 4, nullptr),
       mApi(api),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateTowns(QSqlDatabase::database(connectionName)),
-      mRequestAttemptsCount(3)
+      mQueryUpdateRegions(QSqlDatabase::database(connectionName)),
+      mRequestAttemptsCount(DEFAULT_ATTEMPTS_COUNT),
+      mRequestBatchSize(DEFAULT_BATCH_SIZE)
 {
     mRoleNames[IdRole]     = "town_id";
     mRoleNames[NameRole]   = "town_name";
@@ -30,10 +78,16 @@ TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
     }
 
-    if (!mQueryUpdateTowns.prepare("INSERT INTO towns (id, name, name_tr, region_id) "
+    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id) "
                                    "VALUES (:id, :name, :name_tr, :region_id)"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateTowns.lastError().databaseText();
+    }
+
+    if (!mQueryUpdateRegions.prepare("INSERT OR REPLACE INTO regions (id, name) "
+                                     "VALUES (:id, :name)"))
+    {
+        qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateRegions.lastError().databaseText();
     }
 
     connect(this, SIGNAL(retryUpdate(quint32)),
@@ -92,65 +146,56 @@ void TownListSqlModel::setFilter(QString filterStr)
     mQuery.bindValue(1, filterStr);
     mQuery.bindValue(2, filterStr);
 
-    qDebug() << mQuery.exec();
-    qDebug() << mQuery.lastError().databaseText();
+    if (!mQuery.exec()) {
+        qCritical() << mQuery.lastError().databaseText();
+        Q_ASSERT_X(false, "TownListSqlModel::setFilter", "sql query error");
+    }
 
     clear();
     int row = 0;
     while (mQuery.next())
     {
-        QStandardItem *itemId = new QStandardItem;
-        QStandardItem *itemName = new QStandardItem;
-        QStandardItem *itemNameTr = new QStandardItem;
-        QStandardItem *itemRegionName = new QStandardItem;
+        QList<QStandardItem *> items;
 
-        itemId->setData(mQuery.value(0).toUInt(), IdRole);
-        itemName->setData(mQuery.value(1).toString(), NameRole);
-        itemNameTr->setData(mQuery.value(2).toString(), NameTrRole);
-        itemRegionName->setData(mQuery.value(3).toString(), RegionRole);
+        for (int i = 0; i < RolesCount; ++i) {
+            QStandardItem *item = new QStandardItem;
+            item->setData(mQuery.value(i), IdRole + i);
+            items.append(item);
+        }
 
-        insertRow(row, QList<QStandardItem *>() << itemId << itemName << itemNameTr << itemRegionName);
+        insertRow(row, items);
         ++row;
     }
 }
 
-static QQueue<int> getTownsIdList(const QJsonDocument &json)
+static QList<int> getTownsIdList(const QJsonDocument &json)
 {
-    QQueue<int> townIdQueue;
+    QList<int> townIdList;
 
     QJsonObject obj = json.object();
     QJsonValue townsVal = obj["towns"];
     if (!townsVal.isArray()) {
-        qDebug() << "Json field \"towns\" is not array";
-        return townIdQueue;
+        qWarning() << "Json field \"towns\" is not array";
+        return townIdList;
     }
 
     QJsonArray arr = townsVal.toArray();
-    auto end = arr.end();
 
-    for (auto it = arr.begin(); it != end; ++it) {
+    for (const QJsonValue &val : arr) {
         static const int invalidId = -1;
-        const int id = it->toInt(invalidId);
+        const int id = val.toInt(invalidId);
         if (id > invalidId) {
-            townIdQueue.enqueue(id);
+            townIdList.append(id);
         }
     }
 
-    return townIdQueue;
+    return townIdList;
 }
 
-Town getTown(const QJsonDocument &json)
+QList<Town> getTownList(const QJsonDocument &json)
 {
-    Town result;
-
     QJsonObject obj = json.object();
-    result.id        = obj["id"].toInt();
-    result.name      = obj["name"].toString();
-    result.nameTr    = obj["name_tr"].toString();
-    result.latitude  = obj["latitude"].toDouble();
-    result.longitude = obj["longitude"].toDouble();
-
-    return result;
+    return Town::fromJsonArray(obj["towns"].toArray());
 }
 
 void TownListSqlModel::updateFromServer()
@@ -164,7 +209,8 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
         return;
     }
 
-    mApi->sendRequest("/towns", {},
+    /// TODO: try to use /towns endpoint
+    mApi->sendRequest("/towns/list", {},
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
             emitRetryUpdate(leftAttempts - 1);
@@ -172,7 +218,7 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
         }
 
         if (code != ServerApi::HSC_Ok) {
-            qDebug() << "Server request error: " << code;
+            qWarning() << "Server request error: " << code;
             emitRetryUpdate(leftAttempts - 1);
             return;
         }
@@ -180,12 +226,50 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
         QJsonParseError err;
         QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            qDebug() << "Server response json parse error: " << err.errorString();
+            qWarning() << "Server response json parse error: " << err.errorString();
             return;
         }
 
         mTownsToProcess = getTownsIdList(json);
         emitSyncNextTown(getAttemptsCount());
+    });
+
+    mApi->sendRequest("/regions", {},
+    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+        /// TODO: separate retry handler for different queries
+        if (timeOut) {
+            return;
+        }
+
+        if (code != ServerApi::HSC_Ok) {
+            qWarning() << "Server request error: " << code;
+            return;
+        }
+
+        QJsonParseError err;
+        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            qWarning() << "Server response json parse error: " << err.errorString();
+            return;
+        }
+
+        QJsonObject obj = json.object();
+        QJsonValue regionsJson = obj["regions"];
+        if (!regionsJson.isArray()) {
+            qWarning() << "Server response is not json array";
+            return;
+        }
+
+        QList<Region> regions = Region::fromJsonArray(regionsJson.toArray());
+        for (const Region &reg : regions) {
+            mQueryUpdateRegions.bindValue(0, reg.id);
+            mQueryUpdateRegions.bindValue(1, reg.name);
+
+            if (!mQueryUpdateRegions.exec()) {
+                qWarning() << "syncTowns: failed to update 'regions' table";
+                qWarning() << "syncTowns: " << mQueryUpdateRegions.lastError().databaseText();
+            }
+        }
     });
 }
 
@@ -214,16 +298,40 @@ void TownListSqlModel::syncTowns(quint32 leftAttempts)
         return;
     }
 
-    const int currentTownId = mTownsToProcess.head();
-    mApi->sendRequest("/town/" + QString::number(currentTownId), {},
+    const int townsToProcess = qMin(getBatchSize(), mTownsToProcess.size());
+    if (townsToProcess == 0) {
+        return;
+    }
+
+    QJsonArray requestTownsBatch;
+    for (int i = 0; i < townsToProcess; i++) {
+        requestTownsBatch.append(mTownsToProcess.front());
+        mTownsToProcess.removeFirst();
+    }
+
+    mApi->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
+            foreach (const QJsonValue &val, requestTownsBatch) {
+                const int id = val.toInt();
+                if (id > 0) {
+                    mTownsToProcess.append(id);
+                }
+            }
+
             emitSyncNextTown(leftAttempts - 1);
             return;
         }
 
         if (code != ServerApi::HSC_Ok) {
-            qDebug() << "syncTowns: http status code: " << code;
+            qWarning() << "syncTowns: http status code: " << code;
+            foreach (const QJsonValue &val, requestTownsBatch) {
+                const int id = val.toInt();
+                if (id > 0) {
+                    mTownsToProcess.append(id);
+                }
+            }
+
             emitSyncNextTown(leftAttempts - 1);
             return;
         }
@@ -231,25 +339,26 @@ void TownListSqlModel::syncTowns(quint32 leftAttempts)
         QJsonParseError err;
         QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            qDebug() << "syncTowns: response parse error: " << err.errorString();
+            qWarning() << "syncTowns: response parse error: " << err.errorString();
             return;
         }
 
-        mTownsToProcess.dequeue();
-        Town town = getTown(json);
-        if (!town.isValid()) {
-            qDebug() << "syncTowns: response town struct is invalid\n"
-                     << QString::fromUtf8(data);
+        QList<Town> townList = getTownList(json);
+        if (!townList.isEmpty()) {
+            qWarning() << "syncTowns: response is empty\n"
+                       << QString::fromUtf8(data);
         }
 
-        mQueryUpdateTowns.bindValue(0, town.id);
-        mQueryUpdateTowns.bindValue(1, town.name);
-        mQueryUpdateTowns.bindValue(2, town.nameTr);
-        mQueryUpdateTowns.bindValue(3, town.regionId);
+        for (const Town &town : townList) {
+            mQueryUpdateTowns.bindValue(0, town.id);
+            mQueryUpdateTowns.bindValue(1, town.name);
+            mQueryUpdateTowns.bindValue(2, town.nameTr);
+            mQueryUpdateTowns.bindValue(3, town.regionId);
 
-        if (!mQueryUpdateTowns.exec()) {
-            qDebug() << "syncTowns: failed to update 'towns' table";
-            qDebug() << "syncTowns: " << mQueryUpdateTowns.lastError().databaseText();
+            if (!mQueryUpdateTowns.exec()) {
+                qWarning() << "syncTowns: failed to update 'towns' table";
+                qWarning() << "syncTowns: " << mQueryUpdateTowns.lastError().databaseText();
+            }
         }
 
         emitSyncNextTown(getAttemptsCount());
