@@ -2,6 +2,41 @@
 
 #include <QtSql/QSqlRecord>
 
+#include "rpctype.h"
+
+#define DEFAULT_ATTEMPTS_COUNT 3
+#define DEFAULT_BATCH_SIZE 128
+
+struct Bank : public RpcType<Bank>
+{
+    QString name;
+    QString nameTr;
+    QString nameTrAlt;
+    QString town;
+    QString tel;
+    quint32 licence;
+    quint32 rating;
+
+    Bank()
+        : licence(0), rating(0)
+    { }
+
+    static Bank fromJsonObject(const QJsonObject &obj)
+    {
+        Bank result = RpcType<Bank>::fromJsonObject(obj);
+
+        result.name      = obj["name"].toString();
+        result.nameTr    = obj["name_tr"].toString();
+        result.nameTrAlt = obj["name_tr_alt"].toString();
+        result.town      = obj["town"].toString();
+        result.tel       = obj["tel"].toString();
+        result.licence   = obj["licence"].toInt();
+        result.rating    = obj["rating"].toInt();
+
+        return result;
+    }
+};
+
 BankListSqlModel::BankListSqlModel(QString connectionName)
     : QSqlQueryModel(nullptr),
       mConnectionName(connectionName)
