@@ -1,12 +1,12 @@
 #ifndef TOWNLISTSQLMODEL_H
 #define TOWNLISTSQLMODEL_H
 
-#include <QtGui/QStandardItemModel>
 #include <QtSql/QSqlQuery>
+#include <QDebug>
 
-class ServerApi;
+#include "listsqlmodel.h"
 
-class TownListSqlModel : public QStandardItemModel
+class TownListSqlModel : public ListSqlModel
 {
     Q_OBJECT
 
@@ -17,45 +17,52 @@ public:
         NameTrRole,
         RegionRole,
         CenterRole,
-        RolesCount = 5
+
+        RoleLast
     };
 
-    explicit TownListSqlModel(QString connctionName, ServerApi *api);
+    TownListSqlModel(QString connctionName, ServerApi *api);
 
     QVariant data(const QModelIndex &item, int role) const override;
 
-public slots:
-    void setFilter(QString filterStr);
-
-    void updateFromServer();
-    void updateFromServer(quint32 leftAttempts);
-    void syncTowns(quint32 leftAttempts);
-
 signals:
-    void retryUpdate(quint32 leftAttempts);
-    void syncNextTown(quint32 leftAttempts);
+    void updateRegionsRequest(quint32 leftAttempts);
+
+    void updateTownsIdsRequest(quint32 leftAttempts);
+    void updateTownsDataRequest(quint32 leftAttempts);
+
+    void townIdsUpdated(quint32 leftAttempts);
 
 protected:
-    QHash<int, QByteArray> roleNames() const override;
-    int getAttemptsCount() const { return mRequestAttemptsCount; }
-    int getBatchSize() const { return mRequestBatchSize; }
+    void updateFromServerImpl(quint32 leftAttempts) override;
+    void setFilterImpl(const QString &filter) override;
+
+    int getLastRole() const override { return RoleLast; }
 
 private slots:
-    void emitRetryUpdate(quint32 leftAttempts);
-    void emitSyncNextTown(quint32 leftAttempts);
+    void updateTownsIds(quint32 leftAttempts);
+    void updateTownsData(quint32 leftAttempts);
+
+    void updateRegions(quint32 leftAttempts);
 
 private:
-    ServerApi *mApi;
+    void emitUpdateTownIds(quint32 leftAttempts)
+    { emit updateTownsIdsRequest(leftAttempts); }
 
-    QHash<int, QByteArray> mRoleNames;
-    QSqlQuery mQuery;
-    QSqlQuery mQueryUpdateTowns;
-    QSqlQuery mQueryUpdateRegions;
+    void emitTownIdsUpdated(quint32 leftAttempts)
+    { emit townIdsUpdated(leftAttempts); }
+
+    void emitUpdateTownData(quint32 leftAttempts)
+    { emit updateTownsDataRequest(leftAttempts); }
+
+    void emitUpdateRegions(quint32 leftAttempts)
+    { emit updateRegionsRequest(leftAttempts); }
 
     QList<int> mTownsToProcess;
 
-    int mRequestAttemptsCount;
-    int mRequestBatchSize;
+    QSqlQuery mQuery;
+    QSqlQuery mQueryUpdateTowns;
+    QSqlQuery mQueryUpdateRegions;
 };
 
 #endif // TOWNLISTSQLMODEL_H

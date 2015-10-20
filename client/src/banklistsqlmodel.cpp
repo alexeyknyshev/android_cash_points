@@ -1,11 +1,10 @@
 #include "banklistsqlmodel.h"
 
 #include <QtSql/QSqlRecord>
+#include <QtSql/QSqlError>
+#include <QtCore/QDebug>
 
 #include "rpctype.h"
-
-#define DEFAULT_ATTEMPTS_COUNT 3
-#define DEFAULT_BATCH_SIZE 128
 
 struct Bank : public RpcType<Bank>
 {
@@ -18,7 +17,8 @@ struct Bank : public RpcType<Bank>
     quint32 rating;
 
     Bank()
-        : licence(0), rating(0)
+        : licence(0),
+          rating(0)
     { }
 
     static Bank fromJsonObject(const QJsonObject &obj)
@@ -37,21 +37,31 @@ struct Bank : public RpcType<Bank>
     }
 };
 
-BankListSqlModel::BankListSqlModel(QString connectionName)
-    : QSqlQueryModel(nullptr),
-      mConnectionName(connectionName)
+/// ================================================
+
+BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
+    : ListSqlModel(connectionName, api),
+      mQuery(QSqlDatabase::database(connectionName))
 {
-    mRoleNames[IdRole]        = "bank_id";
-    mRoleNames[NameRole]      = "bank_name";
-    mRoleNames[LicenceRole]   = "bank_licence";
-    mRoleNames[NameTrRole]    = "bank_name_tr";
-    mRoleNames[RaitingRole]   = "bank_raiting";
-    mRoleNames[NameTrAltRole] = "bank_name_tr_alt";
-    mRoleNames[TelRole]       = "bank_tel";
+    setRoleName(IdRole,        "bank_id");
+    setRoleName(NameRole,      "bank_name");
+    setRoleName(LicenceRole,   "bank_licence");
+    setRoleName(NameTrRole,    "bank_name_tr");
+    setRoleName(RaitingRole,   "bank_raiting");
+    setRoleName(NameTrAltRole, "bank_name_tr_alt");
+    setRoleName(TelRole,       "bank_tel");
 
-    mRoleNames[TelRole + 1]   = "index";
-
-    setFilter("");
+    if (!mQuery.prepare("SELECT id, name, licence, name_tr, region, name_tr_alt, tel FROM banks"
+                        " WHERE"
+                        "       name LIKE :name"
+                        " or licence LIKE :licence"
+                        " or name_tr LIKE :name_tr"
+                        " or  region LIKE :town"
+                        " or     tel LIKE :tel"
+                        " ORDER BY raiting"))
+    {
+        qDebug() << "BankListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
+    }
 }
 
 QHash<int, QByteArray> BankListSqlModel::roleNames() const
@@ -59,34 +69,28 @@ QHash<int, QByteArray> BankListSqlModel::roleNames() const
     return mRoleNames;
 }
 
-int BankListSqlModel::rowCount(const QModelIndex &parent) const
-{
-    Q_UNUSED(parent);
-    return QSqlQueryModel::rowCount();
-}
-
 QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
 {
-    if (role < Qt::UserRole)
+    if (role < Qt::UserRole || role >= RoleLast)
     {
-        return QSqlQueryModel::data(item, role);
+        return ListSqlModel::data(item, role);
     }
 
-    if (role == TelRole + 1)
-    {
-        return item.row();
-    }
-
-    QSqlRecord rec = record(item.row());
-    return rec.value(role - Qt::UserRole).toString();
+    return QStandardItemModel::data(index(item.row(), role - IdRole), role);
 }
 
-void BankListSqlModel::setFilter(QString filterStr)
+void BankListSqlModel::updateFromServerImpl(quint32 leftAttempts)
 {
-    filterStr.replace('_', "");
-    filterStr.replace('%', "");
-    filterStr.replace('*', '%');
-    filterStr.replace('?', '_');
+    if (leftAttempts == 0) {
+        return;
+    }
+
+    emitUpdateBanksData(leftAttempts);
+}
+
+void BankListSqlModel::setFilterImpl(const QString &filter)
+{
+    /*
     mQueryMask = "SELECT id, name, licence, name_tr, region, name_tr_alt, tel FROM banks"
                  " WHERE"
                  "       name LIKE '%" + filterStr + "%'"
@@ -97,5 +101,11 @@ void BankListSqlModel::setFilter(QString filterStr)
                  " ORDER BY raiting"
             ;
     setQuery(mQueryMask, QSqlDatabase::database(mConnectionName));
+    */
+}
+
+void BankListSqlModel::syncBanks(quint32 leftAttempts)
+{
+
 }
 

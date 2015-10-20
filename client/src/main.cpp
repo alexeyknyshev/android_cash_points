@@ -63,25 +63,21 @@ int main(int argc, char *argv[])
 
     ServerApi *api = new ServerApi("localhost", 8080);
 
-    BankListSqlModel *bankListModel = new BankListSqlModel(banksConnName);
+    BankListSqlModel *bankListModel = new BankListSqlModel(banksConnName, api);
     TownListSqlModel *townListModel = new TownListSqlModel(banksConnName, api);
 
     townListModel->updateFromServer();
 
     engine.rootContext()->setContextProperty("bankListModel", bankListModel);
     engine.rootContext()->setContextProperty("townListModel", townListModel);
-//    engine.load(QUrl("qrc:/LeftMenu.qml"));
-//    engine.load(QUrl(QStringLiteral("qrc:/BanksList.qml")));
-//    engine.load(QUrl(QStringLiteral("qrc:/TownList.qml")));
     engine.load(QUrl(QStringLiteral("qrc:/main.qml")));
-//    engine.load(QUrl(QStringLiteral("qrc:/UpperSwitcher.qml")));
 
     const int exitStatus = app.exec();
 
-    delete api;
-
     delete townListModel;
     delete bankListModel;
+
+    delete api;
 
     db.close();
 

@@ -1,10 +1,13 @@
 #ifndef BANKLISTSQLMODEL_H
 #define BANKLISTSQLMODEL_H
 
-#include <QtSql/QSqlQueryModel>
 #include <QtSql/QSqlQuery>
 
-class BankListSqlModel : public QSqlQueryModel
+#include "listsqlmodel.h"
+
+class ServerApi;
+
+class BankListSqlModel : public ListSqlModel
 {
     Q_OBJECT
 
@@ -17,25 +20,36 @@ public:
         RaitingRole,
         NameTrAltRole,
         TelRole,
-        RolesCount = 7
+
+        RoleLast
     };
 
-    explicit BankListSqlModel(QString connectionName);
-
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    explicit BankListSqlModel(QString connectionName, ServerApi *api);
 
     QVariant data(const QModelIndex &item, int role) const override;
 
-public slots:
-    void setFilter(QString filterStr);
+signals:
+    void updateBanksDataRequest(quint32 leftAttempts);
+    void syncNextBankBatch(quint32 leftAttempts);
 
 protected:
     QHash<int, QByteArray> roleNames() const override;
+    void updateFromServerImpl(quint32 leftAttempts) override;
+    void setFilterImpl(const QString &filter) override;
+
+    int getLastRole() const override { return RoleLast; }
+
+private slots:
+    void syncBanks(quint32 leftAttempts);
 
 private:
+    void emitUpdateBanksData(quint32 leftAttempts)
+    { emit updateBanksDataRequest(leftAttempts); }
+
+    QList<int> mBanksToProcess;
+
     QHash<int, QByteArray> mRoleNames;
     QString mQueryMask;
-    const QString mConnectionName;
     QSqlQuery mQuery;
 };
 

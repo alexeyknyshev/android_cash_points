@@ -2,15 +2,12 @@
 
 #include <QtSql/QSqlRecord>
 #include <QtSql/QSqlError>
-#include <QDebug>
-#include <QJsonDocument>
-#include <QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonArray>
+#include <QtCore/QDebug>
 
 #include "serverapi.h"
 #include "rpctype.h"
-
-#define DEFAULT_ATTEMPTS_COUNT 3
-#define DEFAULT_BATCH_SIZE 128
 
 struct Town : public RpcType<Town>
 {
@@ -22,7 +19,8 @@ struct Town : public RpcType<Town>
     bool regionalCenter;
 
     Town()
-        : longitude(0.0f), latitude(0.0f)
+        : longitude(0.0f),
+          latitude(0.0f)
     { }
 
     static Town fromJsonObject(const QJsonObject &obj)
@@ -58,21 +56,16 @@ struct Region : public RpcType<Region>
 /// ================================================
 
 TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
-    : QStandardItemModel(0, 4, nullptr),
-      mApi(api),
+    : ListSqlModel(connectionName, api),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateTowns(QSqlDatabase::database(connectionName)),
-      mQueryUpdateRegions(QSqlDatabase::database(connectionName)),
-      mRequestAttemptsCount(DEFAULT_ATTEMPTS_COUNT),
-      mRequestBatchSize(DEFAULT_BATCH_SIZE)
+      mQueryUpdateRegions(QSqlDatabase::database(connectionName))
 {
-    mRoleNames[IdRole]     = "town_id";
-    mRoleNames[NameRole]   = "town_name";
-    mRoleNames[NameTrRole] = "town_name_tr";
-    mRoleNames[RegionRole] = "town_region_id";
-    mRoleNames[CenterRole] = "town_regional_center";
-
-    mRoleNames[RolesCount] = "index";
+    setRoleName(IdRole,     "town_id");
+    setRoleName(NameRole,   "town_name");
+    setRoleName(NameTrRole, "town_name_tr");
+    setRoleName(RegionRole, "town_region_id");
+    setRoleName(CenterRole, "town_regional_center");
 
     if (!mQuery.prepare("SELECT id, name, name_tr FROM towns WHERE "
                         "name LIKE :filter_a or name_tr LIKE :filter_b or "
@@ -94,51 +87,37 @@ TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
         qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateRegions.lastError().databaseText();
     }
 
-    connect(this, SIGNAL(retryUpdate(quint32)),
-            this, SLOT(updateFromServer(quint32)), Qt::QueuedConnection);
+    connect(this, SIGNAL(updateTownsIdsRequest(quint32)),
+            this, SLOT(updateTownsIds(quint32)), Qt::QueuedConnection);
 
-    connect(this, SIGNAL(syncNextTown(quint32)),
-            this, SLOT(syncTowns(quint32)), Qt::QueuedConnection);
+    connect(this, SIGNAL(townIdsUpdated(quint32)),
+            this, SIGNAL(updateTownsDataRequest(quint32)));
+
+    connect(this, SIGNAL(updateTownsDataRequest(quint32)),
+            this, SLOT(updateTownsData(quint32)), Qt::QueuedConnection);
+
+    connect(this, SIGNAL(updateRegionsRequest(quint32)),
+            this, SLOT(updateRegions(quint32)), Qt::QueuedConnection);
 
     setFilter("");
 }
 
-QHash<int, QByteArray> TownListSqlModel::roleNames() const
-{
-    return mRoleNames;
-}
-
 QVariant TownListSqlModel::data(const QModelIndex &item, int role) const
 {
-    if (role == RegionRole + 1)
+    if (role < Qt::UserRole || role >= RoleLast)
     {
-        return item.row();
+        return ListSqlModel::data(item, role);
     }
 
     return QStandardItemModel::data(index(item.row(), role - IdRole), role);
 }
 
 
-void TownListSqlModel::setFilter(QString filterStr)
+void TownListSqlModel::setFilterImpl(const QString &filter)
 {
-    filterStr.replace('_', "");
-    filterStr.replace('%', "");
-    filterStr.replace('*', '%');
-    filterStr.replace('?', '_');
-
-    if (!filterStr.startsWith('%'))
-    {
-        filterStr.prepend('%');
-    }
-
-    if (!filterStr.endsWith('%'))
-    {
-        filterStr.append('%');
-    }
-
-    mQuery.bindValue(0, filterStr);
-    mQuery.bindValue(1, filterStr);
-    mQuery.bindValue(2, filterStr);
+    mQuery.bindValue(0, filter);
+    mQuery.bindValue(1, filter);
+    mQuery.bindValue(2, filter);
 
     if (!mQuery.exec()) {
         qCritical() << mQuery.lastError().databaseText();
@@ -151,7 +130,7 @@ void TownListSqlModel::setFilter(QString filterStr)
     {
         QList<QStandardItem *> items;
 
-        for (int i = 0; i < RolesCount; ++i) {
+        for (int i = 0; i < RoleLast - IdRole; ++i) {
             QStandardItem *item = new QStandardItem;
             item->setData(mQuery.value(i), IdRole + i);
             items.append(item);
@@ -189,31 +168,38 @@ static QList<int> getTownsIdList(const QJsonDocument &json)
 QList<Town> getTownList(const QJsonDocument &json)
 {
     QJsonObject obj = json.object();
-    return Town::fromJsonArray(obj["towns"].toArray());
+    QList<Town> r = Town::fromJsonArray(obj["towns"].toArray());
+    return r;
 }
 
-void TownListSqlModel::updateFromServer()
-{
-    updateFromServer(getAttemptsCount());
-}
-
-void TownListSqlModel::updateFromServer(quint32 leftAttempts)
+void TownListSqlModel::updateFromServerImpl(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         return;
     }
 
-    /// TODO: try to use /towns endpoint
-    mApi->sendRequest("/towns", {},
+    emitUpdateTownIds(leftAttempts);
+    emitUpdateRegions(leftAttempts);
+}
+
+void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
+{
+    if (leftAttempts == 0) {
+        qDebug() << "updateTownsIds: no retry attempt left";
+        return;
+    }
+
+    /// Get list of towns' ids
+    getServerApi()->sendRequest("/towns", {},
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
-            emitRetryUpdate(leftAttempts - 1);
+            emitUpdateTownIds(leftAttempts - 1);
             return;
         }
 
         if (code != ServerApi::HSC_Ok) {
             qWarning() << "Server request error: " << code;
-            emitRetryUpdate(leftAttempts - 1);
+            emitUpdateTownIds(leftAttempts - 1);
             return;
         }
 
@@ -225,17 +211,108 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
         }
 
         mTownsToProcess = getTownsIdList(json);
-        emitSyncNextTown(getAttemptsCount());
-    });
+        //qDebug() << "got towns id list:" << mTownsToProcess.size();
 
-    mApi->sendRequest("/regions", {},
+        emitTownIdsUpdated(getAttemptsCount());
+    });
+}
+
+void TownListSqlModel::updateTownsData(quint32 leftAttempts)
+{
+    if (leftAttempts == 0) {
+        qDebug() << "updateTownsData: no retry attempt left";
+        return;
+    }
+
+    if (mTownsToProcess.empty()) {
+        return;
+    }
+
+    const int townsToProcess = qMin(getRequestBatchSize(), mTownsToProcess.size());
+    if (townsToProcess == 0) {
+        return;
+    }
+
+    QJsonArray requestTownsBatch;
+    for (int i = 0; i < townsToProcess; i++) {
+        requestTownsBatch.append(mTownsToProcess.front());
+        mTownsToProcess.removeFirst();
+    }
+
+    /// Get towns data from list
+    getServerApi()->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        /// TODO: separate retry handler for different queries
         if (timeOut) {
+            foreach (const QJsonValue &val, requestTownsBatch) {
+                const int id = val.toInt();
+                if (id > 0) {
+                    mTownsToProcess.append(id);
+                }
+            }
+
+            emitUpdateTownData(leftAttempts - 1);
             return;
         }
 
         if (code != ServerApi::HSC_Ok) {
+            qWarning() << "updateTownsData: http status code: " << code;
+            foreach (const QJsonValue &val, requestTownsBatch) {
+                const int id = val.toInt();
+                if (id > 0) {
+                    mTownsToProcess.append(id);
+                }
+            }
+
+            emitUpdateTownData(leftAttempts - 1);
+            return;
+        }
+
+        QJsonParseError err;
+        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            qWarning() << "updateTownsData: response parse error: " << err.errorString();
+            return;
+        }
+
+        QList<Town> townList = getTownList(json);
+        if (townList.isEmpty()) {
+            qWarning() << "updateTownsData: response is empty\n"
+                       << QString::fromUtf8(data);
+        }
+
+        for (const Town &town : townList) {
+            mQueryUpdateTowns.bindValue(0, town.id);
+            mQueryUpdateTowns.bindValue(1, town.name);
+            mQueryUpdateTowns.bindValue(2, town.nameTr);
+            mQueryUpdateTowns.bindValue(3, town.regionId);
+            mQueryUpdateTowns.bindValue(4, town.regionalCenter);
+
+            if (!mQueryUpdateTowns.exec()) {
+                qWarning() << "updateTownsData: failed to update 'towns' table";
+                qWarning() << "updateTownsData: " << mQueryUpdateTowns.lastError().databaseText();
+            }
+        }
+
+        emitUpdateTownData(getAttemptsCount());
+    });
+}
+
+void TownListSqlModel::updateRegions(quint32 leftAttempts)
+{
+    if (leftAttempts == 0) {
+        qDebug() << "updateRegions: no retry attempt left";
+        return;
+    }
+
+    getServerApi()->sendRequest("/regions", {},
+    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+        if (timeOut) {
+            emitUpdateRegions(leftAttempts - 1);
+            return;
+        }
+
+        if (code != ServerApi::HSC_Ok) {
+            emitUpdateRegions(leftAttempts - 1);
             qWarning() << "Server request error: " << code;
             return;
         }
@@ -264,98 +341,5 @@ void TownListSqlModel::updateFromServer(quint32 leftAttempts)
                 qWarning() << "syncTowns: " << mQueryUpdateRegions.lastError().databaseText();
             }
         }
-    });
-}
-
-void TownListSqlModel::emitRetryUpdate(quint32 leftAttempts)
-{
-    if (leftAttempts > 0) {
-        emit retryUpdate(leftAttempts);
-    }
-}
-
-void TownListSqlModel::emitSyncNextTown(quint32 leftAttempts)
-{
-    if (leftAttempts > 0) {
-        emit syncNextTown(leftAttempts);
-    }
-}
-
-void TownListSqlModel::syncTowns(quint32 leftAttempts)
-{
-    if (leftAttempts == 0) {
-        qDebug() << "syncTowns no retry attempt left";
-        return;
-    }
-
-    if (mTownsToProcess.empty()) {
-        return;
-    }
-
-    const int townsToProcess = qMin(getBatchSize(), mTownsToProcess.size());
-    if (townsToProcess == 0) {
-        return;
-    }
-
-    QJsonArray requestTownsBatch;
-    for (int i = 0; i < townsToProcess; i++) {
-        requestTownsBatch.append(mTownsToProcess.front());
-        mTownsToProcess.removeFirst();
-    }
-
-    mApi->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
-    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        if (timeOut) {
-            foreach (const QJsonValue &val, requestTownsBatch) {
-                const int id = val.toInt();
-                if (id > 0) {
-                    mTownsToProcess.append(id);
-                }
-            }
-
-            emitSyncNextTown(leftAttempts - 1);
-            return;
-        }
-
-        if (code != ServerApi::HSC_Ok) {
-            qWarning() << "syncTowns: http status code: " << code;
-            foreach (const QJsonValue &val, requestTownsBatch) {
-                const int id = val.toInt();
-                if (id > 0) {
-                    mTownsToProcess.append(id);
-                }
-            }
-
-            emitSyncNextTown(leftAttempts - 1);
-            return;
-        }
-
-        QJsonParseError err;
-        QJsonDocument json = QJsonDocument::fromJson(data, &err);
-        if (err.error != QJsonParseError::NoError) {
-            qWarning() << "syncTowns: response parse error: " << err.errorString();
-            return;
-        }
-
-        QList<Town> townList = getTownList(json);
-        if (townList.isEmpty()) {
-            qWarning() << "syncTowns: response is empty\n"
-                       << QString::fromUtf8(data);
-        }
-
-        for (const Town &town : townList) {
-            mQueryUpdateTowns.bindValue(0, town.id);
-            mQueryUpdateTowns.bindValue(1, town.name);
-            mQueryUpdateTowns.bindValue(2, town.nameTr);
-            mQueryUpdateTowns.bindValue(3, town.regionId);
-            mQueryUpdateTowns.bindValue(4, town.regionalCenter);
-
-            if (!mQueryUpdateTowns.exec()) {
-                qWarning() << "syncTowns: failed to update 'towns' table";
-                qWarning() << "syncTowns: " << mQueryUpdateTowns.lastError().databaseText();
-            }
-        }
-
-        emitSyncNextTown(getAttemptsCount());
     });
 }
