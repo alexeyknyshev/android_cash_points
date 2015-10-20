@@ -1,6 +1,7 @@
 #ifndef RPCTYPE_H
 #define RPCTYPE_H
 
+#include <QJsonObject>
 #include <QJsonArray>
 
 template<typename T>

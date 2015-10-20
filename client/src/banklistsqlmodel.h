@@ -17,6 +17,7 @@ public:
         RaitingRole,
         NameTrAltRole,
         TelRole,
+        RolesCount = 7
     };
 
     explicit BankListSqlModel(QString connectionName);
