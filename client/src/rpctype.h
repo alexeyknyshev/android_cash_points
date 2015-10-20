@@ -27,7 +27,7 @@ struct RpcType
     static QList<T> fromJsonArray(const QJsonArray &arr) {
         QList<T> result;
         for (QJsonValue val : arr) {
-            T t = T::fromJsonObject(val.toObject());
+            const T t = T::fromJsonObject(val.toObject());
             if (t.isValid()) {
                 result.append(t);
             }
