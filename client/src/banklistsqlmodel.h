@@ -5,8 +5,6 @@
 
 #include "listsqlmodel.h"
 
-class ServerApi;
-
 class BankListSqlModel : public ListSqlModel
 {
     Q_OBJECT
@@ -17,40 +15,46 @@ public:
         NameRole,
         LicenceRole,
         NameTrRole,
-        RaitingRole,
+        RatingRole,
+        RegionName,
         NameTrAltRole,
         TelRole,
 
         RoleLast
     };
 
-    explicit BankListSqlModel(QString connectionName, ServerApi *api);
+    BankListSqlModel(QString connectionName, ServerApi *api);
 
     QVariant data(const QModelIndex &item, int role) const override;
 
 signals:
+    void updateBanksIdsRequest(quint32 leftAttempts);
     void updateBanksDataRequest(quint32 leftAttempts);
-    void syncNextBankBatch(quint32 leftAttempts);
+
+    void bankIdsUpdated(quint32 leftAttempts);
 
 protected:
-    QHash<int, QByteArray> roleNames() const override;
     void updateFromServerImpl(quint32 leftAttempts) override;
     void setFilterImpl(const QString &filter) override;
 
     int getLastRole() const override { return RoleLast; }
 
 private slots:
-    void syncBanks(quint32 leftAttempts);
+    void updateBanksIds(quint32 leftAttempts);
+    void updateBanksData(quint32 leftAttempts);
 
 private:
+    void emitUpdateBanksIds(quint32 leftAttempts)
+    { emit updateBanksIdsRequest(leftAttempts); }
+    void emitBankIdsUpdated(quint32 leftAttempts)
+    { emit bankIdsUpdated(leftAttempts); }
     void emitUpdateBanksData(quint32 leftAttempts)
     { emit updateBanksDataRequest(leftAttempts); }
 
     QList<int> mBanksToProcess;
 
-    QHash<int, QByteArray> mRoleNames;
-    QString mQueryMask;
     QSqlQuery mQuery;
+    QSqlQuery mQueryUpdateBanks;
 };
 
 #endif // BANKLISTSQLMODEL_H

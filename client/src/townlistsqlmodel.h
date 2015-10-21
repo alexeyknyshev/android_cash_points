@@ -2,7 +2,6 @@
 #define TOWNLISTSQLMODEL_H
 
 #include <QtSql/QSqlQuery>
-#include <QDebug>
 
 #include "listsqlmodel.h"
 

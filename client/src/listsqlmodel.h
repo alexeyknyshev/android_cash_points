@@ -12,6 +12,9 @@ class ListSqlModel : public QStandardItemModel
 public:
     ListSqlModel(const QString &connectionName, ServerApi *api);
 
+signals:
+    void serverDataReceived();
+
 public slots:
     void setFilter(QString filter);
 
@@ -31,6 +34,9 @@ protected:
     ServerApi *getServerApi() const { return mApi; }
 
     void setRoleName(int role, const QByteArray &name) const { mRoleNames[role] = name; }
+
+    void emitServerDataReceived()
+    { emit serverDataReceived(); }
 
     /// reimplemented qt methods
     QVariant data(const QModelIndex &item, int role) const override;

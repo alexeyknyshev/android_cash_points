@@ -115,9 +115,9 @@ QVariant TownListSqlModel::data(const QModelIndex &item, int role) const
 
 void TownListSqlModel::setFilterImpl(const QString &filter)
 {
-    mQuery.bindValue(0, filter);
-    mQuery.bindValue(1, filter);
-    mQuery.bindValue(2, filter);
+    for (int i = 0; i < 2; ++i) {
+        mQuery.bindValue(i, filter);
+    }
 
     if (!mQuery.exec()) {
         qCritical() << mQuery.lastError().databaseText();
@@ -152,7 +152,7 @@ static QList<int> getTownsIdList(const QJsonDocument &json)
         return townIdList;
     }
 
-    QJsonArray arr = townsVal.toArray();
+    const QJsonArray arr = townsVal.toArray();
 
     for (const QJsonValue &val : arr) {
         static const int invalidId = -1;
@@ -165,11 +165,10 @@ static QList<int> getTownsIdList(const QJsonDocument &json)
     return townIdList;
 }
 
-QList<Town> getTownList(const QJsonDocument &json)
+static QList<Town> getTownList(const QJsonDocument &json)
 {
-    QJsonObject obj = json.object();
-    QList<Town> r = Town::fromJsonArray(obj["towns"].toArray());
-    return r;
+    const QJsonObject obj = json.object();
+    return Town::fromJsonArray(obj["towns"].toArray());
 }
 
 void TownListSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -204,7 +203,7 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
         }
 
         QJsonParseError err;
-        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
             qWarning() << "Server response json parse error: " << err.errorString();
             return;
@@ -234,7 +233,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
     }
 
     QJsonArray requestTownsBatch;
-    for (int i = 0; i < townsToProcess; i++) {
+    for (int i = 0; i < townsToProcess; ++i) {
         requestTownsBatch.append(mTownsToProcess.front());
         mTownsToProcess.removeFirst();
     }
@@ -243,7 +242,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
     getServerApi()->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
     [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
-            foreach (const QJsonValue &val, requestTownsBatch) {
+            for (const QJsonValue &val : requestTownsBatch) {
                 const int id = val.toInt();
                 if (id > 0) {
                     mTownsToProcess.append(id);
@@ -256,7 +255,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
 
         if (code != ServerApi::HSC_Ok) {
             qWarning() << "updateTownsData: http status code: " << code;
-            foreach (const QJsonValue &val, requestTownsBatch) {
+            for (const QJsonValue &val : requestTownsBatch) {
                 const int id = val.toInt();
                 if (id > 0) {
                     mTownsToProcess.append(id);
@@ -268,13 +267,13 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         }
 
         QJsonParseError err;
-        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
             qWarning() << "updateTownsData: response parse error: " << err.errorString();
             return;
         }
 
-        QList<Town> townList = getTownList(json);
+        const QList<Town> townList = getTownList(json);
         if (townList.isEmpty()) {
             qWarning() << "updateTownsData: response is empty\n"
                        << QString::fromUtf8(data);
@@ -318,20 +317,20 @@ void TownListSqlModel::updateRegions(quint32 leftAttempts)
         }
 
         QJsonParseError err;
-        QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
             qWarning() << "Server response json parse error: " << err.errorString();
             return;
         }
 
-        QJsonObject obj = json.object();
-        QJsonValue regionsJson = obj["regions"];
+        const QJsonObject obj = json.object();
+        const QJsonValue regionsJson = obj["regions"];
         if (!regionsJson.isArray()) {
             qWarning() << "Server response is not json array";
             return;
         }
 
-        QList<Region> regions = Region::fromJsonArray(regionsJson.toArray());
+        const QList<Region> regions = Region::fromJsonArray(regionsJson.toArray());
         for (const Region &reg : regions) {
             mQueryUpdateRegions.bindValue(0, reg.id);
             mQueryUpdateRegions.bindValue(1, reg.name);
