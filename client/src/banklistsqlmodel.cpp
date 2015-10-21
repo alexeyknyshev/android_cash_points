@@ -82,6 +82,9 @@ BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
     connect(this, SIGNAL(updateBanksDataRequest(quint32)),
             this, SLOT(updateBanksData(quint32)), Qt::QueuedConnection);
 
+    connect(this, SIGNAL(updateBankLogoRequest(quint32,quint32)),
+            this, SLOT(updateBankLogo(quint32,quint32)), Qt::QueuedConnection);
+
     setFilter("");
 }
 
@@ -272,9 +275,42 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
                 qWarning() << "updateBanksData: failed to update 'banks' table";
                 qWarning() << "updateBanksData: " << mQueryUpdateBanks.lastError().databaseText();
             }
+
+            emitUpdateBankLogo(getAttemptsCount(), bank.id);
         }
 
         emitUpdateBanksData(getAttemptsCount());
     });
 }
 
+void BankListSqlModel::updateBankLogo(quint32 leftAttempts, quint32 bankId)
+{
+    if (leftAttempts == 0) {
+        qDebug() << "updateBankLogo: no retry attempt left";
+        return;
+    }
+
+    getServerApi()->sendRequest("/bank/" + QString::number(bankId) + "/logo", {},
+    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+        if (timeOut) {
+            emitUpdateBankLogo(leftAttempts - 1, bankId);
+            return;
+        }
+
+        if (code != ServerApi::HSC_Ok) {
+            qWarning() << "updateBankLogo: http status code: " << code;
+
+            emitUpdateBankLogo(leftAttempts - 1, bankId);
+            return;
+        }
+
+        QJsonParseError err;
+        const QJsonDocument json = QJsonDocument::fromJson(data, &err);
+        if (err.error != QJsonParseError::NoError) {
+            qWarning() << "updateBankLogo: response parse error: " << err.errorString();
+            return;
+        }
+
+
+    });
+}

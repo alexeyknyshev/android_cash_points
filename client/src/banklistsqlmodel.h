@@ -30,6 +30,7 @@ public:
 signals:
     void updateBanksIdsRequest(quint32 leftAttempts);
     void updateBanksDataRequest(quint32 leftAttempts);
+    void updateBankLogoRequest(quint32 leftAttempts, quint32 bankId);
 
     void bankIdsUpdated(quint32 leftAttempts);
 
@@ -42,6 +43,7 @@ protected:
 private slots:
     void updateBanksIds(quint32 leftAttempts);
     void updateBanksData(quint32 leftAttempts);
+    void updateBankLogo(quint32 leftAttempts, quint32 bankId);
 
 private:
     void emitUpdateBanksIds(quint32 leftAttempts)
@@ -50,6 +52,8 @@ private:
     { emit bankIdsUpdated(leftAttempts); }
     void emitUpdateBanksData(quint32 leftAttempts)
     { emit updateBanksDataRequest(leftAttempts); }
+    void emitUpdateBankLogo(quint32 leftAttempts, quint32 bankId)
+    { emit updateBankLogoRequest(leftAttempts, bankId); }
 
     QList<int> mBanksToProcess;
 
