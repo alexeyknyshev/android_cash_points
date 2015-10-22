@@ -61,6 +61,7 @@ type ServerConfig struct {
 	RedisScriptsDir    string `json:"RedisScriptsDir"`
 	ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
 	UUID_TTL           uint64 `json:"UUID_TTL"`
+	BanksIcoDir        string `json:"BanksIcoDir"`
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -343,6 +344,11 @@ type BankIds struct {
 
 type BankList struct {
 	BankList []map[string]*json.RawMessage `json:"banks"`
+}
+
+type BankIco struct {
+    BankId  uint32 `json:"bank_id"`
+    IcoData string `json:"ico_data"`
 }
 
 var BuildDate string
@@ -874,6 +880,70 @@ func handlerBank(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, r, requestId, jsonStr)
 }
 
+func handlerBankIco(w http.ResponseWriter, r *http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
+        return
+    }
+
+    params := mux.Vars(r)
+    bankIdStr := params["id"]
+
+    context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankIco", map[string]string{
+        "requestId": strconv.FormatInt(requestId, 10),
+        "bankId":    bankIdStr,
+    })
+
+    redisCli, err := redis_cli_pool.Get()
+    if err != nil {
+        log.Fatal("%s => %v\n", context, err)
+        return
+    }
+    defer redis_cli_pool.Put(redisCli)
+
+    result := redisCli.Cmd("HGET", "settings", "banks_ico_dir")
+
+    if result.Err != nil {
+        log.Printf("%s: redis => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if result.IsType(redis.Nil) {
+        log.Printf("%s: redis => no such settings entry: %s\n", context, "banks_ico_dir")
+        w.WriteHeader(500)
+        return
+    }
+
+    banksIcoDir, err := result.Str()
+    if err != nil {
+        log.Printf("%s: redis => %v\n", context, err)
+        w.WriteHeader(500)
+        return
+    }
+
+    icoFilePath := path.Join(banksIcoDir, bankIdStr + ".svg")
+
+    if _, err := os.Stat(icoFilePath); os.IsNotExist(err) {
+        w.WriteHeader(404)
+        return
+    }
+
+    data, err := ioutil.ReadFile(icoFilePath)
+    if err != nil {
+        log.Printf("%s => cannot read file: %s", context, icoFilePath)
+        w.WriteHeader(500)
+        return
+    }
+
+    id, err := strconv.ParseUint(bankIdStr, 10, 32)
+    bankId := checkConvertionUint(uint32(id), err, context+" => BankIco.BankId")
+
+    ico := &BankIco{ BankId: bankId, IcoData: string(data) }
+    jsonByteArr, _ := json.Marshal(ico)
+    writeResponse(w, r, requestId, string(jsonByteArr))
+}
+
 func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
 	ok, requestId := prepareResponse(w, r)
 	if ok == false {
@@ -1118,7 +1188,8 @@ func main() {
 
 	redis_cli.Cmd("HMSET", "settings", "user_login_min_length", serverConfig.UserLoginMinLength,
 		"user_password_min_length", serverConfig.UserPwdMinLength,
-		"uuid_ttl", serverConfig.UUID_TTL)
+		"uuid_ttl", serverConfig.UUID_TTL,
+        "banks_ico_dir", serverConfig.BanksIcoDir)
 
 	preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
 
@@ -1133,6 +1204,7 @@ func main() {
 	router.HandleFunc("/regions", handlerRegions)
 	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
 	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
+    router.HandleFunc("/bank/{id:[0-9]+}/ico", handlerBankIco).Methods("GET")
 	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")
 	router.HandleFunc("/banks", handlerBankList).Methods("GET")
 	router.HandleFunc("/banks", handlerBanksBatch).Methods("POST")
