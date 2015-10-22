@@ -4,6 +4,7 @@
 #include <QtSql/QSqlError>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonArray>
+#include <QtCore/QFile>
 #include <QtCore/QDebug>
 
 #include "rpctype.h"
@@ -54,6 +55,8 @@ BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
     setRoleName(RatingRole,    "bank_rating");
     setRoleName(NameTrAltRole, "bank_name_tr_alt");
     setRoleName(TelRole,       "bank_tel");
+    setRoleName(IcoPath,       "bank_ico_path");
+
 
     if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel FROM banks"
                         " WHERE"
@@ -82,8 +85,8 @@ BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
     connect(this, SIGNAL(updateBanksDataRequest(quint32)),
             this, SLOT(updateBanksData(quint32)), Qt::QueuedConnection);
 
-    connect(this, SIGNAL(updateBankLogoRequest(quint32,quint32)),
-            this, SLOT(updateBankLogo(quint32,quint32)), Qt::QueuedConnection);
+    connect(this, SIGNAL(updateBankIcoRequest(quint32,quint32)),
+            this, SLOT(updateBankIco(quint32,quint32)), Qt::QueuedConnection);
 
     setFilter("");
 }
@@ -95,7 +98,7 @@ QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
         return ListSqlModel::data(item, role);
     }
 
-    return QStandardItemModel::data(index(item.row(), role - IdRole), role);
+    return QStandardItemModel::data(index(item.row(), 0), role);
 }
 
 void BankListSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -124,11 +127,11 @@ void BankListSqlModel::setFilterImpl(const QString &filter)
     {
         QList<QStandardItem *> items;
 
-        for (int i = 0; i < RoleLast - IdRole; ++i) {
-            QStandardItem *item = new QStandardItem;
+        QStandardItem *item = new QStandardItem;
+        for (int i = 0; i < IcoPath - IdRole; ++i) {
             item->setData(mQuery.value(i), IdRole + i);
-            items.append(item);
         }
+        items.append(item);
 
         insertRow(row, items);
         ++row;
@@ -276,41 +279,82 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
                 qWarning() << "updateBanksData: " << mQueryUpdateBanks.lastError().databaseText();
             }
 
-            emitUpdateBankLogo(getAttemptsCount(), bank.id);
+            emitUpdateBankIco(getAttemptsCount(), bank.id);
         }
 
         emitUpdateBanksData(getAttemptsCount());
     });
 }
 
-void BankListSqlModel::updateBankLogo(quint32 leftAttempts, quint32 bankId)
+void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
 {
     if (leftAttempts == 0) {
-        qDebug() << "updateBankLogo: no retry attempt left";
+        qDebug() << "updateBankIco: no retry attempt left";
         return;
     }
 
-    getServerApi()->sendRequest("/bank/" + QString::number(bankId) + "/logo", {},
-    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+    const QString requestPath = "/bank/" + QString::number(bankId) + "/ico";
+    getServerApi()->sendRequest(requestPath, {},
+    [&, bankId](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
         if (timeOut) {
-            emitUpdateBankLogo(leftAttempts - 1, bankId);
+            emitUpdateBankIco(leftAttempts - 1, bankId);
             return;
         }
 
         if (code != ServerApi::HSC_Ok) {
-            qWarning() << "updateBankLogo: http status code: " << code;
+            qWarning() << "updateBankIco: http status code: " << code;
 
-            emitUpdateBankLogo(leftAttempts - 1, bankId);
+            emitUpdateBankIco(leftAttempts - 1, bankId);
             return;
         }
 
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            qWarning() << "updateBankLogo: response parse error: " << err.errorString();
+            qWarning() << "updateBankIco: response parse error: " << err.errorString();
             return;
         }
 
+        const QJsonObject jsonObj = json.object();
+        if (jsonObj.isEmpty()) {
+            qWarning() << "updateBankIco: empty json object in response: " << data;
+            return;
+        }
 
+        qDebug() << "updateBankIco: bankIco: " << jsonObj["bank_id"].toString();
+
+        const quint32 bankId = jsonObj["bank_id"].toInt();
+        if (bankId == 0) {
+            qWarning() << "updateBankIco: invlid bankId";
+            return;
+        }
+
+        QString icoData = jsonObj["ico_data"].toString();
+
+        const QString bankIdStr = QString::number(bankId);
+        QFile file("./data/banks/ico/" + bankIdStr + ".svg");
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            qWarning() << "updateBankIco: cannot open file for writting: " << file.fileName();
+            return;
+        }
+        QTextStream out(&file);
+        out << icoData;
+        out.flush();
+        file.close();
+
+        QList<QStandardItem *> items = findItems(bankIdStr);
+        if (items.empty()) {
+            qWarning() << "updateBankIco: cannot find bank record:" << bankId;
+            return;
+        }
+
+        if (items.size() > 1) {
+            qWarning() << "updateBankIco: found " << items.size() << " matching banks records => "
+                       << "updating all";
+        }
+
+        for (QStandardItem *item : items) {
+            item->setData(file.fileName());
+        }
     });
 }
