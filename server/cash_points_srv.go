@@ -41,14 +41,6 @@ func isAlphaNumericString(s string) bool {
 
 // ========================================================
 
-const JsonNullResponse string = `{"id":null}`
-const JsonLoginTooShortResponse = `{"id":null,"msg":"Login is too short"}`
-const JsonLoginInvalidCharResponse = `{"id":null,"msg":"Login contains invalid characters"}`
-const JsonPwdTooShortResponse = `{"id":null,"msg":"Password is too short"}`
-const JsonPwdInvalidCharResponse = `{"id":null,"msg":"Password contains invalid characters"}`
-
-// ========================================================
-
 type ServerConfig struct {
 	TownsDataBase      string `json:"TownsDataBase"`
 	CashPointsDataBase string `json:"CashPointsDataBase"`
@@ -374,6 +366,13 @@ var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
 
 var REQ_RES_LOG_TTL uint64 = 60
+
+// ========================================================
+
+func handlerPing(w http.ResponseWriter, r *http.Request) {
+	var requestId int64 = -1;
+	writeResponse(w, r, requestId, "pong")
+}
 
 // ========================================================
 
@@ -1196,6 +1195,7 @@ func main() {
 	REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
 	router := mux.NewRouter()
+	router.HandleFunc("/ping", handlerPing).Methods("GET")
 	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
 	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
 	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
