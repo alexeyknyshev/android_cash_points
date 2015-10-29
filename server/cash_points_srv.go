@@ -390,8 +390,14 @@ var REQ_RES_LOG_TTL uint64 = 60
 // ========================================================
 
 func handlerPing(w http.ResponseWriter, r *http.Request) {
-	var requestId int64 = -1;
-	writeResponse(w, r, requestId, "pong")
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+
+	go logRequest(w, r, requestId, "")
+
+	writeResponse(w, r, requestId, `{"msg":"pong"}`)
 }
 
 // ========================================================
