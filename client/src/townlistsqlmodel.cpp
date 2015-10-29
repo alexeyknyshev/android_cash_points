@@ -55,12 +55,16 @@ struct Region : public RpcType<Region>
 
 /// ================================================
 
-TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
-    : ListSqlModel(connectionName, api),
+TownListSqlModel::TownListSqlModel(const QString &connectionName,
+                                   ServerApi *api,
+                                   IcoImageProvider *imageProvider)
+    : ListSqlModel(connectionName, api, imageProvider),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateTowns(QSqlDatabase::database(connectionName)),
       mQueryUpdateRegions(QSqlDatabase::database(connectionName))
 {
+    setRowCount(11000);
+
     setRoleName(IdRole,     "town_id");
     setRoleName(NameRole,   "town_name");
     setRoleName(NameTrRole, "town_name_tr");
@@ -68,8 +72,9 @@ TownListSqlModel::TownListSqlModel(QString connectionName, ServerApi *api)
     setRoleName(CenterRole, "town_regional_center");
 
     if (!mQuery.prepare("SELECT id, name, name_tr FROM towns WHERE "
-                        "name LIKE :filter_a or name_tr LIKE :filter_b or "
-                        "region_id IN (SELECT id FROM regions WHERE name LIKE :filter_c) "
+                        "       name LIKE :name"
+                        " or name_tr LIKE :name_tr"
+                        " or region_id IN (SELECT id FROM regions WHERE name LIKE :region_name) "
                         "ORDER BY regional_center DESC, region_id, id"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();

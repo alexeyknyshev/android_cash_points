@@ -1,6 +1,7 @@
 #include "banklistsqlmodel.h"
 #include "townlistsqlmodel.h"
 #include "serverapi.h"
+#include "icoimageprovider.h"
 
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -11,6 +12,8 @@
 #include <QFile>
 #include <QDebug>
 #include <QTableView>
+
+#include <QMetaMethod>
 
 QStringList getSqlQuery(const QString &queryFileName)
 {
@@ -30,10 +33,6 @@ int main(int argc, char *argv[])
     app.setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents, false);
     app.setAttribute(Qt::AA_SynthesizeTouchForUnhandledMouseEvents, false);
 
-    QQmlApplicationEngine engine;
-
-    engine.addImportPath("qrc:/ui");
-
     // bank list db
     const QString banksConnName = "banks";
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", banksConnName);
@@ -45,22 +44,63 @@ int main(int argc, char *argv[])
     }
 
     db.transaction();
-    db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, name_tr text, town text, rating integer, name_tr_alt text, tel text)");
-    db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, region_id integer, regional_center integer)");
+    db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, "
+                                "name_tr text, town text, rating integer, "
+                                "name_tr_alt text, tel text, ico_path)");
+
+    db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, "
+                                "region_id integer, regional_center integer)");
+
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
     db.commit();
 
     ServerApi *api = new ServerApi("localhost", 8080);
 
-    BankListSqlModel *bankListModel = new BankListSqlModel(banksConnName, api);
-    TownListSqlModel *townListModel = new TownListSqlModel(banksConnName, api);
+    IcoImageProvider *imageProvider = new IcoImageProvider;
 
-    bankListModel->updateFromServer();
-    townListModel->updateFromServer();
+    BankListSqlModel *bankListModel =
+            new BankListSqlModel(banksConnName, api, imageProvider);
 
+    TownListSqlModel *townListModel =
+            new TownListSqlModel(banksConnName, api, imageProvider);
+
+    QQmlApplicationEngine engine;
+
+    engine.addImportPath("qrc:/ui");
+    engine.addImageProvider(QLatin1String("ico"), imageProvider);
     engine.rootContext()->setContextProperty("bankListModel", bankListModel);
     engine.rootContext()->setContextProperty("townListModel", townListModel);
+    engine.rootContext()->setContextProperty("serverApi", api);
     engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
+
+    QObject *appWindow = nullptr;
+    for (QObject *obj : engine.rootObjects()) {
+        if (obj->objectName() == "appWindow") {
+            appWindow = obj;
+            break;
+        }
+    }
+    Q_ASSERT(appWindow);
+    QObject::connect(api, SIGNAL(pong(bool)), appWindow, SIGNAL(pong(bool)));
+
+    /// update bank and town list after successfull ping
+    QMetaObject::Connection connection = QObject::connect(api, &ServerApi::pong,
+    [&](bool ok) {
+        static int attempts = 0;
+        attempts++;
+        if (ok) {
+            qDebug() << "Connected to server";
+            QObject::disconnect(connection);
+            bankListModel->updateFromServer();
+            townListModel->updateFromServer();
+        } else {
+            if (attempts > 3) {
+                return;
+            }
+            api->ping();
+        }
+    });
+    api->ping();
 
     const int exitStatus = app.exec();
 

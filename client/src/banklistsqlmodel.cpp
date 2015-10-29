@@ -1,4 +1,5 @@
 #include "banklistsqlmodel.h"
+#include "icoimageprovider.h"
 
 #include <QtSql/QSqlRecord>
 #include <QtSql/QSqlError>
@@ -43,11 +44,16 @@ struct Bank : public RpcType<Bank>
 
 /// ================================================
 
-BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
-    : ListSqlModel(connectionName, api),
+BankListSqlModel::BankListSqlModel(const QString &connectionName,
+                                   ServerApi *api,
+                                   IcoImageProvider *imageProvider)
+    : ListSqlModel(connectionName, api, imageProvider),
       mQuery(QSqlDatabase::database(connectionName)),
-      mQueryUpdateBanks(QSqlDatabase::database(connectionName))
+      mQueryUpdateBanks(QSqlDatabase::database(connectionName)),
+      mQueryUpdateBankIco(QSqlDatabase::database(connectionName))
 {
+    setRowCount(600);
+
     setRoleName(IdRole,        "bank_id");
     setRoleName(NameRole,      "bank_name");
     setRoleName(LicenceRole,   "bank_licence");
@@ -55,10 +61,10 @@ BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
     setRoleName(RatingRole,    "bank_rating");
     setRoleName(NameTrAltRole, "bank_name_tr_alt");
     setRoleName(TelRole,       "bank_tel");
-    setRoleName(IcoPath,       "bank_ico_path");
+    setRoleName(IcoPathRole,   "bank_ico_path");
 
 
-    if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel FROM banks"
+    if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel, ico_path FROM banks"
                         " WHERE"
                         "       name LIKE :name"
                         " or licence LIKE :licence"
@@ -73,7 +79,11 @@ BankListSqlModel::BankListSqlModel(QString connectionName, ServerApi *api)
     if (!mQueryUpdateBanks.prepare("INSERT OR REPLACE INTO banks (id, name, licence, name_tr, rating, name_tr_alt, town, tel) "
                                    "VALUES (:id, :name, :licence, :name_tr, :rating, :name_tr_alt, :town, :tel)"))
     {
-        qDebug() << "BankListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
+        qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBanks.lastError().databaseText();
+    }
+
+    if (!mQueryUpdateBankIco.prepare("UPDATE banks SET ico_path = :ico_path WHERE id = :bank_id")) {
+        qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBankIco.lastError().databaseText();
     }
 
     connect(this, SIGNAL(updateBanksIdsRequest(quint32)),
@@ -128,8 +138,9 @@ void BankListSqlModel::setFilterImpl(const QString &filter)
         QList<QStandardItem *> items;
 
         QStandardItem *item = new QStandardItem;
-        for (int i = 0; i < IcoPath - IdRole; ++i) {
+        for (int i = 0; i < RoleLast - IdRole; ++i) {
             item->setData(mQuery.value(i), IdRole + i);
+//            qDebug() << mQuery.value(i);
         }
         items.append(item);
 
@@ -321,9 +332,7 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
             return;
         }
 
-        qDebug() << "updateBankIco: bankIco: " << jsonObj["bank_id"].toString();
-
-        const quint32 bankId = jsonObj["bank_id"].toInt();
+        const int bankId = jsonObj["bank_id"].toInt();
         if (bankId == 0) {
             qWarning() << "updateBankIco: invlid bankId";
             return;
@@ -331,30 +340,21 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
 
         QString icoData = jsonObj["ico_data"].toString();
 
-        const QString bankIdStr = QString::number(bankId);
-        QFile file("./data/banks/ico/" + bankIdStr + ".svg");
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            qWarning() << "updateBankIco: cannot open file for writting: " << file.fileName();
-            return;
-        }
-        QTextStream out(&file);
-        out << icoData;
-        out.flush();
-        file.close();
-
-        QList<QStandardItem *> items = findItems(bankIdStr);
-        if (items.empty()) {
-            qWarning() << "updateBankIco: cannot find bank record:" << bankId;
+        const QString bankIcoPath = "ico/bank/" + QString::number(bankId);
+        if (!getIcoImageProvider()->loadSvgImage("bank/" + QString::number(bankId), icoData.toUtf8())) {
+            qWarning() << "updateBankIco: cannot load ico into ImageProvider: " << bankId;
             return;
         }
 
-        if (items.size() > 1) {
-            qWarning() << "updateBankIco: found " << items.size() << " matching banks records => "
-                       << "updating all";
+        mQueryUpdateBankIco.bindValue(0, bankIcoPath);
+        mQueryUpdateBankIco.bindValue(1, bankId);
+
+        if (!mQueryUpdateBankIco.exec()) {
+            qWarning() << "updateBanksData: failed to update 'banks' table. Ico for bank:" << bankId;
+            qWarning() << "updateBanksData: " << mQueryUpdateBankIco.lastError().databaseText();
+            return;
         }
 
-        for (QStandardItem *item : items) {
-            item->setData(file.fileName());
-        }
+        emitBankIcoUpdated(bankId);
     });
 }

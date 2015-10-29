@@ -31,7 +31,7 @@ Rectangle {
         anchors.bottomMargin: anchors.leftMargin
 
         radius: height / 20
-        height: bankFilterEdit.contentHeight * 2
+        height: Math.min(bankFilterEdit.contentHeight * 2, parent.height * 0.1)
 
         TextInput {
             id: bankFilterEdit
@@ -224,14 +224,14 @@ Rectangle {
 
                     Image {
                         id: itemImage
-                        source: "../ico/ico/logo/" + model.bank_name_tr_alt + ".svg"
+                        source: model.bank_ico_path ? "image://" + model.bank_ico_path : ""
+                        sourceSize: Qt.size(width, height)
                         smooth: true
-                        fillMode: Image.PreserveAspectFit
+                        fillMode: Image.Pad
                         anchors.left: parent.left
                         anchors.leftMargin: bankFilterEdit.anchors.leftMargin
                         anchors.top: parent.top
                         anchors.topMargin: bankFilterEdit.anchors.topMargin
-//                        anchors.bottom: parent.bottom
                         anchors.bottomMargin: bankFilterEdit.anchors.bottomMargin
                         height: bankListView.height / 15
                         width: height
@@ -302,7 +302,7 @@ Rectangle {
                             }
                         }
                         onClicked: {
-                            console.log("selected bank: " + model.bank_name)
+                            console.log("selected bank: " + model.bank_name + " (" + model.bank_id + ") ")
                         }
                     }
                 }
