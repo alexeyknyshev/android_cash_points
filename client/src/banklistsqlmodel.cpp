@@ -20,6 +20,7 @@ struct Bank : public RpcType<Bank>
     QString tel;
     quint32 licence;
     quint32 rating;
+    quint32 mine;
 
     Bank()
         : licence(0),
@@ -37,6 +38,7 @@ struct Bank : public RpcType<Bank>
         result.tel       = obj["tel"].toString();
         result.licence   = obj["licence"].toInt();
         result.rating    = obj["rating"].toInt();
+        result.mine      = obj["mine"].toInt();
 
         return result;
     }
@@ -50,7 +52,8 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
     : ListSqlModel(connectionName, api, imageProvider),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateBanks(QSqlDatabase::database(connectionName)),
-      mQueryUpdateBankIco(QSqlDatabase::database(connectionName))
+      mQueryUpdateBankIco(QSqlDatabase::database(connectionName)),
+      mQuerySetBankMine(QSqlDatabase::database(connectionName))
 {
     setRowCount(600);
 
@@ -61,29 +64,34 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
     setRoleName(RatingRole,    "bank_rating");
     setRoleName(NameTrAltRole, "bank_name_tr_alt");
     setRoleName(TelRole,       "bank_tel");
+    setRoleName(MineRole,      "bank_is_mine");
     setRoleName(IcoPathRole,   "bank_ico_path");
 
 
-    if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel, ico_path FROM banks"
+    if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel, mine, ico_path FROM banks"
                         " WHERE"
                         "       name LIKE :name"
                         " or licence LIKE :licence"
                         " or name_tr LIKE :name_tr"
                         " or    town LIKE :town"
                         " or     tel LIKE :tel"
-                        " ORDER BY rating"))
+                        " ORDER BY mine DESC, rating"))
     {
         qDebug() << "BankListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
     }
 
-    if (!mQueryUpdateBanks.prepare("INSERT OR REPLACE INTO banks (id, name, licence, name_tr, rating, name_tr_alt, town, tel) "
-                                   "VALUES (:id, :name, :licence, :name_tr, :rating, :name_tr_alt, :town, :tel)"))
+    if (!mQueryUpdateBanks.prepare("INSERT OR REPLACE INTO banks (id, name, licence, name_tr, rating, name_tr_alt, town, tel, mine)"
+                                   "VALUES (:id, :name, :licence, :name_tr, :rating, :name_tr_alt, :town, :tel, :mine)"))
     {
         qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBanks.lastError().databaseText();
     }
 
     if (!mQueryUpdateBankIco.prepare("UPDATE banks SET ico_path = :ico_path WHERE id = :bank_id")) {
         qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBankIco.lastError().databaseText();
+    }
+
+    if (!mQuerySetBankMine.prepare("UPDATE banks SET mine = :mine WHERE id = :bank_id")) {
+        qDebug() << "BankListSqlModel cannot prepare query:" << mQuerySetBankMine.lastError().databaseText();
     }
 
     connect(this, SIGNAL(updateBanksIdsRequest(quint32)),
@@ -109,6 +117,37 @@ QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
     }
 
     return QStandardItemModel::data(index(item.row(), 0), role);
+}
+
+bool BankListSqlModel::setData(const QModelIndex &index,
+                               const QVariant &value,
+                               int role)
+{
+    if (role == MineRole) {
+        const int mine = value.toInt() == 0 ? 0 : 1;
+        quint32 bankId = index.data(IdRole).toInt();
+        if (!bankId) {
+            qDebug() << "invalid bank id";
+            return false;
+        }
+
+        qDebug() << "update mine: [" << bankId << ": " << mine << "]";
+        mQuerySetBankMine.bindValue(0, mine);
+        mQuerySetBankMine.bindValue(1, bankId);
+        if (!mQuerySetBankMine.exec()) {
+            qDebug() << "BankListSqlModel cannot local update mine banks";
+        }
+
+        const QString bankIdStr = QString::number(bankId);
+        QJsonObject json;
+        json["mine"] = QJsonValue(mine);
+        /// TODO: add session
+        getServerApi()->sendRequest("/bank/" + bankIdStr + "/mine", json,
+        [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
+
+        });
+    }
+    return ListSqlModel::setData(index, value, role);
 }
 
 void BankListSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -284,6 +323,7 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
             mQueryUpdateBanks.bindValue(5, bank.nameTrAlt);
             mQueryUpdateBanks.bindValue(6, bank.town);
             mQueryUpdateBanks.bindValue(7, bank.tel);
+            mQueryUpdateBanks.bindValue(8, bank.mine);
 
             if (!mQueryUpdateBanks.exec()) {
                 qWarning() << "updateBanksData: failed to update 'banks' table";

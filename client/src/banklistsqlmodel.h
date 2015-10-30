@@ -21,6 +21,7 @@ public:
         RegionName,
         NameTrAltRole,
         TelRole,
+        MineRole,
         IcoPathRole,
 
         RoleLast
@@ -31,6 +32,10 @@ public:
                      IcoImageProvider *imageProvider);
 
     QVariant data(const QModelIndex &item, int role) const override;
+
+    bool setData(const QModelIndex &index,
+                 const QVariant &value,
+                 int role) override;
 
 signals:
     void updateBanksIdsRequest(quint32 leftAttempts);
@@ -70,6 +75,7 @@ private:
     QSqlQuery mQuery;
     QSqlQuery mQueryUpdateBanks;
     QSqlQuery mQueryUpdateBankIco;
+    QSqlQuery mQuerySetBankMine;
 };
 
 #endif // BANKLISTSQLMODEL_H

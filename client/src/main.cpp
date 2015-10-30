@@ -46,10 +46,10 @@ int main(int argc, char *argv[])
     db.transaction();
     db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, "
                                 "name_tr text, town text, rating integer, "
-                                "name_tr_alt text, tel text, ico_path)");
+                                "name_tr_alt text, tel text, ico_path, mine)");
 
     db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, "
-                                "region_id integer, regional_center integer)");
+                                "region_id integer, regional_center integer, mine integer)");
 
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
     db.commit();
@@ -72,6 +72,17 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("townListModel", townListModel);
     engine.rootContext()->setContextProperty("serverApi", api);
     engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
+
+    QStringList icons;
+    icons << ":/icon/star.svg" << ":/icon/star_gray.svg";
+    for (const QString &icoPath : icons) {
+        QFile file(icoPath);
+        if (file.open(QIODevice::ReadOnly)) {
+            QString resName = icoPath.split('/').last();
+            imageProvider->loadSvgImage(resName, file.readAll());
+            qDebug() << icoPath << "loaded as" << resName;
+        }
+    }
 
     QObject *appWindow = nullptr;
     for (QObject *obj : engine.rootObjects()) {

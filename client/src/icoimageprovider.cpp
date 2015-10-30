@@ -21,10 +21,16 @@ QImage IcoImageProvider::requestImage(const QString &id, QSize *size, const QSiz
     QSvgRenderer *renderer = it.value();
 //    qDebug() << requestedSize;
 
+    QSize imageSize = renderer->defaultSize();
     if (size) {
-        *size = requestedSize;
+        if (requestedSize.isValid()) {
+            *size = requestedSize;
+            imageSize = requestedSize;
+        } else {
+            *size = imageSize;
+        }
     }
-    QImage image(requestedSize, QImage::Format_ARGB32);
+    QImage image(imageSize, QImage::Format_ARGB32);
     image.fill(Qt::transparent);
 
     QPainter painter(&image);
