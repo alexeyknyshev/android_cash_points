@@ -19,7 +19,7 @@ function createViewLoader(callbackFunc) {
 
 function finishCreation() {
     if (component.status === Component.Ready) {
-        viewloader = component.createObject(flipable.front, { "anchors.fill": flipable.front });
+        viewloader = component.createObject(flipable.back, { "anchors.fill": flipable.back });
         if (!viewloader) {
             console.log("Error creating ViewLoader object");
         }

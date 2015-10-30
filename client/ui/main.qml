@@ -28,8 +28,8 @@ ApplicationWindow {
 
     onClosing: {
         if (Qt.platform.os == "android") {
-            if (!flipable.flipped) {
-                flipable.flipped = true
+            if (flipable.flipped) {
+                flipable.flipped = false
             } else {
                 console.log("exit")
                 var currentTime = new Date()
@@ -54,23 +54,18 @@ ApplicationWindow {
     Flipable {
         id: flipable
         anchors.fill: parent
-        //focus: true
-
-        function onBankListCreated() {
-
-        }
 
         Keys.onEscapePressed: {
             if (flipped) {
-                flipped = !flipped
+                flipped = false
             }
         }
 
         Keys.onPressed: {
             console.log("here")
             if (event.key === Qt.Key_Tab) {
-                if (!flipped) {
-                    flipped = !flipped
+                if (flipped) {
+                    flipped = false
                 }
             }
         }
@@ -91,7 +86,7 @@ ApplicationWindow {
                         NumberAnimation {
                             target: rotation
                             properties: "angle"
-                            duration: 1500
+                            duration: 500
                             easing.type: Easing.InOutQuad
                         }
                      }
@@ -106,10 +101,12 @@ ApplicationWindow {
                      }
                    ]
 
+        back: Item {
+            anchors.fill: parent
+        }
 
-        front:
-        Item {
-            enabled: !parent.flipped
+        /*Item {
+            enabled: parent.flipped
             anchors.fill: parent
 
             Label {
@@ -207,14 +204,14 @@ ApplicationWindow {
 //                anchors.horizontalCenter: logo.horizontalCenter
 //                value: 0.8
 //            }
-        }
-        back:
+        }*/
+        front:
         MapView {
             id: mapView
-            enabled: parent.flipped
+            enabled: !parent.flipped
             anchors.fill: parent
 
-            active: !leftMenu.visible
+            active: leftMenu.state === "hidden"
 
             LeftMenu {
                 id: leftMenu
@@ -229,7 +226,7 @@ ApplicationWindow {
                         ViewLoaderCreator.createViewLoader(function(loader) {
                             loader.setView(itemName)
                         })
-                        flipable.flipped = !flipable.flipped
+                        flipable.flipped = true
                     }
                 }
             }
@@ -253,16 +250,5 @@ ApplicationWindow {
                 leftMenu.state = ""
             }
         }
-
-
-//        Desaturate {
-//            anchors.top: mapView.top
-//            anchors.left: leftMenu.right
-//            anchors.right: mapView.right
-//            anchors.bottom: mapView.bottom
-//            source: mapView
-//            desaturation: 0.8
-////            z: leftMenu.z - 1
-//        }
     }
 }
