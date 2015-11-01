@@ -6,6 +6,7 @@
 class ServerApi;
 class IcoImageProvider;
 class QSqlQuery;
+class QSettings;
 
 class ListSqlModel : public QStandardItemModel
 {
@@ -14,7 +15,8 @@ class ListSqlModel : public QStandardItemModel
 public:
     ListSqlModel(const QString &connectionName,
                  ServerApi *api,
-                 IcoImageProvider *imageProvider);
+                 IcoImageProvider *imageProvider,
+                 QSettings *settings);
 
     static QString escapeFilter(QString filter);
 
@@ -42,6 +44,7 @@ protected:
 
     ServerApi *getServerApi() const { return mApi; }
     IcoImageProvider *getIcoImageProvider() const { return mImageProvider; }
+    QSettings *getSettings() const { return mSettings; }
 
     void setRoleName(int role, const QByteArray &name) const { mRoleNames[role] = name; }
 
@@ -63,6 +66,7 @@ private:
 
     ServerApi *mApi;
     IcoImageProvider *mImageProvider;
+    QSettings *mSettings;
 };
 
 #endif // LISTSQLMODEL_H

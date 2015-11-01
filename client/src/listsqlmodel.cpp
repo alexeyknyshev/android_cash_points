@@ -5,13 +5,16 @@
 
 ListSqlModel::ListSqlModel(const QString &connectionName,
                            ServerApi *api,
-                           IcoImageProvider *imageProvider)
+                           IcoImageProvider *imageProvider,
+                           QSettings *settings)
     : mApi(api),
-      mImageProvider(imageProvider)
+      mImageProvider(imageProvider),
+      mSettings(settings)
 {
     Q_UNUSED(connectionName);
     Q_ASSERT_X(api, "ListSqlModel()", "null ServerApi ptr");
     Q_ASSERT_X(imageProvider, "ListSqlModel()", "null IcoImageProvider ptr");
+    Q_ASSERT_X(settings, "ListSqlModel()", "null QSettiings ptr");
 
     setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
     setRequestBatchSize(DEFAULT_BATCH_SIZE);

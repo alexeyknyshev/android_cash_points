@@ -7,6 +7,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QFile>
 #include <QtCore/QDebug>
+#include <QtCore/QSettings>
 
 #include "rpctype.h"
 #include "serverapi.h"
@@ -48,8 +49,9 @@ struct Bank : public RpcType<Bank>
 
 BankListSqlModel::BankListSqlModel(const QString &connectionName,
                                    ServerApi *api,
-                                   IcoImageProvider *imageProvider)
-    : ListSqlModel(connectionName, api, imageProvider),
+                                   IcoImageProvider *imageProvider,
+                                   QSettings *settings)
+    : ListSqlModel(connectionName, api, imageProvider, settings),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateBanks(QSqlDatabase::database(connectionName)),
       mQueryUpdateBankIco(QSqlDatabase::database(connectionName)),
@@ -139,6 +141,15 @@ bool BankListSqlModel::setData(const QModelIndex &index,
         }
 
         const QString bankIdStr = QString::number(bankId);
+
+        getSettings()->beginGroup("mybanks");
+        if (mine == 1) {
+            getSettings()->setValue(bankIdStr, mine);
+        } else {
+            getSettings()->remove(bankIdStr);
+        }
+        getSettings()->endGroup();
+
         QJsonObject json;
         json["mine"] = QJsonValue(mine);
         /// TODO: add session
@@ -323,7 +334,18 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
             mQueryUpdateBanks.bindValue(5, bank.nameTrAlt);
             mQueryUpdateBanks.bindValue(6, bank.town);
             mQueryUpdateBanks.bindValue(7, bank.tel);
-            mQueryUpdateBanks.bindValue(8, bank.mine);
+
+            if (bank.mine == 1) {
+                getSettings()->beginGroup("mybanks");
+                getSettings()->setValue(QString::number(bank.id), bank.mine);
+                getSettings()->endGroup();
+                mQueryUpdateBanks.bindValue(8, bank.mine);
+            } else {
+                getSettings()->beginGroup("mybanks");
+                const int mine = getSettings()->value(QString::number(bank.id), 0).toInt();
+                getSettings()->endGroup();
+                mQueryUpdateBanks.bindValue(8, mine);
+            }
 
             if (!mQueryUpdateBanks.exec()) {
                 qWarning() << "updateBanksData: failed to update 'banks' table";

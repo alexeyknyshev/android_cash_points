@@ -17,6 +17,7 @@ struct Town : public RpcType<Town>
     float latitude;
     quint32 regionId;
     bool regionalCenter;
+    quint32 mine;
 
     Town()
         : longitude(0.0f),
@@ -34,6 +35,7 @@ struct Town : public RpcType<Town>
         result.regionId  = obj["region_id"].toInt(std::numeric_limits<int>::max());
 
         result.regionalCenter = obj["regional_center"].toBool();
+        result.mine = obj["mine"].toInt();
 
         return result;
     }
@@ -57,8 +59,9 @@ struct Region : public RpcType<Region>
 
 TownListSqlModel::TownListSqlModel(const QString &connectionName,
                                    ServerApi *api,
-                                   IcoImageProvider *imageProvider)
-    : ListSqlModel(connectionName, api, imageProvider),
+                                   IcoImageProvider *imageProvider,
+                                   QSettings *settings)
+    : ListSqlModel(connectionName, api, imageProvider, settings),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateTowns(QSqlDatabase::database(connectionName)),
       mQueryUpdateRegions(QSqlDatabase::database(connectionName))
@@ -70,8 +73,9 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
     setRoleName(NameTrRole, "town_name_tr");
     setRoleName(RegionRole, "town_region_id");
     setRoleName(CenterRole, "town_regional_center");
+    setRoleName(MineRole,   "town_is_mine");
 
-    if (!mQuery.prepare("SELECT id, name, name_tr FROM towns WHERE "
+    if (!mQuery.prepare("SELECT id, name, name_tr, mine FROM towns WHERE "
                         "       name LIKE :name"
                         " or name_tr LIKE :name_tr"
                         " or region_id IN (SELECT id FROM regions WHERE name LIKE :region_name) "
@@ -80,8 +84,8 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
     }
 
-    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, regional_center) "
-                                   "VALUES (:id, :name, :name_tr, :region_id, :regional_center)"))
+    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, regional_center, mine) "
+                                   "VALUES (:id, :name, :name_tr, :region_id, :regional_center, :mine)"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateTowns.lastError().databaseText();
     }
@@ -290,6 +294,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
             mQueryUpdateTowns.bindValue(2, town.nameTr);
             mQueryUpdateTowns.bindValue(3, town.regionId);
             mQueryUpdateTowns.bindValue(4, town.regionalCenter);
+            mQueryUpdateTowns.bindValue(5, town.mine);
 
             if (!mQueryUpdateTowns.exec()) {
                 qWarning() << "updateTownsData: failed to update 'towns' table";

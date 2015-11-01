@@ -18,13 +18,15 @@ public:
         NameTrRole,
         RegionRole,
         CenterRole,
+        MineRole,
 
         RoleLast
     };
 
     TownListSqlModel(const QString &connctionName,
                      ServerApi *api,
-                     IcoImageProvider *imageProvider);
+                     IcoImageProvider *imageProvider,
+                     QSettings *settings);
 
     QVariant data(const QModelIndex &item, int role) const override;
 

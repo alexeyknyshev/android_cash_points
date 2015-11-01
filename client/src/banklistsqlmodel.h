@@ -29,7 +29,8 @@ public:
 
     BankListSqlModel(const QString &connectionName,
                      ServerApi *api,
-                     IcoImageProvider *imageProvider);
+                     IcoImageProvider *imageProvider,
+                     QSettings *settings);
 
     QVariant data(const QModelIndex &item, int role) const override;
 

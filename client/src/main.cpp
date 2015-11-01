@@ -11,9 +11,8 @@
 #include <QSqlError>
 #include <QFile>
 #include <QDebug>
-#include <QTableView>
-
-#include <QMetaMethod>
+#include <QtCore/QSettings>
+#include <QtCore/QStandardPaths>
 
 QStringList getSqlQuery(const QString &queryFileName)
 {
@@ -32,6 +31,11 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setAttribute(Qt::AA_SynthesizeMouseForUnhandledTouchEvents, false);
     app.setAttribute(Qt::AA_SynthesizeTouchForUnhandledMouseEvents, false);
+    app.setOrganizationName("Agnia");
+    app.setApplicationName("CashPoints");
+
+    QString path = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QSettings settings(path, QSettings::NativeFormat);
 
     // bank list db
     const QString banksConnName = "banks";
@@ -46,7 +50,7 @@ int main(int argc, char *argv[])
     db.transaction();
     db.exec("CREATE TABLE banks (id integer primary key, name text, licence integer, "
                                 "name_tr text, town text, rating integer, "
-                                "name_tr_alt text, tel text, ico_path, mine)");
+                                "name_tr_alt text, tel text, ico_path text, mine integer)");
 
     db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, "
                                 "region_id integer, regional_center integer, mine integer)");
@@ -54,15 +58,15 @@ int main(int argc, char *argv[])
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
     db.commit();
 
-    ServerApi *api = new ServerApi("localhost", 8080);
+    ServerApi *api = new ServerApi("192.168.1.126", 8080);
 
     IcoImageProvider *imageProvider = new IcoImageProvider;
 
     BankListSqlModel *bankListModel =
-            new BankListSqlModel(banksConnName, api, imageProvider);
+            new BankListSqlModel(banksConnName, api, imageProvider, &settings);
 
     TownListSqlModel *townListModel =
-            new TownListSqlModel(banksConnName, api, imageProvider);
+            new TownListSqlModel(banksConnName, api, imageProvider, &settings);
 
     QQmlApplicationEngine engine;
 
