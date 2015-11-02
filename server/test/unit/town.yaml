@@ -1,0 +1,19 @@
+---
+- config:
+    - testset: "Testing backend service"
+
+- test:
+    - name: "Get town by id"
+    - group: "Town"
+    - url: "/town/200"
+    - method: "GET"
+    - headers: { Content-type: "application/json", Id: 1 }
+    - validators:
+        - compare: { jsonpath_mini: 'id', expected: 200 }
+        - compare: { jsonpath_mini: 'name', expected: "Ярославль" }
+        - compare: { jsonpath_mini: 'name_tr', expected: "Yaroslavl~" }
+        - compare: { jsonpath_mini: 'region_id', expected: 199 }
+        - compare: { jsonpath_mini: 'regional_center', expected: true }
+        - compare: { jsonpath_mini: 'latitude', expected: 57.622433 }
+        - compare: { jsonpath_mini: 'longitude', expected: 39.887894 }
+        - compare: { jsonpath_mini: 'zoom', expected: 12 }

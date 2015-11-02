@@ -19,7 +19,11 @@ then
 fi
 
 SERVER_PORT=$(jq '.Port' config.json)
-#echo $SERVER_PORT
+if [ $? -ne 0 ]
+then
+    echo 'Failed to parse server port from "config.json" file'
+    exit 1
+fi
 
 SERVER_PID=''
 if [ $verbose -eq 0 ]
