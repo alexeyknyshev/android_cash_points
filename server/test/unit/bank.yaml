@@ -1,0 +1,19 @@
+---
+- config:
+    - testset: "Testing backend service"
+
+- test:
+    - name: "Get bank by id"
+    - group: "Bank"
+    - url: "/bank/325"
+    - method: "GET"
+    - headers: { Content-type: "application/json", Id: 1 }
+    - validators:
+        - compare: { jsonpath_mini: 'id', expected: 325 }
+        - compare: { jsonpath_mini: 'name', expected: "Альфа-Банк" }
+        - compare: { jsonpath_mini: 'name_tr', expected: "Alfa-Bank" }
+        - compare: { jsonpath_mini: 'name_tr_alt', expected: "alfabank" }
+        - compare: { jsonpath_mini: 'town', expected: "Москва" }
+        - compare: { jsonpath_mini: 'licence', expected: 1326 }
+        - compare: { jsonpath_mini: 'rating', expected: 7 }
+        - compare: { jsonpath_mini: 'tel', expected: "84957888878" }
