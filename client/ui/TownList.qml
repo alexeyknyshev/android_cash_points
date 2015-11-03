@@ -33,32 +33,28 @@ Rectangle {
         anchors.bottomMargin: anchors.leftMargin
 
         radius: height / 20
-        height: townFilterEdit.contentHeight * 2
+        height: Math.min(townFilterEdit.contentHeight * 2,
+                         Math.max(parent.width, parent.height) * 0.15)
 
         TextInput {
             id: townFilterEdit
 
             z: townListView.z + 1
 
+            maximumLength: 30
+            anchors.margins: contentHeight * 0.5
             anchors.top: parent.top
-            anchors.topMargin: contentHeight * 0.5
             anchors.left: parent.left
-            anchors.leftMargin: contentHeight * 0.5
             anchors.right: clearButton.left
-            anchors.rightMargin: contentHeight * 0.5
-            anchors.bottomMargin: contentHeight * 0.5
             anchors.bottom: parent.bottom
 
-            echoMode: TextInput.Normal
-
-            font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
-                            Math.max(topRect.height, topRect.width) / (15 * 3) : 18
+            font.pixelSize: Math.max(topRect.height, topRect.width) * 0.03
 
             property bool isUserTextShowed: false
             property string placeHolderText: qsTr("Город, область / край / республика ...")
             property string userText: ""
 
-            wrapMode: Text.NoWrap
+            wrapMode: Text.Wrap
 
             Component.onCompleted: {
                 text = placeHolderText
@@ -204,7 +200,7 @@ Rectangle {
                         anchors.topMargin: townFilterEdit.anchors.topMargin
 //                        anchors.bottom: parent.bottom
                         anchors.bottomMargin: townFilterEdit.anchors.bottomMargin
-                        height: townListView.height / 15
+                        height: townListView.height * 0.1
                         width: height
                     }
 
@@ -224,8 +220,7 @@ Rectangle {
                                                       '</b>')
                         textFormat: Text.StyledText
                         wrapMode: Text.WordWrap
-                        font.pixelSize: Math.max(topRect.height, topRect.height) / (15 * 3) > 18 ?
-                                        Math.max(topRect.height, topRect.height) / (15 * 3) : 18
+                        font.pixelSize: Math.max(topRect.height, topRect.width) * 0.03
                     }
 
                     states: State {

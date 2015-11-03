@@ -9,13 +9,15 @@ import "viewloadercreator.js" as ViewLoaderCreator
 
 ApplicationWindow {
     title: qsTr("Cash Points")
-    width: 640
-    height: 480
+    width: 480
+    height: 800
     visible: true
 
     objectName: "appWindow"
     signal pong(bool ok)
     onPong: {
+        // TODO: show user warning about
+        // connection to server
         if (ok) {
             console.log("pong :)")
         } else {
@@ -44,9 +46,9 @@ ApplicationWindow {
             close.accepted = mapView.aboutToClose()
         }
     }
+
     Keys.onReleased: {
-        if (event.key == Qt.Key_Back) {
-            console.log("Back button captured - wunderbar !")
+        if (event.key === Qt.Key_Back) {
             event.accepted = true
         }
     }

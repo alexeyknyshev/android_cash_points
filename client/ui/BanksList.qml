@@ -31,32 +31,31 @@ Rectangle {
         anchors.bottomMargin: anchors.leftMargin
 
         radius: height / 20
-        height: Math.min(bankFilterEdit.contentHeight * 2, parent.height * 0.1)
+        height: Math.min(bankFilterEdit.contentHeight * 2,
+                         Math.max(parent.width, parent.height) * 0.15)
 
         TextInput {
             id: bankFilterEdit
 
             z: bankListView.z + 1
 
+            maximumLength: 30
+            anchors.margins: bankFilterEdit.contentHeight * 0.5
             anchors.top: parent.top
-            anchors.topMargin: bankFilterEdit.contentHeight * 0.5
             anchors.left: upperSwitcher.right
-            anchors.leftMargin: bankFilterEdit.contentHeight * 0.5
             anchors.right: clearButton.left
-            anchors.rightMargin: bankFilterEdit.contentHeight * 0.5
-            anchors.bottomMargin: bankFilterEdit.contentHeight * 0.5
             anchors.bottom: parent.bottom
 
             echoMode: TextInput.Normal
 
-            font.pixelSize: Math.max(topRect.height, topRect.width) / (15 * 3) > 18 ?
-                            Math.max(topRect.height, topRect.width) / (15 * 3) : 18
+            font.pixelSize: Math.max(topRect.height, topRect.width) * 0.03
 
             property bool isUserTextShowed: false
-            property string placeHolderText: qsTr("Банк, номер лицезии, номер тел...")
+            property string placeHolderText: qsTr("Название / лицезия / тел...")
             property string userText: ""
 
-            wrapMode: Text.NoWrap
+            wrapMode: Text.Wrap
+            verticalAlignment: TextInput.AlignLeft
 
             Component.onCompleted: {
                 text = placeHolderText
@@ -233,7 +232,7 @@ Rectangle {
                         anchors.top: parent.top
                         anchors.topMargin: bankFilterEdit.anchors.topMargin
                         anchors.bottomMargin: bankFilterEdit.anchors.bottomMargin
-                        height: bankListView.height / 15
+                        height: bankListView.height * 0.1
                         width: height
                     }
 
@@ -252,8 +251,7 @@ Rectangle {
                                                       '</b>')
                         textFormat: Text.StyledText
                         wrapMode: Text.WordWrap
-                        font.pixelSize: Math.max(topRect.height, topRect.height) / (15 * 3) > 18 ?
-                                        Math.max(topRect.height, topRect.height) / (15 * 3) : 18
+                        font.pixelSize: Math.max(topRect.height, topRect.width) * 0.03
                     }
 
                     Image {
@@ -263,11 +261,11 @@ Rectangle {
                         sourceSize: Qt.size(width, height)
                         anchors.right: parent.right
                         anchors.top: parent.top
-                        anchors.margins: height * 0.3
+                        anchors.margins: Math.max(bankListView.width, bankListView.height) * 0.02
 //                        antialiasing: true
                         smooth: true
                         width: height
-                        height: bankListView.height * 0.05
+                        height: Math.max(bankListView.width, bankListView.height) * 0.06
 
                         MouseArea {
                             z: parent.z + 1
