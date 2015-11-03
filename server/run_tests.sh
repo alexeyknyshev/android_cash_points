@@ -64,4 +64,4 @@ do
     ((currentTestIndex++))
 done
 
-kill $SERVER_PID
+[ -e "/proc/$SERVER_PID" ] && kill $SERVER_PID
