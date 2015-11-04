@@ -396,7 +396,6 @@ func handlerPing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go logRequest(w, r, requestId, "")
-
 	writeResponse(w, r, requestId, `{"msg":"pong"}`)
 }
 
