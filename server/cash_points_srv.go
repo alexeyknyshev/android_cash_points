@@ -467,7 +467,7 @@ func handlerUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", map[string]string{
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserDelete", map[string]string{
 		"requestId": strconv.FormatInt(requestId, 10),
 	})
 
