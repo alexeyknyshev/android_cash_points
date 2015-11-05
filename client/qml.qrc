@@ -27,5 +27,6 @@
         <file alias="bank.svg">ico/other/bank_gray.svg</file>
         <file alias="star.svg">ico/other/star.svg</file>
         <file alias="star_gray.svg">ico/other/star_gray.svg</file>
+        <file alias="aim.svg">ico/other/aim.svg</file>
     </qresource>
 </RCC>

@@ -77,8 +77,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("serverApi", api);
     engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
-    QStringList icons;
-    icons << ":/icon/star.svg" << ":/icon/star_gray.svg";
+    QStringList icons = { ":/icon/star.svg", ":/icon/star_gray.svg", ":/icon/aim.svg" };
     for (const QString &icoPath : icons) {
         QFile file(icoPath);
         if (file.open(QIODevice::ReadOnly)) {
