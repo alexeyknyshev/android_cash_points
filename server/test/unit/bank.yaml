@@ -7,7 +7,7 @@
     - group: "Bank"
     - url: "/bank/325"
     - method: "GET"
-    - headers: { Content-type: "application/json", Id: 1 }
+    - headers: { Id: 1 }
     - validators:
         - compare: { jsonpath_mini: 'id', expected: 325 }
         - compare: { jsonpath_mini: 'name', expected: "Альфа-Банк" }

@@ -7,4 +7,4 @@
     - group: "TownList"
     - url: "/towns"
     - method: "GET"
-    - headers: { Content-type: "application/json", Id: 1 }
+    - headers: { Id: 1 }
