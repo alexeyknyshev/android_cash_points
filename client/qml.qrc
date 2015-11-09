@@ -14,9 +14,6 @@
         <file>ui/ViewLoader.qml</file>
         <file>ui/viewloadercreator.js</file>
     </qresource>
-    <qresource prefix="/ico">
-        <file>marker.png</file>
-    </qresource>
     <qresource prefix="/icon">
         <file alias="atm.svg">ico/other/atm_gray.svg</file>
         <file alias="bug.svg">ico/other/bugs_gray_rotated.svg</file>

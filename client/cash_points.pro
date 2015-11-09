@@ -8,7 +8,8 @@ SOURCES += src/main.cpp \
     src/serverapi.cpp \
     src/listsqlmodel.cpp \
     src/icoimageprovider.cpp \
-    src/searchengine.cpp
+    src/searchengine.cpp \
+    src/cashpointsqlmodel.cpp
 
 RESOURCES += qml.qrc
 
@@ -36,7 +37,8 @@ HEADERS += \
     src/rpctype.h \
     src/listsqlmodel.h \
     src/icoimageprovider.h \
-    src/searchengine.h
+    src/searchengine.h \
+    src/cashpointsqlmodel.h
 
 QMAKE_CXXFLAGS += -std=c++11
 
