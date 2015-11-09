@@ -2,6 +2,7 @@
 #include "townlistsqlmodel.h"
 #include "serverapi.h"
 #include "icoimageprovider.h"
+#include "locationservice.h"
 
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -60,24 +61,13 @@ int main(int argc, char *argv[])
 
     ServerApi *api = new ServerApi("192.168.1.126", 8080);
 
+    const QStringList icons = {
+        ":/icon/star.svg",
+        ":/icon/star_gray.svg",
+        ":/icon/aim.svg",
+        ":/icon/marker.svg"
+    };
     IcoImageProvider *imageProvider = new IcoImageProvider;
-
-    BankListSqlModel *bankListModel =
-            new BankListSqlModel(banksConnName, api, imageProvider, &settings);
-
-    TownListSqlModel *townListModel =
-            new TownListSqlModel(banksConnName, api, imageProvider, &settings);
-
-    QQmlApplicationEngine engine;
-
-    engine.addImportPath("qrc:/ui");
-    engine.addImageProvider(QLatin1String("ico"), imageProvider);
-    engine.rootContext()->setContextProperty("bankListModel", bankListModel);
-    engine.rootContext()->setContextProperty("townListModel", townListModel);
-    engine.rootContext()->setContextProperty("serverApi", api);
-    engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
-
-    QStringList icons = { ":/icon/star.svg", ":/icon/star_gray.svg", ":/icon/aim.svg" };
     for (const QString &icoPath : icons) {
         QFile file(icoPath);
         if (file.open(QIODevice::ReadOnly)) {
@@ -86,6 +76,24 @@ int main(int argc, char *argv[])
             qDebug() << icoPath << "loaded as" << resName;
         }
     }
+
+    BankListSqlModel *bankListModel =
+            new BankListSqlModel(banksConnName, api, imageProvider, &settings);
+
+    TownListSqlModel *townListModel =
+            new TownListSqlModel(banksConnName, api, imageProvider, &settings);
+
+    LocationService *locationService = new LocationService(&app);
+
+    QQmlApplicationEngine engine;
+
+    engine.addImportPath("qrc:/ui");
+    engine.addImageProvider(QLatin1String("ico"), imageProvider);
+    engine.rootContext()->setContextProperty("bankListModel", bankListModel);
+    engine.rootContext()->setContextProperty("townListModel", townListModel);
+    engine.rootContext()->setContextProperty("serverApi", api);
+    engine.rootContext()->setContextProperty("locationService", locationService);
+    engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
     QObject *appWindow = nullptr;
     for (QObject *obj : engine.rootObjects()) {

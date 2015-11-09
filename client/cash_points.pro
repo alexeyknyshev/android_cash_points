@@ -2,13 +2,16 @@ TEMPLATE = app
 
 QT += qml quick location sql svg
 
+android: QT += androidextras
+
 SOURCES += src/main.cpp \
     src/banklistsqlmodel.cpp \
     src/townlistsqlmodel.cpp \
     src/serverapi.cpp \
     src/listsqlmodel.cpp \
     src/icoimageprovider.cpp \
-    src/searchengine.cpp
+    src/searchengine.cpp \
+    src/locationservice.cpp
 
 RESOURCES += qml.qrc
 
@@ -36,7 +39,8 @@ HEADERS += \
     src/rpctype.h \
     src/listsqlmodel.h \
     src/icoimageprovider.h \
-    src/searchengine.h
+    src/searchengine.h \
+    src/locationservice.h
 
 QMAKE_CXXFLAGS += -std=c++11
 
