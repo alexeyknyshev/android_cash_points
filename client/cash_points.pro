@@ -12,6 +12,7 @@ SOURCES += src/main.cpp \
     src/icoimageprovider.cpp \
     src/searchengine.cpp \
     src/locationservice.cpp
+    src/cashpointsqlmodel.cpp
 
 RESOURCES += qml.qrc
 
@@ -41,6 +42,7 @@ HEADERS += \
     src/icoimageprovider.h \
     src/searchengine.h \
     src/locationservice.h
+    src/cashpointsqlmodel.h
 
 QMAKE_CXXFLAGS += -std=c++11
 
