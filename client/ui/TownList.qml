@@ -51,10 +51,10 @@ Rectangle {
             font.pixelSize: Math.max(topRect.height, topRect.width) * 0.03
 
             property bool isUserTextShowed: false
-            property string placeHolderText: qsTr("Город, область / край / республика ...")
+            property string placeHolderText: qsTr("Город / область / край ...")
             property string userText: ""
 
-            wrapMode: Text.Wrap
+            wrapMode: Text.NoWrap
 
             Component.onCompleted: {
                 text = placeHolderText
@@ -77,10 +77,10 @@ Rectangle {
             }
 
             onDisplayTextChanged: {
-                if (displayText === "" || displayText === placeHolderText) {
-                    townListModel.setFilter("")
-                } else {
+                if (isUserTextShowed) {
                     townListModel.setFilter(displayText)
+                } else {
+                    townListModel.setFilter("")
                 }
             }
         } // TextInput

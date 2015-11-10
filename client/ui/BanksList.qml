@@ -54,7 +54,7 @@ Rectangle {
             property string placeHolderText: qsTr("Название / лицезия / тел...")
             property string userText: ""
 
-            wrapMode: Text.Wrap
+            wrapMode: Text.NoWrap
             verticalAlignment: TextInput.AlignLeft
 
             Component.onCompleted: {
@@ -89,10 +89,10 @@ Rectangle {
             }
 
             onDisplayTextChanged: {
-                if (displayText === "" || displayText === placeHolderText) {
-                    bankListModel.setFilter("")
-                } else {
+                if (isUserTextShowed) {
                     bankListModel.setFilter(displayText)
+                } else {
+                    bankListModel.setFilter("")
                 }
             }
         } // TextInput
