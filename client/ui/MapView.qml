@@ -42,47 +42,51 @@ Item {
 
     PositionSource {
         id: positionSource
+        name: "osm"
         updateInterval: 200
         preferredPositioningMethods: PositionSource.AllPositioningMethods
-        property bool needUpdate: false
-        property MapQuickItem me: null
-        property bool locationAvaliable: false
         onPositionChanged: {
-            locationAvaliable = true
-            if (position.coordinate.isValid && needUpdate) {
-                needUpdate = false
-                map.moveToCoord(position.coordinate)
-                var expectedZoomLevel = map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * 0.9
-                if (expectedZoomLevel >= map.zoomLevel) {
-                    map.zoom(map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * 0.9)
-                }
+            console.log("position changed")
+            map.showMyPos()
+            stop()
+        }
 
-                if (me == null) {
-                    var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
-                    if (mapMeMarkComponent.status == Component.Ready) {
-                        me = mapMeMarkComponent.createObject(map)
-                    }
-                }
-                me.coordinate = position.coordinate
-                map.addMapItem(me)
-
-                findMeButtonRotationAnim.stop()
-                findMeButtonRotationAnimBack.start()
-            }
+        onUpdateTimeout: {
+            console.warn("could not retrieve current position")
         }
 
         onSourceErrorChanged: {
-            if (sourceError === PositionSource.ClosedError) {
-                locationAvaliable = false
-                console.error("position source is disabled")
-            } else if (sourceError === PositionSource.NoError) {
-                locationAvaliable = true
-            }
+
         }
 
-        function forceUpdate() {
-            needUpdate = true
-            update()
+        function getAvgZoomLevel(scale) {
+            return map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * scale
+        }
+
+        onActiveChanged: {
+            console.log("active changed: " + active.toString())
+                /*console.log("geoposition changed")
+                if (position.coordinate.isValid) {
+                    console.log("new geopos received")
+                    var expectedZoomLevel = getAvgZoomLevel(0.5)
+                    if (expectedZoomLevel < map.zoomLevel) {
+                        expectedZoomLevel = map.zoomLevel
+                    }
+                    map.moveToCoord(position.coordinate, expectedZoomLevel)
+
+                    if (me == null) {
+                        var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
+                        if (mapMeMarkComponent.status === Component.Ready) {
+                            me = mapMeMarkComponent.createObject(map)
+                        }
+                    }
+                    me.coordinate = position.coordinate
+                    map.addMapItem(me)
+
+                    findMeButtonRotationAnim.stop()
+                    findMeButtonRotationAnimBack.start()
+                }
+            }*/
         }
 
         function debugPrintSupportedPositioningMethods() {
@@ -107,6 +111,13 @@ Item {
         onVisibilityChanged: {
             console.log("dialog showed")
         }
+        onRejected: {
+            findMeButtonRotationAnim.stop()
+            findMeButtonRotationAnimBack.start()
+        }
+        onAccepted: {
+            locationService.enabled = true
+        }
     }
 
     MapHoldDialog
@@ -127,6 +138,19 @@ Item {
         }
         zoomLevel: 13
         maximumZoomLevel: 50
+/*
+        MapItemView {
+//            model:
+            delegate: cashPointDelegate
+        }
+
+        Component {
+            id: cashPointDelegate
+
+
+        }
+*/
+        property MapQuickItem me: null
 
         property bool panActive: false
         property real panLastX: 0
@@ -142,13 +166,35 @@ Item {
 
         property bool zooming: false
 
-        PropertyAnimation {
-            id: zoomLevelAnim
-            target: map
-            property: "zoomLevel"
-            to: map.targetZoomLevel
-            duration: 300
-            easing.type: Easing.InOutQuad
+        ParallelAnimation {
+            id: mapMoveAnim
+
+            PropertyAnimation {
+                id: zoomLevelAnim
+                target: map
+                property: "zoomLevel"
+                to: map.targetZoomLevel
+                easing.type: Easing.InOutQuad
+                duration: 300
+            }
+
+            PropertyAnimation {
+                id: latitudeAnim
+                target: map
+                property: "center.latitude"
+                to: map.coordLatitude
+                easing.type: Easing.InOutQuad
+                duration: 300
+            }
+
+            PropertyAnimation {
+                id: longitudeAnim
+                target: map
+                property: "center.longitude"
+                to: map.coordLongitude
+                easing.type: Easing.InOutQuad
+                duration: 300
+            }
         }
 
 
@@ -161,40 +207,61 @@ Item {
                 targetZoomLevel = zoomFactor
             }
 
-            if (zoomLevelAnim.running) {
-                zoomLevelAnim.stop()
+            var coord = map.toCoordinate(Qt.point(width * 0.5, height * 0.5))
+            map.coordLatitude = coord.latitude
+            map.coordLongitude = coord.longitude
+
+            if (mapMoveAnim.running) {
+                mapMoveAnim.stop()
             }
 
-            zoomLevelAnim.start()
+            mapMoveAnim.start()
         }
 
-        function moveToCoord(coord) {
+        function moveToCoord(coord, zoom) {
             console.warn("Coordinate:", coord.latitude, coord.longitude);
-            map.center = coord
+            map.coordLatitude = coord.latitude
+            map.coordLongitude = coord.longitude
+            map.targetZoomLevel = zoom
+            if (mapMoveAnim.running) {
+                mapMoveAnim.stop();
+            }
+            mapMoveAnim.start()
+        }
+
+        function showMyPos() {
+            if (positionSource.valid) {
+                if (positionSource.position.latitudeValid && positionSource.position.longitudeValid) {
+                    var expectedZoomLevel = positionSource.getAvgZoomLevel(0.9)
+                    if (expectedZoomLevel < map.zoomLevel) {
+                        expectedZoomLevel = map.zoomLevel
+                    }
+                    moveToCoord(positionSource.position.coordinate, expectedZoomLevel)
+                    if (me == null) {
+                        var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
+                        if (mapMeMarkComponent.status === Component.Ready) {
+                            me = mapMeMarkComponent.createObject(map, { width: Math.min(map.width, map.height) * 0.075,
+                                                                        height: Math.min(map.width, map.height) * 0.075 })
+                        }
+                    }
+                    me.coordinate = positionSource.position.coordinate
+                    map.addMapItem(me)
+                    return true
+                }
+            }
+            return false
         }
 
         function findMe() {
-            if (!positionSource.valid) {
-                console.log("position source is invalid!")
+            if (!locationService.enabled) {
                 enableLocServiceDialog.open()
+                return false
             }
 
-            positionSource.debugPrintSupportedPositioningMethods()
-            if (positionSource.supportedPositioningMethods ===
-                    PositionSource.NoPositioningMethods)
-            {
-                return
-            }
-
-            if (!positionSource.active) {
-                positionSource.start()
-            }
-
-            positionSource.forceUpdate()
-
-            if (!positionSource.locationAvaliable) {
-                enableLocServiceDialog.open()
-            }
+            positionSource.stop();
+            showMyPos()
+            positionSource.start()
+            return true
         }
 
         PinchArea {
@@ -224,6 +291,11 @@ Item {
                 anchors.fill: parent
                 z: parent.z + 1
 
+                onPressed: {
+                    map.panLastX = mouseX
+                    map.panLastY = mouseY
+                }
+
                 onClicked: {
                     topView.clicked()
 
@@ -252,37 +324,21 @@ Item {
 //                    }
 //                }
                 onDoubleClicked: {
-                    if (!topView.active)
+                    if (!topView.active) {
                         return
+                    }
 //                    console.log("double click!")
 
                     var coord = map.toCoordinate(Qt.point(mouseX, mouseY))
 
-                    // prevent flicker near center
-                    if (Math.abs(mouseX - width  / 2) / width  > 0.05 ||
-                        Math.abs(mouseY - height / 2) / height > 0.05)
-                    {
-                        map.moveToCoord(coord)
-                    }
-
-                    map.zoom(map.zoomLevel + 1)
+                    map.moveToCoord(coord, map.zoomLevel + 1)
                 }
                 onPositionChanged: {
                     if (!topView.active)
                         return
 
-                    if (!map.panActive) {
-                        map.panActive = true
-                        map.panLastX = mouseX
-                        map.panLastY = mouseY
-                        return
-                    }
-
                     var deltaX = mouseX - map.panLastX
                     var deltaY = mouseY - map.panLastY
-
-//                    console.log("deltaX: " + deltaX)
-//                    console.log("deltaY: " + deltaY)
 
                     var coord = map.toCoordinate(Qt.point(width / 2 - deltaX, height / 2 - deltaY))
 
@@ -295,7 +351,6 @@ Item {
                 }
 
                 onReleased: {
-                    map.panActive = false
 //                    console.log("mouse released")
                 }
             }
@@ -386,18 +441,17 @@ Item {
 //                    source: zoomOutButton
 //        }
 
-        Rectangle {
+        Image {
             id: findMeButton
+            width: height
+            source: "image://ico/aim.svg"
+            sourceSize: Qt.size(width, height)
             z: parent.z + 1
             anchors.left: parent.left
             anchors.leftMargin: height * 0.25
             anchors.verticalCenter: parent.verticalCenter
             anchors.margins: 1
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
-            width: height
-            radius: width * 0.5
-            opacity: 0.9
-            color: "#3295BA"
 
             property bool activated: false
 
@@ -405,17 +459,24 @@ Item {
                 id: findMeButtonRotationAnim
                 running: false
                 loops: 3
-                RotationAnimation {
+                PropertyAnimation {
                     target: findMeButton
+                    property: "rotation"
                     to: 180
                     duration: 1500
                     easing.type: Easing.InOutCubic
                 }
                 RotationAnimation {
                     target: findMeButton
+                    property: "rotation"
                     to: 0
                     duration: 1500
                     easing.type: Easing.InOutCubic
+                }
+                onStopped: {
+                    if (!positionSource.valid) {
+                        enableLocServiceDialog.open()
+                    }
                 }
             }
 
@@ -423,6 +484,7 @@ Item {
                 id: findMeButtonRotationAnimBack
                 running: false
                 target: findMeButton
+                property: "rotation"
                 to: 0
                 duration: 1500 * (findMeButton.rotation / 180)
             }
@@ -431,92 +493,21 @@ Item {
                 NumberAnimation { duration: 100 }
             }
 
+            MouseArea {
+                anchors.fill: parent
+                onClicked: {
+                    if (!topView.active) {
+                        return
+                    }
 
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.5
-                height: parent.height * 0.04
-                color: "white"
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.height * 0.04
-                height: parent.width * 0.5
-                color: "white"
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.4
-                height: width
-                color: "white"
-                radius: width * 0.4
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: parent.width * 0.8
-                    height: width
-                    radius: width * 0.4
-                    color: findMeButton.color
-
-                    Rectangle {
-                        anchors.centerIn: parent
-                        width: parent.width * 0.5
-                        height: width
-                        radius: width * 0.5
-                        color: "#D94336"
+                    var animate = map.findMe()
+                    if (animate) {
+                       findMeButtonRotationAnim.start()
                     }
                 }
+                onPressed: parent.scale = 0.9
+                onReleased: parent.scale = 1.0
             }
-
-//            property bool scaleAnimated: false
-/*
-            states: [
-                State {
-                    name: "animated_out"
-                    PropertyChanges {
-                        target: findMeButton
-                        scale: 0.8
-                    }
-                    onCompleted: findMeButton.state = "animated_in"
-                },
-                State {
-                    name: "animated_in"
-                    PropertyChanges {
-                        target: findMeButton
-                        scale: 1.0
-                    }
-                    onCompleted: {
-                        if (findMeButton.scaleAnimated) {
-                            findMeButton.state = "animated_out"
-                        } else {
-                            findMeButton.state = ""
-                        }
-                    }
-                 }
-             ]
-
-             transitions: Transition {
-                 ScaleAnimator {
-                     duration: 2000
-                 }
-             }*/
-
-             MouseArea {
-                 anchors.fill: parent
-                 onClicked: {
-                     if (!topView.active)
-                         return
-
-                     map.findMe()
-                     if (positionSource.locationAvaliable) {
-                        findMeButtonRotationAnim.start()
-                     }
-                 }
-                 onPressed: parent.scale = 0.9
-                 onReleased: parent.scale = 1.0
-             }
         }
     }
 

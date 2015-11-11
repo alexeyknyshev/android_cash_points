@@ -1,22 +1,29 @@
 import QtQuick 2.4
 import QtLocation 5.3
+import QtGraphicalEffects 1.0
 
 MapQuickItem {
-    anchorPoint.x: image.width / 2
-    anchorPoint.y: image.height
-    sourceItem: Image {
-        id: image
-        source: "ico/marker.png"
+    id: item
+    width: 128
+    height: 128
+    anchorPoint.x: width  * 0.5
+    anchorPoint.y: height * 0.5
+    sourceItem: Item {
+        width: item.width
+        height: item.height
 
-        Text {
-            text: qsTr("Я")
-            fontSizeMode: Text.Fit
-            verticalAlignment: Text.AlignVCenter
-
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: -(parent.height / 8)
-            anchors.horizontalCenterOffset: -1
-            anchors.horizontalCenter: parent.horizontalCenter
+        Image {
+            anchors.fill: parent
+            id: image
+            source: "image://ico/marker.svg"
+            sourceSize.width: item.width
+            sourceSize.height: item.height
         }
-   }
+        FastBlur {
+            transparentBorder: true
+            anchors.fill: parent
+            source: image
+            radius: 8
+        }
+    }
 }

@@ -10,6 +10,6 @@ MessageDialog {
 
     icon: StandardIcon.Information
 
-    standardButtons: StandardButton.Close
+    standardButtons: StandardButton.Ok | StandardButton.Close
 }
 
