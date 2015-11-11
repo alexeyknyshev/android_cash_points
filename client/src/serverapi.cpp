@@ -80,8 +80,6 @@ qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callbac
     /// TODO: added authenticated request sending
     Q_UNUSED(auth)
 
-    _eraseExpiredCallbacks();
-
     qint64 requestId = uniqueRequestId();
     mCallbacks.insert(requestId, ExpCallback(QDateTime::currentDateTime(), callback));
 

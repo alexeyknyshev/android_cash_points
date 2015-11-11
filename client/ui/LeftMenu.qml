@@ -28,7 +28,7 @@ Rectangle {
             to: "hidden"
             PropertyAnimation {
                 duration: 500
-                easing.type: Easing.InQuad
+                easing.type: Easing.InOutQuart
                 properties: "x"
             }
             onRunningChanged: {
@@ -42,7 +42,7 @@ Rectangle {
             to: ""
             PropertyAnimation {
                 duration: 500
-                easing.type: Easing.OutQuad
+                easing.type: Easing.InOutQuart
                 properties: "x"
             }
             onRunningChanged: {
