@@ -37,6 +37,26 @@ public:
         HSC_NotImplemented = 501
     };
 
+    enum RequestStatusCode {
+        RSC_Ok,
+        RSC_Timeout,          /// client-side timeout
+        RSC_ConnectionRefused,
+        RSC_HostNotFound,
+        RSC_Unknown
+    };
+
+    static QString requestStatusCodeText(ServerApi::RequestStatusCode code)
+    {
+        switch (code) {
+        case RSC_Ok: return QObject::trUtf8("Ok");
+        case RSC_Timeout: return QObject::trUtf8("Request's time is out");
+        case RSC_ConnectionRefused: return QObject::trUtf8("Connection refused by server");
+        case RSC_HostNotFound: return QObject::trUtf8("Server host is not found!");
+        }
+
+        return "Unknown request error";
+    }
+
     void setHost(const QString &host);
     void setPort(int port);
 
@@ -48,19 +68,17 @@ public:
     void setCallbacksExpireTime(quint32 msec);
     quint32 getCallbacksExpireTime() const;
 
-    typedef std::function<void(HttpStatusCode code, const QByteArray &data, bool timeOut)> Callback;
+    typedef std::function<void(RequestStatusCode reqCode, HttpStatusCode httpCode, const QByteArray &data)> Callback;
 
     qint64 sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth = false);
 
 signals:
     void responseReceived(qint64 requestId);
-    void requestTimedout(qint64 requestId);
 
     void pong(bool ok);
 
 public slots:
     void postRequest(QString path, QJsonObject data, ServerApi::Callback Callback);
-    void update();
 
     void ping();
 
@@ -86,7 +104,8 @@ private:
 
     QMap<qint64, ExpCallback> mCallbacks;
 
-    void _eraseExpiredCallbacks();
+    QList<qint64> _getExpiredCallbacks() const;
+    int _eraseExpiredCallbacks(const QList<qint64> &reqIdList);
     void _init(const QString &host, int port, const QSslCertificate &cert);
 
     quint32 mCallbacksExpiteTime;

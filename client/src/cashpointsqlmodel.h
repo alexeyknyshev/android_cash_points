@@ -5,6 +5,8 @@
 
 #include "listsqlmodel.h"
 
+class CashPointRequest;
+
 class CashPointSqlModel : public ListSqlModel
 {
     Q_OBJECT
@@ -53,6 +55,8 @@ protected:
 
 private:
     QSqlQuery mQuery;
+
+    CashPointRequest *mRequest;
 };
 
 #endif // CASHPOINTSQLMODEL_H

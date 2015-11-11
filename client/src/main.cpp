@@ -57,9 +57,16 @@ int main(int argc, char *argv[])
                                 "region_id integer, regional_center integer, mine integer)");
 
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
+
+    db.exec("CREATE TABLE cp (id integer primary key, type text, bank_id integer, "
+                             "town_id integer, cord_lon real, cord_lat real, address text, "
+                             "address_comment text, metro_name text, main_office integer, "
+                             "without_weekend integer, round_the_clock integer, "
+                             "works_as_shop integer, rub integer, usd integer, "
+                             "eur integer, cash_in integer)");
     db.commit();
 
-    ServerApi *api = new ServerApi("192.168.1.126", 8080);
+    ServerApi *api = new ServerApi("localhost", 8080);
 
     const QStringList icons = {
         ":/icon/star.svg",

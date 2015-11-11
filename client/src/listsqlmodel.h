@@ -20,9 +20,12 @@ public:
 
     static QString escapeFilter(QString filter);
 
+    ServerApi *getServerApi() const { return mApi; }
+
 signals:
     void serverDataReceived();
     void filterRequest(QString filter);
+    void requestError(QString error);
 
 public slots:
     void setFilter(QString filter);
@@ -39,10 +42,12 @@ protected:
     quint32 getAttemptsCount() const { return mRequestAttemptsCount; }
     void setAttemptsCount(quint32 count) { mRequestAttemptsCount = count; }
 
-    int getRequestBatchSize() const { return mRequestBatchSize; }
-    void setRequestBatchSize(quint32 size) { mRequestBatchSize = size; }
+    quint32 getRequestBatchSize() const { return mRequestBatchSize; }
+    void setRequestBatchSize(quint32 size) {
+        Q_ASSERT_X(size > 0, "setRequestBatchSize", "zero batch size");
+        mRequestBatchSize = size;
+    }
 
-    ServerApi *getServerApi() const { return mApi; }
     IcoImageProvider *getIcoImageProvider() const { return mImageProvider; }
     QSettings *getSettings() const { return mSettings; }
 
@@ -50,6 +55,9 @@ protected:
 
     void emitServerDataReceived()
     { emit serverDataReceived(); }
+
+    void emitRequestError(const QString &err)
+    { emit requestError(err); }
 
     /// reimplemented qt methods
     QVariant data(const QModelIndex &item, int role) const override;
