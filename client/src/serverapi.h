@@ -50,7 +50,7 @@ public:
 
     typedef std::function<void(HttpStatusCode code, const QByteArray &data, bool timeOut)> Callback;
 
-    qint64 sendRequest(QString path, QJsonObject data, ServerApi::Callback callback);
+    qint64 sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth = false);
 
 signals:
     void responseReceived(qint64 requestId);

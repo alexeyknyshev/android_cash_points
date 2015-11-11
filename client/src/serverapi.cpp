@@ -75,8 +75,11 @@ void ServerApi::postRequest(QString path, QJsonObject data, ServerApi::Callback 
     Q_ASSERT_X(false, "ServerApi::postRequest", "not implemented yet");
 }
 
-qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback)
+qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth)
 {
+    /// TODO: added authenticated request sending
+    Q_UNUSED(auth)
+
     _eraseExpiredCallbacks();
 
     qint64 requestId = uniqueRequestId();
