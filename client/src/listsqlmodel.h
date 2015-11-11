@@ -20,6 +20,8 @@ public:
 
     static QString escapeFilter(QString filter);
 
+    ServerApi *getServerApi() const { return mApi; }
+
 signals:
     void serverDataReceived();
     void filterRequest(QString filter);
@@ -46,7 +48,6 @@ protected:
         mRequestBatchSize = size;
     }
 
-    ServerApi *getServerApi() const { return mApi; }
     IcoImageProvider *getIcoImageProvider() const { return mImageProvider; }
     QSettings *getSettings() const { return mSettings; }
 

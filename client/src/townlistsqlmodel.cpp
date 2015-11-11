@@ -194,19 +194,25 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateTownsIds: no retry attempt left";
+        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
     /// Get list of towns' ids
     getServerApi()->sendRequest("/towns", {},
-    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        if (timeOut) {
+    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+        if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateTownIds(leftAttempts - 1);
             return;
         }
 
-        if (code != ServerApi::HSC_Ok) {
-            qWarning() << "Server request error: " << code;
+        if (reqCode != ServerApi::RSC_Ok) {
+            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            return;
+        }
+
+        if (httpCode != ServerApi::HSC_Ok) {
+            qWarning() << "Server request error: " << httpCode;
             emitUpdateTownIds(leftAttempts - 1);
             return;
         }
@@ -214,7 +220,7 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            qWarning() << "Server response json parse error: " << err.errorString();
+            emitRequestError("Server response json parse error: " + err.errorString());
             return;
         }
 
@@ -229,6 +235,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateTownsData: no retry attempt left";
+        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
@@ -236,21 +243,21 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         return;
     }
 
-    const int townsToProcess = qMin(getRequestBatchSize(), mTownsToProcess.size());
+    const quint32 townsToProcess = qMin(getRequestBatchSize(), (quint32)mTownsToProcess.size());
     if (townsToProcess == 0) {
         return;
     }
 
     QJsonArray requestTownsBatch;
-    for (int i = 0; i < townsToProcess; ++i) {
+    for (quint32 i = 0; i < townsToProcess; ++i) {
         requestTownsBatch.append(mTownsToProcess.front());
         mTownsToProcess.removeFirst();
     }
 
     /// Get towns data from list
     getServerApi()->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
-    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        if (timeOut) {
+    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+        if (reqCode == ServerApi::RSC_Timeout) {
             for (const QJsonValue &val : requestTownsBatch) {
                 const int id = val.toInt();
                 if (id > 0) {
@@ -262,8 +269,13 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
             return;
         }
 
-        if (code != ServerApi::HSC_Ok) {
-            qWarning() << "updateTownsData: http status code: " << code;
+        if (reqCode != ServerApi::RSC_Ok) {
+            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            return;
+        }
+
+        if (httpCode != ServerApi::HSC_Ok) {
+            qWarning() << "updateTownsData: http status code: " << httpCode;
             for (const QJsonValue &val : requestTownsBatch) {
                 const int id = val.toInt();
                 if (id > 0) {
@@ -278,7 +290,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            qWarning() << "updateTownsData: response parse error: " << err.errorString();
+            emitRequestError("updateTownsData: response parse error: " + err.errorString());
             return;
         }
 
@@ -310,19 +322,25 @@ void TownListSqlModel::updateRegions(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateRegions: no retry attempt left";
+        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
     getServerApi()->sendRequest("/regions", {},
-    [&](ServerApi::HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        if (timeOut) {
+    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+        if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateRegions(leftAttempts - 1);
             return;
         }
 
-        if (code != ServerApi::HSC_Ok) {
+        if (reqCode != ServerApi::RSC_Ok) {
+            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            return;
+        }
+
+        if (httpCode != ServerApi::HSC_Ok) {
+            qWarning() << "Server request error: " << httpCode;
             emitUpdateRegions(leftAttempts - 1);
-            qWarning() << "Server request error: " << code;
             return;
         }
 

@@ -52,11 +52,11 @@ int ServerApi::getPort() const
 qint64 ServerApi::uniqueRequestId() const
 {
     if (std::numeric_limits<qint64>::max() != mNextUniqueId) {
-        return mNextUniqueId++;
+        mNextUniqueId++;
     } else {
         mNextUniqueId = 1;
-        return mNextUniqueId;
     }
+    return mNextUniqueId;
 }
 
 void ServerApi::setCallbacksExpireTime(quint32 msec)
@@ -77,8 +77,6 @@ void ServerApi::postRequest(QString path, QJsonObject data, ServerApi::Callback 
 
 qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback)
 {
-    _eraseExpiredCallbacks();
-
     qint64 requestId = uniqueRequestId();
     mCallbacks.insert(requestId, ExpCallback(QDateTime::currentDateTime(), callback));
 
@@ -103,22 +101,17 @@ qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callbac
     return requestId;
 }
 
-void ServerApi::update()
-{
-    _eraseExpiredCallbacks();
-}
-
 void ServerApi::ping()
 {
     qDebug() << "ping";
     sendRequest("/ping", {},
-    [&](HttpStatusCode code, const QByteArray &data, bool timeOut) {
-        if (timeOut) {
+    [&](RequestStatusCode reqCode, HttpStatusCode httpCode, const QByteArray &data) {
+        if (reqCode != RSC_Ok) {
             emitPong(false);
             return;
         }
 
-        if (code != HSC_Ok) {
+        if (httpCode != HSC_Ok) {
             emitPong(false);
             return;
         }
@@ -144,7 +137,7 @@ void ServerApi::emitPong(bool ok)
     emit pong(ok);
 }
 
-static ServerApi::HttpStatusCode getStatusCode(QNetworkReply *rep)
+static ServerApi::HttpStatusCode getHttpStatusCode(QNetworkReply *rep)
 {
     bool convertOk = false;
     int status = rep->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(&convertOk);
@@ -154,26 +147,77 @@ static ServerApi::HttpStatusCode getStatusCode(QNetworkReply *rep)
     return ServerApi::HSC_ServerError;
 }
 
+static ServerApi::RequestStatusCode getRequestStatusCode(const QNetworkReply::NetworkError err)
+{
+    if (err == QNetworkReply::NoError) {
+        return ServerApi::RSC_Ok;
+    } else if (err == QNetworkReply::ConnectionRefusedError) {
+        return ServerApi::RSC_ConnectionRefused;
+    } else if (err == QNetworkReply::HostNotFoundError) {
+        return ServerApi::RSC_HostNotFound;
+    }
+    return ServerApi::RSC_Unknown;
+}
+
+static QString getRequestStatusCodeText(const ServerApi::RequestStatusCode code)
+{
+    QString msg = "";
+    if (code == ServerApi::RSC_ConnectionRefused) {
+        msg = QObject::trUtf8("Connection refused by server. ");
+    } else if (code == ServerApi::RSC_HostNotFound) {
+        msg = QObject::trUtf8("Sorry, server is unavaliable now. ");
+    } else if (code == ServerApi::RSC_Unknown) {
+        msg = QObject::trUtf8("Unknown server connection error. ");
+    }
+
+    if (!msg.isEmpty()) {
+        msg += QObject::trUtf8("Please, check your internet connection and "
+                               "make sure that you use recent application version.");
+    }
+    return msg;
+}
+
 void ServerApi::onResponseReceived(QNetworkReply *rep)
 {
-    _eraseExpiredCallbacks();
+    QList<qint64> expiredCallbacks = _getExpiredCallbacks();
 
-    if (rep->error() == QNetworkReply::NoError) {
-        bool ok = false;
-        qint64 requestId = rep->rawHeader(QByteArray("Id")).toLongLong(&ok);
-        const auto it = mCallbacks.find(requestId);
-        if (it != mCallbacks.cend()) {
-            Callback &callback = it->callback;
-            callback(getStatusCode(rep),
-                     rep->readAll(),
-                     false);
-            mCallbacks.erase(it);
-        } else {
-            qWarning() << "Unknown request id: " << requestId;
-        }
+    RequestStatusCode code = getRequestStatusCode(rep->error());
+    QString msg = getRequestStatusCodeText(code);
+
+    qint64 requestId = 0;
+    if (code == RSC_Ok) {
+        requestId = rep->rawHeader(QByteArray("Id")).toLongLong();
     } else {
-
+        requestId = rep->request().rawHeader(QByteArray("Id")).toLongLong();
     }
+
+    if (requestId == 0) {
+        qWarning() << "Error: cannot find out request id from request & response";
+        return;
+    }
+
+    auto it = mCallbacks.find(requestId);
+    if (it == mCallbacks.cend()) {
+        qWarning() << "Unknown request id: " << requestId;
+        return;
+    }
+
+    if (expiredCallbacks.contains(requestId)) {
+        code = RSC_Timeout;
+        msg = trUtf8("Response timeout exceeded.");
+    }
+
+    Callback &callback = it->callback;
+    if (code == RSC_Ok) {
+        callback(code, getHttpStatusCode(rep), rep->readAll());
+    } else if (code == RSC_Timeout) {
+        callback(code, HSC_Ok, msg.toUtf8());
+    } else {
+        callback(code, HSC_Ok, QByteArray());
+    }
+    mCallbacks.erase(it);
+
+    _eraseExpiredCallbacks(expiredCallbacks);
 }
 
 static bool isCallbackExpired(const QDateTime &birthTime, qint64 expireTime)
@@ -188,25 +232,33 @@ static bool isCallbackExpired(const QDateTime &birthTime, qint64 expireTime)
 #endif // CP_DEBUG
 }
 
-void ServerApi::_eraseExpiredCallbacks()
+QList<qint64> ServerApi::_getExpiredCallbacks() const
 {
-    auto it = mCallbacks.begin();
-    while (it != mCallbacks.end()) {
+    QList<qint64> erasedCallbacks;
+    for (auto it = mCallbacks.begin(); it != mCallbacks.end(); it++) {
         if (isCallbackExpired(it->dt, static_cast<qint64>(getCallbacksExpireTime()))) {
-            qint64 requestId = it.key();
+            const qint64 requestId = it.key();
+            erasedCallbacks.append(requestId);
+
             const Callback &callback = it->callback;
-            callback(HSC_RequestTimeout, QByteArray(), true);
-            mCallbacks.erase(it);
-            emit requestTimedout(requestId);
-            return;
+            callback(RSC_Timeout, HSC_Ok, QByteArray());
         }
-        ++it;
     }
+    return erasedCallbacks;
+}
+
+int ServerApi::_eraseExpiredCallbacks(const QList<qint64> &reqIdList)
+{
+    int count = 0;
+    for (const quint64 requestId : reqIdList) {
+        count += mCallbacks.remove(requestId);
+    }
+    return count;
 }
 
 void ServerApi::_init(const QString &host, int port, const QSslCertificate &cert)
 {
-    mNextUniqueId = 1;
+    mNextUniqueId = 0;
 
     if (!cert.isNull()) {
         mSslConfig = new QSslConfiguration;
