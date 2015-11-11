@@ -45,6 +45,12 @@ public:
                  const QVariant &value,
                  int role) override;
 
+    void sendRequest(CashPointRequest *request);
+
+
+signals:
+    void delayedUpdate();
+
 protected:
     void updateFromServerImpl(quint32 leftAttempts) override;
     void setFilterImpl(const QString &filter) override;
@@ -54,8 +60,10 @@ protected:
     QSqlQuery &getQuery() override { return mQuery; }
 
 private:
-    QSqlQuery mQuery;
+    void setFilterJson(const QJsonObject &json);
+    void setFilterFreeForm(const QString &filter);
 
+    QSqlQuery mQuery;
     CashPointRequest *mRequest;
 };
 

@@ -9,6 +9,10 @@
 #include "rpctype.h"
 #include "serverapi.h"
 
+// CashPoint request types
+#define RT_RADUS "radius"
+#define RT_TOWN "town"
+
 struct CashPoint : public RpcType<CashPoint>
 {
     QString type;
@@ -82,6 +86,7 @@ public:
     }
 
     virtual void sendImpl(ServerApi *api, quint32 leftAttepmts) = 0;
+    const QDateTime &getLastUpdateTime() const { return mLastUpdateTime; }
 
 signals:
     void update(quint32 leftAttempts);
@@ -103,8 +108,13 @@ protected:
         emit error(err);
     }
 
+    void setLastUpdateTime(const QDateTime &time) {
+        mLastUpdateTime = time;
+    }
+
 private:
     CashPointSqlModel *const mModel;
+    QDateTime mLastUpdateTime;
 };
 
 // =================================================
@@ -152,7 +162,7 @@ public:
                 return;
             }
 
-
+            setLastUpdateTime(QDateTime::currentDateTime());
         });
     }
 
@@ -204,6 +214,8 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
     setRoleName(UsdRole,            "cp_usd");
     setRoleName(EurRole,            "cp_eur");
     setRoleName(CashInRole,         "cp_cash_in");
+
+    connect(this, SIGNAL(delayedUpdate()), SLOT(updateFromServer()), Qt::QueuedConnection);
 }
 
 QVariant CashPointSqlModel::data(const QModelIndex &item, int role) const
@@ -214,6 +226,24 @@ QVariant CashPointSqlModel::data(const QModelIndex &item, int role) const
 bool CashPointSqlModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
 
+}
+
+void CashPointSqlModel::sendRequest(CashPointRequest *request)
+{
+    if (mRequest == request) {
+        return;
+    }
+
+    if (mRequest) {
+        mRequest->deleteLater();
+    }
+
+    mRequest = request;
+    if (request) {
+        request->send(getAttemptsCount());
+    }
+
+    emit delayedUpdate();
 }
 
 void CashPointSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -228,6 +258,46 @@ void CashPointSqlModel::updateFromServerImpl(quint32 leftAttempts)
 void CashPointSqlModel::setFilterImpl(const QString &filter)
 {
     if (filter.isEmpty()) {
-
+        return;
     }
+
+    QJsonParseError err;
+    const QJsonDocument json = QJsonDocument::fromJson(filter.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError) {
+        setFilterFreeForm(filter);
+        return;
+    }
+
+    if (!json.isObject()) {
+        emitRequestError("CashPointSqlModel::setFilterImpl: Cannot local request is not a json object.");
+        return;
+    }
+
+    setFilterJson(json.object());
+}
+
+void CashPointSqlModel::setFilterJson(const QJsonObject &json)
+{
+    const QString type = json["type"].toString();
+
+    CashPointRequest *req = nullptr;
+    if (type == RT_RADUS) {
+        CashPointInRadius *tmpReq = new CashPointInRadius(this);
+        tmpReq->setRadius(json["radius"].toDouble());
+        QGeoCoordinate coord;
+        coord.setLatitude(json["latitude"].toDouble());
+        coord.setLongitude(json["longitude"].toDouble());
+        tmpReq->setCoordinate(coord);
+        req = tmpReq;
+    } else {
+        emitRequestError("ashPointSqlModel::setFilterJson: unknown req type: " + type);
+        return;
+    }
+
+    sendRequest(req);
+}
+
+void CashPointSqlModel::setFilterFreeForm(const QString &filter)
+{
+
 }
