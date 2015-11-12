@@ -12,13 +12,18 @@ fi
 SCRIPT_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 cd "$SCRIPT_DIR"
 
-if [ ! -e config.json ]
+BIN_DIR="$SCRIPT_DIR/bin"
+CONFIG_FILE="$BIN_DIR/config.json"
+SERVER_EXECUTABLE="$BIN_DIR/server"
+TESTS_DIR="$SCRIPT_DIR/test/unit"
+
+if [ ! -e "$CONFIG_FILE" ]
 then
     echo "No such file: config.json"
     exit 1
 fi
 
-SERVER_PORT=$(jq '.Port' config.json)
+SERVER_PORT=$(jq '.Port' "$CONFIG_FILE")
 if [ $? -ne 0 ]
 then
     echo 'Failed to parse server port from "config.json" file'
@@ -28,18 +33,18 @@ fi
 SERVER_PID=''
 if [ $verbose -eq 0 ]
 then
-    ./server config.json >/dev/null 2>/dev/null &
+    $SERVER_EXECUTABLE "$CONFIG_FILE" >/dev/null 2>/dev/null &
     SERVER_PID="$!"
 else
-    ./server config.json &
+    $SERVER_EXECUTABLE "$CONFIG_FILE" &
     SERVER_PID="$!"
 fi
 
-TEST_COUNT=$(find test/unit -name '*.yaml' | wc -l)
+TEST_COUNT=$(find "$TESTS_DIR" -name '*.yaml' | wc -l)
 
 currentTestIndex=1
 
-for testFile in test/unit/*.yaml
+find "$TESTS_DIR" -name '*.yaml' | while read testFile
 do
     preScriptPath="$testFile.pre.sh"
     postScriptPath="$testFile.post.sh"
