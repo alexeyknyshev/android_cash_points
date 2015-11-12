@@ -6,5 +6,5 @@ DATE=`date -u '+%Y/%m/%dT%H:%M:%S'`
 export GOPATH="$SCRIPT_DIR"
 go get
 go build -ldflags "-X main.BuildDate $DATE" github.com/alexeyknyshev/server
-go install
+go install github.com/alexeyknyshev/server
 rm "$SCRIPT_DIR"/server
