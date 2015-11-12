@@ -14,6 +14,7 @@ Item {
     focus: true
 
     property bool active: true
+    property bool showZoomLevel: true
 
     signal clicked()
     signal menuClicked()
@@ -707,6 +708,27 @@ Item {
         spread: 0.3
         color: "#11000055"
         cornerRadius: glowRadius
+    }
+
+    Rectangle {
+        width: Math.min(parent.width, parent.height) * 0.25
+        height: Math.max(parent.width, parent.height) * 0.05
+        radius: Math.min(width, height) * 0.1
+        color: "white"
+        visible: parent.showZoomLevel
+
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 3
+
+        Label {
+            anchors.fill: parent
+            text: "zoom: " + map.zoomLevel.toPrecision(6)
+            color: "steelblue"
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
     }
 }
 
