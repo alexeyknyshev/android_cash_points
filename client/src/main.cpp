@@ -72,6 +72,8 @@ int main(int argc, char *argv[])
         ":/icon/star.svg",
         ":/icon/star_gray.svg",
         ":/icon/aim.svg",
+        ":/icon/zoom_in.svg",
+        ":/icon/zoom_out.svg",
         ":/icon/marker.svg"
     };
     IcoImageProvider *imageProvider = new IcoImageProvider;

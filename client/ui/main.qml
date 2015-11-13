@@ -215,7 +215,7 @@ ApplicationWindow {
             id: mapView
             enabled: parent.flipped
             anchors.fill: parent
-
+            showControls: leftMenu.state == "hidden"
             active: !leftMenu.visible
 
             LeftMenu {

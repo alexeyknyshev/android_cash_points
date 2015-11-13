@@ -15,6 +15,9 @@ Item {
 
     property bool active: true
     property bool showZoomLevel: true
+    property bool showControls: true
+
+    property real contolsOpacity: showControls ? 1.0 : 0.0
 
     signal clicked()
     signal menuClicked()
@@ -359,17 +362,24 @@ Item {
 
 
 
-        Rectangle {
+        Image {
             z: parent.z + 1
             id: zoomOutButton
+            source: "image://ico/zoom_out.svg"
+            sourceSize: Qt.size(width, height)
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: height * 0.25
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            radius: width * 0.5
-            color: "#3295BA"
-            opacity: 0.9
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             Behavior on scale {
                 NumberAnimation { duration: 100 }
@@ -392,36 +402,30 @@ Item {
         }
 
 
-        Rectangle {
+        Image {
             z: parent.z + 1
             id: zoomInButton
+            source: "image://ico/zoom_in.svg"
+            sourceSize: Qt.size(width, height)
             anchors.top: zoomOutButton.bottom
             anchors.topMargin: height * 0.25
             anchors.right: parent.right
             anchors.rightMargin: height * 0.25
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            radius: width * 0.5
-            color: "#D94336"
-            opacity: 0.9
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             Behavior on scale {
-                NumberAnimation { duration: 100 }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.05
-                height: parent.height * 0.3
-                radius: width * 0.1
-            }
-
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.3
-                height: parent.height * 0.05
-                radius: height * 0.1
+                NumberAnimation {
+                    duration: 100
+                }
             }
 
             MouseArea {
@@ -453,6 +457,14 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.margins: 1
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             property bool activated: false
 
