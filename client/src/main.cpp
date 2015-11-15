@@ -35,7 +35,13 @@ int main(int argc, char *argv[])
     app.setOrganizationName("Agnia");
     app.setApplicationName("CashPoints");
 
-    QString path = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+
+    const QString path =
+#if QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+#else
+            QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
+#endif
     QSettings settings(path, QSettings::NativeFormat);
 
     // bank list db
@@ -66,12 +72,14 @@ int main(int argc, char *argv[])
                              "eur integer, cash_in integer)");
     db.commit();
 
-    ServerApi *api = new ServerApi("localhost", 8080);
+    ServerApi *api = new ServerApi("192.168.1.126", 8080);
 
     const QStringList icons = {
         ":/icon/star.svg",
         ":/icon/star_gray.svg",
         ":/icon/aim.svg",
+        ":/icon/zoom_in.svg",
+        ":/icon/zoom_out.svg",
         ":/icon/marker.svg"
     };
     IcoImageProvider *imageProvider = new IcoImageProvider;

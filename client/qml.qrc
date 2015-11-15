@@ -26,6 +26,8 @@
         <file alias="star.svg">ico/other/star.svg</file>
         <file alias="star_gray.svg">ico/other/star_gray.svg</file>
         <file alias="aim.svg">ico/other/aim.svg</file>
+        <file alias="zoom_out.svg">ico/other/zoom_out.svg</file>
+        <file alias="zoom_in.svg">ico/other/zoom_in.svg</file>
         <file alias="marker.svg">ico/other/marker.svg</file>
     </qresource>
 </RCC>

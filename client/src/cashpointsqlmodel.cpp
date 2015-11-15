@@ -220,7 +220,11 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
 
 QVariant CashPointSqlModel::data(const QModelIndex &item, int role) const
 {
-
+    if (role < Qt::UserRole || role >= RoleLast)
+    {
+        return ListSqlModel::data(item, role);
+    }
+    return QStandardItemModel::data(index(item.row(), 0), role);
 }
 
 bool CashPointSqlModel::setData(const QModelIndex &index, const QVariant &value, int role)
@@ -252,7 +256,11 @@ void CashPointSqlModel::updateFromServerImpl(quint32 leftAttempts)
         return;
     }
 
+    if (!mRequest) {
+        return;
+    }
 
+    mRequest->send(leftAttempts);
 }
 
 void CashPointSqlModel::setFilterImpl(const QString &filter)

@@ -14,6 +14,10 @@ Item {
     focus: true
 
     property bool active: true
+    property bool showZoomLevel: true
+    property bool showControls: true
+
+    property real contolsOpacity: showControls ? 1.0 : 0.0
 
     signal clicked()
     signal menuClicked()
@@ -51,42 +55,12 @@ Item {
             stop()
         }
 
-        onUpdateTimeout: {
-            console.warn("could not retrieve current position")
-        }
-
-        onSourceErrorChanged: {
-
-        }
-
         function getAvgZoomLevel(scale) {
             return map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * scale
         }
 
         onActiveChanged: {
             console.log("active changed: " + active.toString())
-                /*console.log("geoposition changed")
-                if (position.coordinate.isValid) {
-                    console.log("new geopos received")
-                    var expectedZoomLevel = getAvgZoomLevel(0.5)
-                    if (expectedZoomLevel < map.zoomLevel) {
-                        expectedZoomLevel = map.zoomLevel
-                    }
-                    map.moveToCoord(position.coordinate, expectedZoomLevel)
-
-                    if (me == null) {
-                        var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
-                        if (mapMeMarkComponent.status === Component.Ready) {
-                            me = mapMeMarkComponent.createObject(map)
-                        }
-                    }
-                    me.coordinate = position.coordinate
-                    map.addMapItem(me)
-
-                    findMeButtonRotationAnim.stop()
-                    findMeButtonRotationAnimBack.start()
-                }
-            }*/
         }
 
         function debugPrintSupportedPositioningMethods() {
@@ -358,17 +332,24 @@ Item {
 
 
 
-        Rectangle {
+        Image {
             z: parent.z + 1
             id: zoomOutButton
+            source: "image://ico/zoom_out.svg"
+            sourceSize: Qt.size(width, height)
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: height * 0.25
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            radius: width * 0.5
-            color: "#3295BA"
-            opacity: 0.9
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             Behavior on scale {
                 NumberAnimation { duration: 100 }
@@ -391,36 +372,30 @@ Item {
         }
 
 
-        Rectangle {
+        Image {
             z: parent.z + 1
             id: zoomInButton
+            source: "image://ico/zoom_in.svg"
+            sourceSize: Qt.size(width, height)
             anchors.top: zoomOutButton.bottom
             anchors.topMargin: height * 0.25
             anchors.right: parent.right
             anchors.rightMargin: height * 0.25
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
             width: height
-            radius: width * 0.5
-            color: "#D94336"
-            opacity: 0.9
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             Behavior on scale {
-                NumberAnimation { duration: 100 }
-            }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.05
-                height: parent.height * 0.3
-                radius: width * 0.1
-            }
-
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: parent.width * 0.3
-                height: parent.height * 0.05
-                radius: height * 0.1
+                NumberAnimation {
+                    duration: 100
+                }
             }
 
             MouseArea {
@@ -452,6 +427,14 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.margins: 1
             height: Math.min(Math.max(parent.width, parent.height) * 0.1, 160)
+
+            visible: opacity > 0
+            opacity: topView.contolsOpacity
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: 300
+                }
+            }
 
             property bool activated: false
 
@@ -707,6 +690,27 @@ Item {
         spread: 0.3
         color: "#11000055"
         cornerRadius: glowRadius
+    }
+
+    Rectangle {
+        width: Math.min(parent.width, parent.height) * 0.25
+        height: Math.max(parent.width, parent.height) * 0.05
+        radius: Math.min(width, height) * 0.1
+        color: "white"
+        visible: parent.showZoomLevel
+
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: 3
+
+        Label {
+            anchors.fill: parent
+            text: "zoom: " + map.zoomLevel.toPrecision(6)
+            color: "steelblue"
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
     }
 }
 

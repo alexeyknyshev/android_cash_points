@@ -243,6 +243,13 @@ func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
 func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 	redis_scripts = make(map[string]string)
 
+	if _, err := os.Stat(scriptsDir); os.IsNotExist(err) {
+		log.Fatalf("preloadRedisScripts: No such directory file: %s\n", scriptsDir)
+	}
+
+	log.Printf("Flushing redis script cache")
+	redisCli.Cmd("SCRIPT", "FLUSH")
+
 	filepath.Walk(scriptsDir, func(path string, fi os.FileInfo, _ error) error {
 		if fi.IsDir() == false {
 			fileBaseName := fi.Name()
