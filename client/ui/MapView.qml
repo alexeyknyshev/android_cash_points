@@ -55,38 +55,12 @@ Item {
             stop()
         }
 
-        onSourceErrorChanged: {
-
-        }
-
         function getAvgZoomLevel(scale) {
             return map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * scale
         }
 
         onActiveChanged: {
             console.log("active changed: " + active.toString())
-                /*console.log("geoposition changed")
-                if (position.coordinate.isValid) {
-                    console.log("new geopos received")
-                    var expectedZoomLevel = getAvgZoomLevel(0.5)
-                    if (expectedZoomLevel < map.zoomLevel) {
-                        expectedZoomLevel = map.zoomLevel
-                    }
-                    map.moveToCoord(position.coordinate, expectedZoomLevel)
-
-                    if (me == null) {
-                        var mapMeMarkComponent = Qt.createComponent("MapMeMark.qml")
-                        if (mapMeMarkComponent.status === Component.Ready) {
-                            me = mapMeMarkComponent.createObject(map)
-                        }
-                    }
-                    me.coordinate = position.coordinate
-                    map.addMapItem(me)
-
-                    findMeButtonRotationAnim.stop()
-                    findMeButtonRotationAnimBack.start()
-                }
-            }*/
         }
 
         function debugPrintSupportedPositioningMethods() {
