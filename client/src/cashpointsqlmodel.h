@@ -6,6 +6,7 @@
 #include "listsqlmodel.h"
 
 class CashPointRequest;
+class RequestFactory;
 
 class CashPointSqlModel : public ListSqlModel
 {
@@ -39,6 +40,8 @@ public:
                       IcoImageProvider *imageProvider,
                       QSettings *settings);
 
+    ~CashPointSqlModel();
+
     QVariant data(const QModelIndex &item, int role) const override;
 
     bool setData(const QModelIndex &index,
@@ -65,6 +68,8 @@ private:
 
     QSqlQuery mQuery;
     CashPointRequest *mRequest;
+
+    QMap<QString, RequestFactory *> mRequestFactoryMap;
 };
 
 #endif // CASHPOINTSQLMODEL_H

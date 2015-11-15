@@ -12,7 +12,11 @@ SOURCES += src/main.cpp \
     src/icoimageprovider.cpp \
     src/searchengine.cpp \
     src/locationservice.cpp \
-    src/cashpointsqlmodel.cpp
+    src/cashpointsqlmodel.cpp \
+    src/requests/cashpointrequest.cpp \
+    src/requests/cashpointinradius.cpp \
+    src/requests/requestfactory.cpp \
+    src/requests/cashpointrequestinradiusfactory.cpp
 
 RESOURCES += qml.qrc
 
@@ -42,7 +46,11 @@ HEADERS += \
     src/icoimageprovider.h \
     src/searchengine.h \
     src/locationservice.h \
-    src/cashpointsqlmodel.h
+    src/cashpointsqlmodel.h \
+    src/requests/cashpointrequest.h \
+    src/requests/cashpointinradius.h \
+    src/requests/requestfactory.h \
+    src/requests/cashpointrequestinradiusfactory.h
 
 QMAKE_CXXFLAGS += -std=c++11
 

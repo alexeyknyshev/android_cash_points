@@ -2,12 +2,13 @@
 
 #include <QtCore/QDebug>
 #include <QtSql/QSqlRecord>
-#include <QtPositioning/QGeoCoordinate>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonArray>
 
 #include "rpctype.h"
 #include "serverapi.h"
+#include "requests/cashpointrequest.h"
+#include "requests/cashpointrequestinradiusfactory.h"
 
 // CashPoint request types
 #define RT_RADUS "radius"
@@ -73,122 +74,6 @@ struct CashPoint : public RpcType<CashPoint>
 
 /// ================================================
 
-class CashPointRequest : public QObject
-{
-    Q_OBJECT
-
-public:
-    CashPointRequest(CashPointSqlModel *model)
-        : mModel(model)
-    {
-        connect(this, SIGNAL(update(quint32)), SLOT(send(quint32)), Qt::QueuedConnection);
-        connect(this, SIGNAL(error(QString)), mModel, SIGNAL(requestError(QString)));
-    }
-
-    virtual void sendImpl(ServerApi *api, quint32 leftAttepmts) = 0;
-    const QDateTime &getLastUpdateTime() const { return mLastUpdateTime; }
-
-signals:
-    void update(quint32 leftAttempts);
-    void error(QString err);
-
-public slots:
-    void send(quint32 leftAttempts) {
-        sendImpl(getModel()->getServerApi(), leftAttempts);
-    }
-
-protected:
-    CashPointSqlModel *getModel() const { return mModel; }
-
-    void emitUpdate(quint32 leftAttempts) {
-        emit update(leftAttempts);
-    }
-
-    void emitError(QString err) {
-        emit error(err);
-    }
-
-    void setLastUpdateTime(const QDateTime &time) {
-        mLastUpdateTime = time;
-    }
-
-private:
-    CashPointSqlModel *const mModel;
-    QDateTime mLastUpdateTime;
-};
-
-// =================================================
-
-class CashPointInRadius : public CashPointRequest
-{
-public:
-    CashPointInRadius(CashPointSqlModel *model)
-        : CashPointRequest(model),
-          mRadius(1000.0f)
-    { }
-
-    void sendImpl(ServerApi *api, quint32 leftAttempts) override {
-        if (leftAttempts == 0) {
-            qDebug() << "CashPointInRadius: no retry attempt left";
-            return;
-        }
-
-        QJsonObject json;
-        json["longitude"] = mCoord.longitude();
-        json["latitude"] = mCoord.latitude();
-        json["radius"] = mRadius;
-        api->sendRequest("/nearby/cashpoints", json,
-        [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
-            if (reqCode == ServerApi::RSC_Timeout) {
-                emitUpdate(leftAttempts - 1);
-                return;
-            }
-
-            if (reqCode != ServerApi::RSC_Ok) {
-                emitError(ServerApi::requestStatusCodeText(reqCode));
-                return;
-            }
-
-            if (httpCode != ServerApi::HSC_Ok) {
-                qWarning() << "Server request http code: " << httpCode;
-                emitUpdate(leftAttempts - 1);
-                return;
-            }
-
-            QJsonParseError err;
-            const QJsonDocument json = QJsonDocument::fromJson(data, &err);
-            if (err.error != QJsonParseError::NoError) {
-                emitError("CashPointInRadius: server response json parse error: " + err.errorString());
-                return;
-            }
-
-            setLastUpdateTime(QDateTime::currentDateTime());
-        });
-    }
-
-    void setRadius(qreal radius) {
-        if (radius <= 0) {
-            qDebug() << "cashpoint search radius must be positive";
-            return;
-        }
-        mRadius = radius;
-    }
-
-    void setCoordinate(const QGeoCoordinate &coord) {
-        if (!coord.isValid()) {
-            qDebug() << "cashpoinst search coordinate must be valid";
-            return;
-        }
-        mCoord = coord;
-    }
-
-private:
-    qreal mRadius;
-    QGeoCoordinate mCoord;
-};
-
-/// ================================================
-
 CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                                      ServerApi *api,
                                      IcoImageProvider *imageProvider,
@@ -215,7 +100,17 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
     setRoleName(EurRole,            "cp_eur");
     setRoleName(CashInRole,         "cp_cash_in");
 
+    mRequestFactoryMap[RT_RADUS] = new CashPointRequestInRadiusFactory;
+
     connect(this, SIGNAL(delayedUpdate()), SLOT(updateFromServer()), Qt::QueuedConnection);
+}
+
+CashPointSqlModel::~CashPointSqlModel()
+{
+    const auto end = mRequestFactoryMap.end();
+    for (auto it = mRequestFactoryMap.begin(); it != end; it++) {
+        delete it.value();
+    }
 }
 
 QVariant CashPointSqlModel::data(const QModelIndex &item, int role) const
@@ -289,16 +184,13 @@ void CashPointSqlModel::setFilterJson(const QJsonObject &json)
     const QString type = json["type"].toString();
 
     CashPointRequest *req = nullptr;
-    if (type == RT_RADUS) {
-        CashPointInRadius *tmpReq = new CashPointInRadius(this);
-        tmpReq->setRadius(json["radius"].toDouble());
-        QGeoCoordinate coord;
-        coord.setLatitude(json["latitude"].toDouble());
-        coord.setLongitude(json["longitude"].toDouble());
-        tmpReq->setCoordinate(coord);
-        req = tmpReq;
+    const auto it = mRequestFactoryMap.find(type);
+    if (it != mRequestFactoryMap.end()) {
+        RequestFactory *factory = it.value();
+        req = factory->createRequest();
+        req->fromJson(json);
     } else {
-        emitRequestError("ashPointSqlModel::setFilterJson: unknown req type: " + type);
+        emitRequestError("CashPointSqlModel::setFilterJson: unknown req type: " + type);
         return;
     }
 
