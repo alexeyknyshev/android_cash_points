@@ -55,10 +55,6 @@ Item {
             stop()
         }
 
-        onUpdateTimeout: {
-            console.warn("could not retrieve current position")
-        }
-
         onSourceErrorChanged: {
 
         }
