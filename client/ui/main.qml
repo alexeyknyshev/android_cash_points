@@ -237,6 +237,7 @@ ApplicationWindow {
             }
 
             RectangularGlow {
+                id: leftMenuGlow
                 visible: leftMenu.visible
                 anchors.fill: leftMenu
                 z: leftMenu.z - 1
@@ -247,6 +248,15 @@ ApplicationWindow {
                 opacity: (leftMenu.x + leftMenu.width) / (mapView.width * 0.6)
             }
 
+            RectangularGlow {
+                visible: leftMenu.visible
+                anchors.fill: mapView
+                z: leftMenu.z - 1
+                color: "#0000000FF"
+                glowRadius: 100000
+                opacity: leftMenuGlow.opacity
+            }
+
             onClicked: {
                 leftMenu.state = "hidden"
             }
@@ -255,16 +265,5 @@ ApplicationWindow {
                 leftMenu.state = ""
             }
         }
-
-
-//        Desaturate {
-//            anchors.top: mapView.top
-//            anchors.left: leftMenu.right
-//            anchors.right: mapView.right
-//            anchors.bottom: mapView.bottom
-//            source: mapView
-//            desaturation: 0.8
-////            z: leftMenu.z - 1
-//        }
     }
 }
