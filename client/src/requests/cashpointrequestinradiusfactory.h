@@ -6,7 +6,7 @@
 class CashPointRequestInRadiusFactory : public RequestFactory
 {
 public:
-    virtual CashPointRequest *createRequest() const;
+    CashPointRequest *createRequest(CashPointSqlModel *model) const override;
 };
 
 #endif // CASHPOINTREQUESTINRADIUSFACTORY_H

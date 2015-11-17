@@ -79,7 +79,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                                      IcoImageProvider *imageProvider,
                                      QSettings *settings)
     : ListSqlModel(connectionName, api, imageProvider, settings),
-      mQuery(QSqlDatabase::database(connectionName)),
+//      mQuery(QSqlDatabase::database(connectionName)),
       mRequest(nullptr)
 {
     setRoleName(IdRole,             "cp_id");
@@ -140,9 +140,8 @@ void CashPointSqlModel::sendRequest(CashPointRequest *request)
     mRequest = request;
     if (request) {
         request->send(getAttemptsCount());
+        emit delayedUpdate();
     }
-
-    emit delayedUpdate();
 }
 
 void CashPointSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -187,7 +186,7 @@ void CashPointSqlModel::setFilterJson(const QJsonObject &json)
     const auto it = mRequestFactoryMap.find(type);
     if (it != mRequestFactoryMap.end()) {
         RequestFactory *factory = it.value();
-        req = factory->createRequest();
+        req = factory->createRequest(this);
         req->fromJson(json);
     } else {
         emitRequestError("CashPointSqlModel::setFilterJson: unknown req type: " + type);
@@ -199,5 +198,39 @@ void CashPointSqlModel::setFilterJson(const QJsonObject &json)
 
 void CashPointSqlModel::setFilterFreeForm(const QString &filter)
 {
+    if (filter.isEmpty()) {
+        return;
+    }
 
+    const QString filterLower = filter.toLower();
+    const QStringList wordList = filterLower.split(' ', QString::SkipEmptyParts);
+
+    CashPointRequest *req = nullptr;
+    if (wordList.contains(trUtf8("банкомат"))) {
+        if (wordList.size() == 1) {
+            const auto it = mRequestFactoryMap.find(RT_RADUS);
+            if (it == mRequestFactoryMap.end()) {
+                return;
+            }
+            RequestFactory *factory = it.value();
+            req = factory->createRequest(this);
+        } else {
+            if (wordList.contains(trUtf8("ближайший"))) {
+
+            } else if (wordList.contains(trUtf8("рядом"))) {
+
+            } else if (wordList.contains(trUtf8("круглосуточн"))) {
+
+            } else {
+
+            }
+        }
+    } else if (wordList.contains(trUtf8("банк"))) {
+
+    } else if (wordList.contains(trUtf8("офис"))) {
+
+    } else {
+    }
+
+    sendRequest(req);
 }

@@ -2,8 +2,8 @@
 
 #include "cashpointinradius.h"
 
-CashPointRequest *CashPointRequestInRadiusFactory::createRequest() const
+CashPointRequest *CashPointRequestInRadiusFactory::createRequest(CashPointSqlModel *model) const
 {
-
+    return new CashPointInRadius(model);
 }
 
