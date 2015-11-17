@@ -45,7 +45,11 @@ QString ListSqlModel::escapeFilter(QString filter)
 
 void ListSqlModel::setFilter(QString filter)
 {
-    emit filterRequest(escapeFilter(filter));
+    if (needEscapeFilter()) {
+        emit filterRequest(escapeFilter(filter));
+    } else {
+        emit filterRequest(filter);
+    }
 }
 
 void ListSqlModel::_setFilter(QString filter)

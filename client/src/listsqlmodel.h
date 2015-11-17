@@ -38,6 +38,7 @@ protected:
     virtual int getLastRole() const = 0;
 
     virtual QSqlQuery &getQuery() = 0;
+    virtual bool needEscapeFilter() const = 0;
 
     quint32 getAttemptsCount() const { return mRequestAttemptsCount; }
     void setAttemptsCount(quint32 count) { mRequestAttemptsCount = count; }

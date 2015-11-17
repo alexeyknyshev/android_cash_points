@@ -51,6 +51,7 @@ protected:
     void setFilterImpl(const QString &filter) override;
 
     int getLastRole() const override { return RoleLast; }
+    bool needEscapeFilter() const override { return true; }
 
     QSqlQuery &getQuery() override { return mQuery; }
 

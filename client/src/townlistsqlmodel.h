@@ -45,6 +45,7 @@ protected:
     int getLastRole() const override { return RoleLast; }
 
     QSqlQuery &getQuery() override { return mQuery; }
+    bool needEscapeFilter() const override { return true; }
 
 private slots:
     void updateTownsIds(quint32 leftAttempts);

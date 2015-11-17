@@ -61,6 +61,7 @@ protected:
     int getLastRole() const override { return RoleLast; }
 
     QSqlQuery &getQuery() override { return mQuery; }
+    bool needEscapeFilter() const override { return false; }
 
 private:
     void setFilterJson(const QJsonObject &json);
