@@ -1,10 +1,12 @@
 #include "cashpointinradius.h"
 
 #include "../serverapi.h"
+#include "../cashpointsqlmodel.h"
 
 #include <QtCore/QDebug>
 #include <QtCore/QJsonObject>
 #include <QtCore/QJsonParseError>
+#include <QtCore/QJsonArray>
 
 CashPointInRadius::CashPointInRadius(CashPointSqlModel *model)
     : CashPointRequest(model),
@@ -45,6 +47,24 @@ void CashPointInRadius::sendImpl(ServerApi *api, quint32 leftAttempts)
         if (err.error != QJsonParseError::NoError) {
             emitError("CashPointInRadius: server response json parse error: " + err.errorString());
             return;
+        }
+
+        if (!json.isObject()) {
+            emitError("CashPointInRadius: response is not an object!");
+            return;
+        }
+
+        const QJsonObject obj = json.object();
+        if (!obj["cash_points"].isArray()) {
+            emitError("CashPointInRadius: cash_points field is not an array!");
+            return;
+        }
+
+        const QJsonArray arr = obj["cash_points"].toArray();
+        const auto end = arr.constEnd();
+        for (auto it = arr.constBegin(); it != end; it++) {
+            const QJsonValue &val = *it;
+            qDebug() << val.toInt();
         }
 
         setLastUpdateTime(QDateTime::currentDateTime());
