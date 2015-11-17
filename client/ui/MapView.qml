@@ -31,6 +31,18 @@ Item {
         }
     }
 
+    onEnabledChanged: {
+        if (enabled) {
+            var json = {
+                         "type": "radius",
+                         "radius": 1000,
+                         "longitude": 37.6155600,
+                         "latitude": 55.7522200
+                       }
+            cashpointModel.setFilter(JSON.stringify(json))
+        }
+    }
+
     Plugin {
         id: mapPlugin
         name: "osm"

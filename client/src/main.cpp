@@ -1,5 +1,6 @@
 #include "banklistsqlmodel.h"
 #include "townlistsqlmodel.h"
+#include "cashpointsqlmodel.h"
 #include "serverapi.h"
 #include "icoimageprovider.h"
 #include "locationservice.h"
@@ -72,7 +73,7 @@ int main(int argc, char *argv[])
                              "eur integer, cash_in integer)");
     db.commit();
 
-    ServerApi *api = new ServerApi("192.168.1.126", 8080);
+    ServerApi *api = new ServerApi("localhost", 8080);
 
     const QStringList icons = {
         ":/icon/star.svg",
@@ -98,6 +99,9 @@ int main(int argc, char *argv[])
     TownListSqlModel *townListModel =
             new TownListSqlModel(banksConnName, api, imageProvider, &settings);
 
+    CashPointSqlModel *cashpointModel =
+            new CashPointSqlModel(banksConnName, api, imageProvider, &settings);
+
     LocationService *locationService = new LocationService(&app);
 
     QQmlApplicationEngine engine;
@@ -106,6 +110,7 @@ int main(int argc, char *argv[])
     engine.addImageProvider(QLatin1String("ico"), imageProvider);
     engine.rootContext()->setContextProperty("bankListModel", bankListModel);
     engine.rootContext()->setContextProperty("townListModel", townListModel);
+    engine.rootContext()->setContextProperty("cashpointModel", cashpointModel);
     engine.rootContext()->setContextProperty("serverApi", api);
     engine.rootContext()->setContextProperty("locationService", locationService);
     engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
@@ -141,6 +146,7 @@ int main(int argc, char *argv[])
 
     const int exitStatus = app.exec();
 
+    delete cashpointModel;
     delete townListModel;
     delete bankListModel;
 
