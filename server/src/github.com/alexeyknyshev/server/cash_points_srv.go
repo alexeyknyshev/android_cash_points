@@ -383,6 +383,7 @@ const script_search_nearby = "SEARCHNEARBY"
 const script_towns_batch = "TOWNSBATCH"
 const script_regions_batch = "REGIONSBATCH"
 const script_banks_batch = "BANKSBATCH"
+const script_cashpoints_batch = "CASHPOINTSBATCH"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
@@ -1025,6 +1026,55 @@ func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, r, requestId, jsonStr)
 }
 
+func handlerCashpointsBatch(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsBatch", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	go logRequest(w, r, requestId, jsonStr)
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoints_batch], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Str) == false {
+		log.Printf("%s: redis => script result type is not string\n", context)
+		w.WriteHeader(500)
+		return
+	}
+
+	jsonRes, _ := result.Str()
+	if strings.HasPrefix(jsonRes, "{") == false {
+		log.Printf("%s: redis => %s\n", context, jsonRes)
+		w.WriteHeader(500)
+		return
+	}
+
+	writeResponse(w, r, requestId, jsonRes)
+}
+
 func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
 }
 
@@ -1271,6 +1321,7 @@ func main() {
 	router.HandleFunc("/banks", handlerBanksBatch).Methods("POST")
 	router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
 	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
+	router.HandleFunc("/cashpoints", handlerCashpointsBatch).Methods("POST")
 	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints).Methods("POST")
 	router.HandleFunc("/nearby/towns", handlerNearbyTowns).Methods("POST")
