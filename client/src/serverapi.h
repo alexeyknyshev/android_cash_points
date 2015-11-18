@@ -9,6 +9,8 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QMap>
 
+#include "serverapi_fwd.h"
+
 class QNetworkAccessManager;
 class QNetworkReply;
 class QSslConfiguration;

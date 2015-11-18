@@ -50,7 +50,8 @@ HEADERS += \
     src/requests/cashpointrequest.h \
     src/requests/cashpointinradius.h \
     src/requests/requestfactory.h \
-    src/requests/cashpointrequestinradiusfactory.h
+    src/requests/cashpointrequestinradiusfactory.h \
+    src/serverapi_fwd.h
 
 QMAKE_CXXFLAGS += -std=c++11
 

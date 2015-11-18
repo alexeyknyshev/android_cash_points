@@ -73,6 +73,7 @@ int main(int argc, char *argv[])
                              "eur integer, cash_in integer)");
     db.commit();
 
+    qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
     ServerApi *api = new ServerApi("localhost", 8080);
 
     const QStringList icons = {

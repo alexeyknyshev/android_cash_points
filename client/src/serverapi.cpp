@@ -8,6 +8,34 @@
 
 #define DEFAULT_CALLBACK_EXPIRE_TIME 1000
 
+/// ===============================================
+
+ServerApiPtr::ServerApiPtr()
+    : d(nullptr)
+{ }
+
+ServerApiPtr::ServerApiPtr(ServerApi *api)
+    : d(api)
+{ }
+
+ServerApiPtr::ServerApiPtr(const ServerApiPtr &ptr)
+    : d(ptr.d)
+{ }
+
+ServerApi *ServerApiPtr::operator ->()
+{
+    Q_ASSERT_X(d, "ServerApiPtr::operator ->()", "nullptr of ServerApi");
+    return d;
+}
+
+ServerApi *ServerApiPtr::operator *() const
+{
+    Q_ASSERT_X(d, "ServerApiPtr::operator *()", "nullptr of ServerApi");
+    return d;
+}
+
+/// ===============================================
+
 ServerApi::ServerApi(const QString &host, int port, QIODevice *sslCertSource, QObject *parent)
     : QObject(parent),
       mNetworkMgr(nullptr),
