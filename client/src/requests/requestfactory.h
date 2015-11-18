@@ -8,7 +8,7 @@ class RequestFactory
 {
 public:
     RequestFactory();
-    ~RequestFactory();
+    virtual ~RequestFactory();
 
     virtual CashPointRequest *createRequest(CashPointSqlModel *model) const = 0;
 };
