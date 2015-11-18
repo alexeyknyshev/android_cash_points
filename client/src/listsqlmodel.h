@@ -21,6 +21,8 @@ public:
     static QString escapeFilter(QString filter);
 
     ServerApi *getServerApi() const { return mApi; }
+    quint32 getAttemptsCount() const { return mRequestAttemptsCount; }
+    quint32 getRequestBatchSize() const { return mRequestBatchSize; }
 
 signals:
     void serverDataReceived();
@@ -40,10 +42,8 @@ protected:
     virtual QSqlQuery &getQuery() = 0;
     virtual bool needEscapeFilter() const = 0;
 
-    quint32 getAttemptsCount() const { return mRequestAttemptsCount; }
     void setAttemptsCount(quint32 count) { mRequestAttemptsCount = count; }
 
-    quint32 getRequestBatchSize() const { return mRequestBatchSize; }
     void setRequestBatchSize(quint32 size) {
         Q_ASSERT_X(size > 0, "setRequestBatchSize", "zero batch size");
         mRequestBatchSize = size;
