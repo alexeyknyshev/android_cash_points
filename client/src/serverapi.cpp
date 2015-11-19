@@ -154,7 +154,7 @@ void ServerApi::ping()
             return;
         }
 
-        if (json.object()["msg"].toString() != "pong") {
+        if (json.object()["text"].toString() != "pong") {
             emitPong(false);
             return;
         }

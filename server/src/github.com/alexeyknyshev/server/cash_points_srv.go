@@ -273,6 +273,10 @@ func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 
 // ========================================================
 
+type Message struct {
+    Text string `json:"text"`
+}
+
 type User struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
@@ -384,6 +388,7 @@ const script_towns_batch = "TOWNSBATCH"
 const script_regions_batch = "REGIONSBATCH"
 const script_banks_batch = "BANKSBATCH"
 const script_cashpoints_batch = "CASHPOINTSBATCH"
+const script_cashpoint_create = "CASHPOINTCREATE"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
@@ -404,7 +409,9 @@ func handlerPing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go logRequest(w, r, requestId, "")
-	writeResponse(w, r, requestId, `{"msg":"pong"}`)
+    msg := &Message{ Text: "pong" }
+    jsonByteArr, _ := json.Marshal(msg)
+	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 // ========================================================
@@ -1076,6 +1083,48 @@ func handlerCashpointsBatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
+    ok, requestId := prepareResponse(w, r)
+    if ok == false {
+        return
+    }
+
+    context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointCreate", map[string]string{
+        "requestId": strconv.FormatInt(requestId, 10),
+    })
+
+    jsonStr, err := getRequestJsonStr(r, context)
+    if err != nil {
+        go logRequest(w, r, requestId, "")
+        w.WriteHeader(400)
+        return
+    }
+
+    go logRequest(w, r, requestId, jsonStr)
+
+    redisCli, err := redis_cli_pool.Get()
+    if err != nil {
+        log.Fatal("%s => %v\n", context, err)
+        return
+    }
+    defer redis_cli_pool.Put(redisCli)
+
+    result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoint_create], 0, jsonStr)
+    if result.Err != nil {
+        log.Printf("%s: redis => %v\n", context, result.Err)
+        w.WriteHeader(500)
+        return
+    }
+
+    if result.IsType(redis.Str) {
+        text, _ := result.Str()
+        log.Printf("%s: redis => %s\n", context, text)
+        msg := &Message{ Text: text }
+        jsonByteArr, _ := json.Marshal(msg)
+        writeResponse(w, r, requestId, string(jsonByteArr))
+        return
+    }
+
+    w.WriteHeader(200)
 }
 
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
