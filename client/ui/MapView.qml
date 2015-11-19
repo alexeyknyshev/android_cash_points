@@ -53,6 +53,9 @@ Item {
             holdDialog.hide()
             return false
         }
+        if (infoView.hide()) {
+            return false
+        }
         return true
     }
 
@@ -303,12 +306,10 @@ Item {
                         holdDialog.hide()
                     }
                 }
-//                onPressAndHold: {
-//                    if (!map.zooming) {
-//                        console.log("Hoooold...")
-//                        holdDialog.show()
-//                    }
-//                }
+                onPressAndHold: {
+                    console.log("Hoooold...")
+                    infoView.show()
+                }
                 onDoubleClicked: {
                     if (!topView.active) {
                         return
@@ -722,6 +723,20 @@ Item {
             font.bold: true
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    MapInfoView {
+        id: infoView
+        width: parent.width
+        height: parent.height * 0.2
+        y: parent.height - height
+        hiddenY: parent.height
+
+        onParentChanged: {
+            console.log("MapInfoView")
+            y = parent.height
+            hide()
         }
     }
 }

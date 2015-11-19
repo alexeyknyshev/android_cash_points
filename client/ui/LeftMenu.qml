@@ -47,7 +47,7 @@ Rectangle {
             }
             onRunningChanged: {
                 if (running) {
-                    console.log("I'm here")
+//                    console.log("I'm here")
                     visible = true
                 }
             }

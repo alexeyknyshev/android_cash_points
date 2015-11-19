@@ -14,6 +14,7 @@
         <file>ui/ViewLoader.qml</file>
         <file>ui/viewloadercreator.js</file>
         <file>ui/MapPlaceMark.qml</file>
+        <file>ui/MapInfoView.qml</file>
     </qresource>
     <qresource prefix="/icon">
         <file alias="atm.svg">ico/other/atm_gray.svg</file>
