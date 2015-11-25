@@ -374,7 +374,7 @@ type BankIco struct {
 	IcoData string `json:"ico_data"`
 }
 
-var BuildDate string
+//var BuildDate string
 
 var redis_cli_pool *pool.Pool
 
@@ -1292,7 +1292,7 @@ func handlerNearbyTowns(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
-	log.Println("CashPoints server build: " + BuildDate)
+//	log.Println("CashPoints server build: " + BuildDate)
 
 	args := os.Args[1:]
 
