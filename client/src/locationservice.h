@@ -3,6 +3,7 @@
 
 #include <QtCore/QObject>
 #include <QtPositioning/QGeoCoordinate>
+#include <QtPositioning/QGeoShape>
 
 class LocationService : public QObject
 {
@@ -18,6 +19,8 @@ public:
 
     void updateCoordinate();
     const QGeoCoordinate &getCoordinate() const { return mLastCoord; }
+
+    Q_INVOKABLE qreal getGeoRegionRadius(const QGeoShape &shape) const;
 
 signals:
     void enabledChanged(bool enabled);
