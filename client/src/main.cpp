@@ -46,8 +46,8 @@ int main(int argc, char *argv[])
     QSettings settings(path, QSettings::NativeFormat);
 
     // bank list db
-    const QString banksConnName = "banks";
-    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", banksConnName);
+    const QString dbName = "banks";
+    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", dbName);
     db.setDatabaseName(":memory:");
     if (!db.open())
     {
@@ -95,13 +95,13 @@ int main(int argc, char *argv[])
     }
 
     BankListSqlModel *bankListModel =
-            new BankListSqlModel(banksConnName, api, imageProvider, &settings);
+            new BankListSqlModel(dbName, api, imageProvider, &settings);
 
     TownListSqlModel *townListModel =
-            new TownListSqlModel(banksConnName, api, imageProvider, &settings);
+            new TownListSqlModel(dbName, api, imageProvider, &settings);
 
     CashPointSqlModel *cashpointModel =
-            new CashPointSqlModel(banksConnName, api, imageProvider, &settings);
+            new CashPointSqlModel(dbName, api, imageProvider, &settings);
 
     LocationService *locationService = new LocationService(&app);
 
