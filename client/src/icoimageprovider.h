@@ -9,6 +9,7 @@ class IcoImageProvider : public QQuickImageProvider
 {
 public:
     IcoImageProvider();
+    ~IcoImageProvider();
 
     virtual QImage requestImage(const QString &id,
                                 QSize *size,

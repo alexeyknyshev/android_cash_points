@@ -8,6 +8,15 @@ IcoImageProvider::IcoImageProvider()
     : QQuickImageProvider(QQmlImageProviderBase::Image)
 { }
 
+IcoImageProvider::~IcoImageProvider()
+{
+    const auto end = mRenderers.begin();
+    for (auto it = mRenderers.begin(); it != end; it++) {
+        QSvgRenderer *renderer = it.value();
+        delete renderer;
+    }
+}
+
 QImage IcoImageProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
     auto it = mRenderers.find(id);
