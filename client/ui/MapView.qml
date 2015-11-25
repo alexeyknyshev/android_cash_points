@@ -31,13 +31,19 @@ Item {
         }
     }
 
+    function getVisiableAreaRadius() {
+        //console.log(map.visibleRegion.topLeft)
+        //var leftTopCoord = map.visibleRegion.topLeft
+        //return leftTopCoord.distanceTo(leftTopCoord)
+    }
+
     onEnabledChanged: {
         if (enabled) {
             var json = {
                          "type": "radius",
                          "radius": 1000,
-                         "longitude": 37.6155600,
-                         "latitude": 55.7522200
+                         "longitude": map.coordLongitude,
+                         "latitude": map.coordLatitude
                        }
             cashpointModel.setFilter(JSON.stringify(json))
         }
@@ -53,10 +59,12 @@ Item {
             holdDialog.hide()
             return false
         }
-        if (infoView.hide()) {
-            return false
+        if (infoView.isHidden()) {
+            return true
+        } else {
+            infoView.hide()
         }
-        return true
+        return false
     }
 
     PositionSource {
@@ -184,6 +192,10 @@ Item {
                 easing.type: Easing.InOutQuad
                 duration: 300
             }
+
+            onStopped: {
+                console.warn("visiable radius: " + getVisiableAreaRadius())
+            }
         }
 
 
@@ -244,13 +256,15 @@ Item {
         function findMe() {
             if (!locationService.enabled) {
                 enableLocServiceDialog.open()
+                console.log("here")
                 return false
             }
 
             positionSource.stop();
-            showMyPos()
+            var showed = showMyPos()
             positionSource.start()
-            return true
+            console.log(showed)
+            return showed
         }
 
         PinchArea {
@@ -307,7 +321,13 @@ Item {
                     }
                 }
                 onPressAndHold: {
-                    console.log("Hoooold...")
+                    if (!topView.active) {
+                        return
+                    }
+
+                    var coord = map.toCoordinate(Qt.point(mouseX, mouseY))
+                    map.moveToCoord(coord, map.zoomLevel)
+
                     infoView.show()
                 }
                 onDoubleClicked: {
@@ -496,8 +516,8 @@ Item {
                         return
                     }
 
-                    var animate = map.findMe()
-                    if (animate) {
+                    var found = map.findMe()
+                    if (!found) {
                        findMeButtonRotationAnim.start()
                     }
                 }
@@ -730,13 +750,17 @@ Item {
         id: infoView
         width: parent.width
         height: parent.height * 0.2
-        y: parent.height - height
-        hiddenY: parent.height
+        shownY: parent.height - height
+        y: parent.height
 
-        onParentChanged: {
+        /*onParentChanged: {
             console.log("MapInfoView")
             y = parent.height
             hide()
+        }*/
+
+        MouseArea {
+            anchors.fill: parent
         }
     }
 }

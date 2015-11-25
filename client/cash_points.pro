@@ -16,7 +16,8 @@ SOURCES += src/main.cpp \
     src/requests/cashpointrequest.cpp \
     src/requests/cashpointinradius.cpp \
     src/requests/requestfactory.cpp \
-    src/requests/cashpointrequestinradiusfactory.cpp
+    src/requests/cashpointrequestinradiusfactory.cpp \
+    src/cashpointresponse.cpp
 
 RESOURCES += qml.qrc
 
@@ -51,7 +52,8 @@ HEADERS += \
     src/requests/cashpointinradius.h \
     src/requests/requestfactory.h \
     src/requests/cashpointrequestinradiusfactory.h \
-    src/serverapi_fwd.h
+    src/serverapi_fwd.h \
+    src/cashpointresponse.h
 
 QMAKE_CXXFLAGS += -std=c++11
 

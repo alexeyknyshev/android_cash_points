@@ -40,6 +40,8 @@ ApplicationWindow {
                     return
                 }
                 lastExitAttempt = currentTime
+
+                var _ = mapView.aboutToClose()
             }
             close.accepted = false
         } else {

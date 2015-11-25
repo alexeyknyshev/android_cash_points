@@ -3,28 +3,26 @@ import QtQuick 2.0
 Rectangle {
     id: topItem
 
-    property real hiddenY: y
+    y: parent.height - height
+    property real shownY: parent.height
 
     function isHidden() {
-        return state == "hidden"
-    }
-
-    function hide() {
-        if (state != "hidden") {
-            state = "hidden"
-            return true
-        }
-        return false
-    }
-
-    function isShown() {
         return state == ""
     }
 
-    function show() {
+    function hide() {
         if (state != "") {
             state = ""
-            return true
+        }
+    }
+
+    function isShown() {
+        return state == "shown"
+    }
+
+    function show() {
+        if (state != "shown") {
+            state = "shown"
         }
     }
 
@@ -35,15 +33,15 @@ Rectangle {
     function showFullscreen() {
         if (state != "fullscreen") {
             state = "fullscreen"
-            return true
-        }    }
+        }
+    }
 
     states: [
         State {
-            name: "hidden"
+            name: "shown"
             PropertyChanges {
                 target: topItem
-                y: hiddenY
+                y: shownY
             }
         },
         State {
@@ -58,8 +56,8 @@ Rectangle {
 
     transitions: [
         Transition {
-            from: ""
-            to: "hidden"
+            from: "shown"
+            to: ""
             PropertyAnimation {
                 duration: 500
                 easing.type: Easing.InOutQuart
@@ -73,8 +71,8 @@ Rectangle {
             }
         },
         Transition {
-            from: "hidden"
-            to: ""
+            from: ""
+            to: "shown"
             PropertyAnimation {
                 duration: 500
                 easing.type: Easing.InOutQuart
@@ -88,7 +86,7 @@ Rectangle {
         }
     ]
 
-    Row {
+    /*Row {
         anchors.fill: parent
         anchors.margins: parent.height * 0.05
         Rectangle {
@@ -96,6 +94,6 @@ Rectangle {
             height: parent.height * 0.9
             width: height
         }
-    }
+    }*/
 }
 
