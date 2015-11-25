@@ -105,19 +105,19 @@ int main(int argc, char *argv[])
 
     LocationService *locationService = new LocationService(&app);
 
-    QQmlApplicationEngine engine;
+    QQmlApplicationEngine *engine = new QQmlApplicationEngine;
 
-    engine.addImportPath("qrc:/ui");
-    engine.addImageProvider(QLatin1String("ico"), imageProvider);
-    engine.rootContext()->setContextProperty("bankListModel", bankListModel);
-    engine.rootContext()->setContextProperty("townListModel", townListModel);
-    engine.rootContext()->setContextProperty("cashpointModel", cashpointModel);
-    engine.rootContext()->setContextProperty("serverApi", api);
-    engine.rootContext()->setContextProperty("locationService", locationService);
-    engine.load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
+    engine->addImportPath("qrc:/ui");
+    engine->addImageProvider(QLatin1String("ico"), imageProvider);
+    engine->rootContext()->setContextProperty("bankListModel", bankListModel);
+    engine->rootContext()->setContextProperty("townListModel", townListModel);
+    engine->rootContext()->setContextProperty("cashpointModel", cashpointModel);
+    engine->rootContext()->setContextProperty("serverApi", api);
+    engine->rootContext()->setContextProperty("locationService", locationService);
+    engine->load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
     QObject *appWindow = nullptr;
-    for (QObject *obj : engine.rootObjects()) {
+    for (QObject *obj : engine->rootObjects()) {
         if (obj->objectName() == "appWindow") {
             appWindow = obj;
             break;
@@ -146,6 +146,8 @@ int main(int argc, char *argv[])
     api->ping();
 
     const int exitStatus = app.exec();
+
+    delete engine;
 
     delete cashpointModel;
     delete townListModel;
