@@ -70,6 +70,8 @@ type CashPoint struct {
 	Usd            bool    `json:"usd"`
 	Eur            bool    `json:"eur"`
 	CashIn         bool    `json:"cash_in"`
+	Version        uint32  `json:"version"`
+	Timestamp      uint32  `json:"timestamp"`
 }
 
 
@@ -88,6 +90,7 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
     }
 
     currentTownIdx := 1
+    var lastTownId uint32 = 0
     for rows.Next() {
         town := new(Town)
         var regionId uint32 = 0
@@ -96,6 +99,10 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
                         &town.Latitude, &town.Longitude, &town.Zoom)
         if err != nil {
             log.Fatal(err)
+        }
+
+        if town.Id > lastTownId {
+            lastTownId = town.Id
         }
 
         if regionId != 0 {
@@ -123,6 +130,10 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
         if currentTownIdx % 500 == 0 {
             log.Printf("[%d/%d] Towns processed\n", currentTownIdx, townsCount)
         }
+    }
+    err = redisCli.Cmd("SET", "town_next_id", lastTownId).Err
+    if err != nil {
+        log.Fatal(err)
     }
     log.Printf("[%d/%d] Towns processed\n", townsCount, townsCount)
 }
@@ -187,6 +198,7 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
     }
 
     currentBankIdx := 1
+    var lastBankId uint32 = 0
     for rows.Next() {
         bank := new(Bank)
         var nameTr sql.NullString
@@ -194,6 +206,10 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
                         &bank.Town, &bank.Licence, &bank.Rating, &bank.Tel)
         if err != nil {
             log.Fatal(err)
+        }
+
+        if bank.Id > lastBankId {
+            lastBankId = bank.Id
         }
 
         if nameTr.Valid {
@@ -223,6 +239,10 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
             log.Printf("[%d/%d] Banks processed\n", currentBankIdx, banksCount)
         }
     }
+    err = redisCli.Cmd("SET", "bank_next_id", lastBankId).Err
+    if err != nil {
+        log.Fatal(err)
+    }
     log.Printf("[%d/%d] Banks processed\n", banksCount, banksCount)
 }
 
@@ -246,8 +266,11 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
     }
 
     currentCashpointIndex := 1
+    var lastCashpointId uint32 = 0
     for rows.Next() {
         cp := new(CashPoint)
+        cp.Version = 0
+        cp.Timestamp = 0
         err = rows.Scan(&cp.Id, &cp.Type, &cp.BankId, &cp.TownId,
                         &cp.Longitude, &cp.Latitude,
                         &cp.Address, &cp.AddressComment,
@@ -258,6 +281,10 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
                         &cp.Rub, &cp.Usd, &cp.Eur, &cp.CashIn)
         if err != nil {
             log.Fatal(err)
+        }
+
+        if cp.Id > lastCashpointId {
+            lastCashpointId = cp.Id
         }
 
         cashpointIdStr := strconv.FormatUint(uint64(cp.Id), 10)
@@ -275,6 +302,11 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
         }
 
         err = redisCli.Cmd("SET", "cp:" + cashpointIdStr + ":version", 1).Err
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        err = redisCli.Cmd("SET", "cp:" + cashpointIdStr + ":timestamp", 0).Err
         if err != nil {
             log.Fatal(err)
         }
@@ -299,6 +331,10 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
         if currentCashpointIndex % 500 == 0 {
             log.Printf("[%d/%d] Cashpoints processed\n", currentCashpointIndex, cashpointsCount)
         }
+    }
+    err = redisCli.Cmd("SET", "cp_next_id", lastCashpointId).Err
+    if err != nil {
+        log.Fatal(err)
     }
     log.Printf("[%d/%d] Cashpoints processed\n", cashpointsCount, cashpointsCount)
 }
