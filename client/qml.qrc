@@ -30,5 +30,7 @@
         <file alias="zoom_out.svg">ico/other/zoom_out.svg</file>
         <file alias="zoom_in.svg">ico/other/zoom_in.svg</file>
         <file alias="marker.svg">ico/other/marker.svg</file>
+        <file alias="place.svg">ico/other/place.svg</file>
+        <file alias="add.svg">ico/other/add.svg</file>
     </qresource>
 </RCC>
