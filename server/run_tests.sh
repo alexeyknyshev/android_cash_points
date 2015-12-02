@@ -1,11 +1,49 @@
 #!/bin/bash
 
+function runTest {
+    testFile=$1
+    currentTestIndex=$2
+    testCount=$3
+    verbose=$4
+
+    preScriptPath="$testFile.pre.sh"
+    postScriptPath="$testFile.post.sh"
+    host="localhost:$SERVER_PORT"
+    currentTestPrefix="[$currentTestIndex/$testCount] "
+
+    if [ -e "$preScriptPath" ]
+    then
+        [ $verbose -eq 1 ] && echo "running $preScriptPath"
+        bash "$preScriptPath" "$host"
+    fi
+
+    [ $verbose -eq 1 ] && echo "${currentTestPrefix}running $testFile"
+    printf "%s" "$currentTestPrefix"
+    pyresttest "$host" "$testFile"
+
+    if [ -e "$postScriptPath" ]
+    then
+        [ $verbose -eq 1 ] && echo "running $postScriptPath"
+        bash "$postScriptPath" "$host"
+    fi
+}
+
 verbose=0
-if [ $# -eq 1 ]
+run_direct=""
+if [ $# -ge 1 ]
 then
     if [ $1 = "-v" ]
     then
         verbose=1
+    else
+        run_direct="$1"
+        if [ $# -ge 2 ]
+        then
+            if [ $2 = "-v" ]
+            then
+                verbose=1
+            fi
+        fi
     fi
 fi
 
@@ -44,29 +82,15 @@ TEST_COUNT=$(find "$TESTS_DIR" -name '*.yaml' | wc -l)
 
 currentTestIndex=1
 
-find "$TESTS_DIR" -name '*.yaml' | while read testFile
-do
-    preScriptPath="$testFile.pre.sh"
-    postScriptPath="$testFile.post.sh"
-    host="localhost:$SERVER_PORT"
-    currentTestPrefix="[$currentTestIndex/$TEST_COUNT] "
-
-    if [ -e "$preScriptPath" ]
-    then
-        [ $verbose -eq 1 ] && echo "running $preScriptPath"
-        bash "$preScriptPath" "$host"
-    fi
-
-    [ $verbose -eq 1 ] && echo "${currentTestPrefix}running $testFile"
-    printf "%s" "$currentTestPrefix"
-    pyresttest "$host" "$testFile"
-
-    if [ -e "$postScriptPath" ]
-    then
-        [ $verbose -eq 1 ] && echo "running $postScriptPath"
-        bash "$postScriptPath" "$host"
-    fi
-    ((currentTestIndex++))
-done
+if [[ -z $run_direct ]]
+then
+    find "$TESTS_DIR" -name '*.yaml' | while read testFile
+    do
+        runTest $testFile $currentTestIndex $TEST_COUNT $verbose
+        ((currentTestIndex++))
+    done
+else
+    runTest $run_direct 1 1 $verbose
+fi
 
 [ -e "/proc/$SERVER_PID" ] && kill $SERVER_PID
