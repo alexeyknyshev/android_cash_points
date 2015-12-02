@@ -9,4 +9,4 @@ go build github.com/alexeyknyshev/server
 go build github.com/alexeyknyshev/tools/server_sqlite_to_redis
 go install github.com/alexeyknyshev/server
 go install github.com/alexeyknyshev/tools/server_sqlite_to_redis
-rm "$SCRIPT_DIR"/server
+[ -e "$SCRIPT_DIR"/server ] && rm "$SCRIPT_DIR"/server
