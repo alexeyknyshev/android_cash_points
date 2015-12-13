@@ -11,5 +11,6 @@
     "RedisScriptsDir": "./redis_scripts",
     "ReqResLogTTL": 60,
     "UUID_TTL": 250,
-    "BanksIcoDir": "./data/banks/ico"
+    "BanksIcoDir": "./data/banks/ico",
+    "TestingMode": true
 }

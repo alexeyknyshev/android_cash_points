@@ -39,6 +39,13 @@ func isAlphaNumericString(s string) bool {
 	return true
 }
 
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // ========================================================
 
 type ServerConfig struct {
@@ -54,6 +61,7 @@ type ServerConfig struct {
 	ReqResLogTTL       uint64 `json:"ReqResLogTTL"`
 	UUID_TTL           uint64 `json:"UUID_TTL"`
 	BanksIcoDir        string `json:"BanksIcoDir"`
+	TestingMode        bool   `json:"TestingMode"`
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -271,6 +279,29 @@ func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
 	return
 }
 
+func dropTestData(redisCli *redis.Client) {
+	result := redisCli.Cmd("KEYS", "test_*")
+	if result.Err != nil {
+		log.Fatalf("Failed to drop test data. Cannot get 'test_*' result: redis => %v", result.Err)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Fatalf("Failed to drop test data. Cannot 'test_*' keys to list: redis => %v", result.Err)
+		return
+	}
+
+	for _, idStr := range data {
+		log.Printf("Removing test data redis key: %s", idStr)
+		result = redisCli.Cmd("DEL", idStr)
+		if result.Err != nil {
+			log.Fatalf("Failed to drop test data key '%s': redis => %v", idStr, result.Err)
+			return
+		}
+	}
+}
+
 // ========================================================
 
 type Message struct {
@@ -315,10 +346,6 @@ type SearchNearbyRequest struct {
 	Radius    float32 `json:"radius"`
 }
 
-type CashPointIds struct {
-	CashPointIds []uint32 `json:"cash_points"`
-}
-
 type CashPoint struct {
 	Id             uint32  `json:"id"`
 	Type           string  `json:"type"`
@@ -341,11 +368,37 @@ type CashPoint struct {
 	Usd            bool    `json:"usd"`
 	Eur            bool    `json:"eur"`
 	CashIn         bool    `json:"cash_in"`
+	Timestamp      int64   `json:"timestamp"`
+	Version        uint32  `json:"version"`
+}
+
+func (cp *CashPoint) Validate() error {
+	if cp.TownId == 0 {
+		return errors.New("No required field 'town_id'")
+	}
+
+	if cp.BankId == 0 {
+		return errors.New("No required field 'bank_id'")
+	}
+
+	if cp.Longitude == 0 {
+		return errors.New("No required field 'longitude'")
+	}
+
+	if cp.Latitude == 0 {
+		return errors.New("No required field 'latitude'")
+	}
+
+	return nil
 }
 
 type CashPointIdsInTown struct {
 	TownId       uint32   `json:"town_id"`
 	BankId       uint32   `json:"bank_id"`
+	CashPointIds []uint32 `json:"cash_points"`
+}
+
+type CashPointIds struct {
 	CashPointIds []uint32 `json:"cash_points"`
 }
 
@@ -388,7 +441,8 @@ const script_towns_batch = "TOWNSBATCH"
 const script_regions_batch = "REGIONSBATCH"
 const script_banks_batch = "BANKSBATCH"
 const script_cashpoints_batch = "CASHPOINTSBATCH"
-const script_cashpoint_create = "CASHPOINTCREATE"
+const script_cashpoints_history = "CASHPOINTSHISTORY"
+const script_nearby_clusters = "NEARBYCLUSTERS"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
@@ -409,8 +463,8 @@ func handlerPing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go logRequest(w, r, requestId, "")
-    msg := &Message{ Text: "pong" }
-    jsonByteArr, _ := json.Marshal(msg)
+	msg := &Message{ Text: "pong" }
+	jsonByteArr, _ := json.Marshal(msg)
 	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
@@ -1082,49 +1136,370 @@ func handlerCashpointsBatch(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, r, requestId, jsonRes)
 }
 
+func handlerCashpointsHistory(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsHistory", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+	go logRequest(w, r, requestId, jsonStr)
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoints_history], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Str) {
+		errStr, _ := result.Str()
+		log.Printf("%s: redis => %s\n", context, errStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := result.List()
+	if err != nil {
+		log.Printf("%s: redis => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	ids := &CashPointIds{CashPointIds: make([]uint32, 0)}
+
+	for i, idStr := range data {
+		id, err := strconv.ParseUint(idStr, 10, 32)
+		id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+		ids.CashPointIds = append(ids.CashPointIds, id32)
+	}
+
+	jsonByteArr, _ := json.Marshal(ids)
+	writeResponse(w, r, requestId, string(jsonByteArr))
+}
+
+func getNextCashpointId(redisCli *redis.Client) (uint32, error) {
+	context := "getNextCashpointId"
+
+	testingMode := false
+	result := redisCli.Cmd("HGET", "settings", "testing_mode")
+	if result.Err == nil {
+		res, err := result.Int()
+		if err == nil && res == 1 {
+			testingMode = true
+		}
+	}
+
+	nextIdKey := ""
+
+	if testingMode {
+		nextIdKey = "test_cp_next_id"
+	} else {
+		nextIdKey = "cp_next_id"
+	}
+
+	result = redisCli.Cmd("INCR", nextIdKey)
+
+	if result.Err != nil {
+		return 0, result.Err
+	}
+
+	res, err := result.Int()
+	if err != nil {
+		return 0, err
+	}
+
+	log.Printf("%s: generated new cashpoint id: %d", context, res)
+
+	return uint32(res), nil
+}
+
+func getGeoRectPart(minLon, maxLon, minLat, maxLat *float32, lon, lat float32) string {
+	midLon := (*minLon + *maxLon) * 0.5
+	midLat := (*minLat + *maxLat) * 0.5
+
+	if lat < midLat {
+		*maxLat = midLat
+		if lon < midLon {
+			*maxLon = midLon
+			return "0"
+		} else {
+			*minLon = midLon
+			return "1"
+		}
+	} else {
+		*minLat = midLat
+		if lon < midLon {
+			*maxLon = midLon
+			return "2"
+		} else {
+			*minLon = midLon
+			return "3"
+		}
+	}
+}
+
+func getQuadKey(lon, lat float32, maxZoom uint32) string {
+	var minLon float32 = -180.0
+	var maxLon float32 = 180.0
+
+	var minLat float32 = -85.0
+	var maxLat float32 = 85.0
+
+	quadKey := ""
+	for zoom := uint32(0); zoom < maxZoom; zoom++ {
+		quadKey += getGeoRectPart(&minLon, &maxLon, &minLat, &maxLat, lon, lat)
+	}
+	return quadKey
+}
+
 func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
-    ok, requestId := prepareResponse(w, r)
-    if ok == false {
-        return
-    }
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
 
-    context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointCreate", map[string]string{
-        "requestId": strconv.FormatInt(requestId, 10),
-    })
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointCreate", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
 
-    jsonStr, err := getRequestJsonStr(r, context)
-    if err != nil {
-        go logRequest(w, r, requestId, "")
-        w.WriteHeader(400)
-        return
-    }
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
 
-    go logRequest(w, r, requestId, jsonStr)
+	go logRequest(w, r, requestId, jsonStr)
 
-    redisCli, err := redis_cli_pool.Get()
-    if err != nil {
-        log.Fatal("%s => %v\n", context, err)
-        return
-    }
-    defer redis_cli_pool.Put(redisCli)
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
 
-    result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoint_create], 0, jsonStr)
-    if result.Err != nil {
-        log.Printf("%s: redis => %v\n", context, result.Err)
-        w.WriteHeader(500)
-        return
-    }
+	cpData := CashPoint{
+		Id: 0,
+		TownId: 0,
+		BankId: 0,
+		Longitude: 0.0,
+		Latitude: 0.0,
+		Version: 1,
+	}
 
-    if result.IsType(redis.Str) {
-        text, _ := result.Str()
-        log.Printf("%s: redis => %s\n", context, text)
-        msg := &Message{ Text: text }
-        jsonByteArr, _ := json.Marshal(msg)
-        writeResponse(w, r, requestId, string(jsonByteArr))
-        return
-    }
+	err = json.Unmarshal([]byte(jsonStr), &cpData)
+	if err != nil {
+		log.Printf("%s: failed to unpack json: %v", context, err)
+		log.Printf("%s: %s", context, jsonStr)
+		w.WriteHeader(500)
+		return
+	}
 
-    w.WriteHeader(200)
+	err = cpData.Validate()
+	if err != nil {
+		log.Printf("%s: invalid cashpoint data: %v", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	bankIdStr := strconv.FormatUint(uint64(cpData.BankId), 10)
+	result := redisCli.Cmd("EXISTS", "bank:"+bankIdStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	exists, err := result.Int()
+	if err != nil {
+		log.Printf("%s: redis => %v", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if exists == 0 {
+		log.Printf("%s: invalid bank_id: %s", context, bankIdStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	townIdStr := strconv.FormatUint(uint64(cpData.TownId), 10)
+	result = redisCli.Cmd("EXISTS", "town:"+townIdStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	exists, err = result.Int()
+	if err != nil {
+		log.Printf("%s: redis => %v", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if exists == 0 {
+		log.Printf("%s: invlaid town_id: %d", context, townIdStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	cpData.Id, err = getNextCashpointId(redisCli)
+	if err != nil {
+		log.Printf("%s: getNextCashpointId: redis => %v", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	cpData.Timestamp = time.Now().Unix()
+
+	idStr := strconv.FormatUint(uint64(cpData.Id), 10)
+
+	jsonCpData, err := json.Marshal(cpData)
+	if err != nil {
+		log.Printf("%s: cannot pack new cp data: input = %s", jsonStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	quadKey := getQuadKey(cpData.Longitude, cpData.Latitude, 16)
+	for i := 0; i < len(quadKey); i++ {
+		clusterName := "cluster:" + quadKey[:(i+1)]
+		result = redisCli.Cmd("SADD", clusterName, cpData.Id)
+		if result.Err != nil {
+			log.Printf("%s: cannot add new cashpoint to cluster: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+	}
+
+	redisCli.Cmd("SET", "cp:"+idStr, string(jsonCpData))
+	redisCli.Cmd("ZADD", "cp:history", cpData.Timestamp, cpData.Id)
+	redisCli.Cmd("GEOADD", "cashpoints", cpData.Longitude, cpData.Latitude, cpData.Id)
+	redisCli.Cmd("SADD", "bank:"+bankIdStr+":cp", cpData.Id)
+
+	log.Printf("%s: created cashpoint with id: %s", context, idStr)
+
+	res := &CashPointIds{CashPointIds: make([]uint32, 0)}
+	res.CashPointIds = append(res.CashPointIds, cpData.Id)
+	jsonByteArr, _ := json.Marshal(res)
+	writeResponse(w, r, requestId, string(jsonByteArr))
+}
+
+func handlerCashpointDelete(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+	go logRequest(w, r, requestId, "")
+
+	params := mux.Vars(r)
+	idStr := params["id"]
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointDelete", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+		"id": idStr,
+	})
+
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	cpId := checkConvertionUint(uint32(id), err, context+" => id")
+	if cpId == 0 {
+		w.WriteHeader(500)
+		return
+	}
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("GET", "cp:"+idStr)
+	if result.Err != nil {
+		log.Printf("%s: cannot get cashpoint by id = %s: redis => %v\n", context, idStr, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if result.IsType(redis.Nil) {
+		log.Printf("%s: cannot delete cashpoint by id = %s: no such id\n", context, idStr)
+		w.WriteHeader(404)
+		return
+	}
+
+	cpData, err := result.Str()
+	if err != nil {
+		log.Printf("%s: cannot convert cashpoint data to string for id = %s: redis => %v\n", context, idStr, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	cp := CashPoint{Id: 0}
+	json.Unmarshal([]byte(cpData), &cp)
+	if cp.Id == 0 {
+		log.Printf("%s: cannot parse cashpoint json data for id = %s", context, idStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	townCp := "town:"+strconv.FormatUint(uint64(cp.TownId), 10) + ":cp"
+	result = redisCli.Cmd("SREM", townCp, cp.Id)
+	if result.Err != nil {
+		log.Printf("%s: cannot remove cashpoint id = %s from town cp set = %s", context, idStr, townCp)
+		w.WriteHeader(500)
+		return
+	}
+
+	bankCp := "bank:"+strconv.FormatUint(uint64(cp.BankId), 10) + ":cp"
+	result = redisCli.Cmd("SREM", bankCp, cp.Id)
+	if result.Err != nil {
+		log.Printf("%s: cannot remove cashpoint id = %s from bank cp set = %s", context, idStr, bankCp)
+		w.WriteHeader(500)
+		return
+	}
+
+	result = redisCli.Cmd("DEL", "cp:"+idStr)
+	if result.Err != nil {
+		log.Printf("%s: cannot remove cashpoint id = %s", context, idStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	result = redisCli.Cmd("ZREM", "cp:history", cp.Id)
+	if result.Err != nil {
+		log.Printf("%s: cannot remove cashpoint id = %s from history", context, idStr)
+		w.WriteHeader(500)
+		return
+	}
+
+	geoSet := "cashpoints"
+	result = redisCli.Cmd("ZREM", geoSet, cp.Id)
+	if result.Err != nil {
+		log.Printf("%s: cannot remove cashpoint id = %s from geo set = %s", context, idStr, geoSet)
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(200)
 }
 
 func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
@@ -1288,6 +1663,40 @@ func handlerNearbyTowns(w http.ResponseWriter, r *http.Request) {
 	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
+func handlerNearbyClusters(w http.ResponseWriter, r *http.Request) {
+	ok, requestId := prepareResponse(w, r)
+	if ok == false {
+		return
+	}
+
+	context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyClusters", map[string]string{
+		"requestId": strconv.FormatInt(requestId, 10),
+	})
+
+	jsonStr, err := getRequestJsonStr(r, context)
+	if err != nil {
+		go logRequest(w, r, requestId, "")
+		w.WriteHeader(400)
+		return
+	}
+
+	go logRequest(w, r, requestId, jsonStr)
+
+	redisCli, err := redis_cli_pool.Get()
+	if err != nil {
+		log.Fatal("%s => %v\n", context, err)
+		return
+	}
+	defer redis_cli_pool.Put(redisCli)
+
+	result := redisCli.Cmd("EVALSHA", redis_scripts[script_nearby_clusters], 0, jsonStr)
+	if result.Err != nil {
+		log.Printf("%s: redis => %v\n", context, result.Err)
+		w.WriteHeader(500)
+		return
+	}
+}
+
 // ========================================================
 
 func main() {
@@ -1314,6 +1723,11 @@ func main() {
 	err := decoder.Decode(&serverConfig)
 	if err != nil {
 		log.Fatalf("Failed to decode config file: %s\nError: %v\n", configFilePath, err)
+		return
+	}
+
+	if serverConfig.TestingMode {
+		log.Printf("WARNING: Server started is TESTING mode! Make sure it is not prod server.")
 	}
 
 	certPath := ""
@@ -1345,12 +1759,15 @@ func main() {
 		serverConfig.UUID_TTL = UUID_TTL_MAX
 	}
 
-	redis_cli.Cmd("HMSET", "settings", "user_login_min_length", serverConfig.UserLoginMinLength,
+	redis_cli.Cmd("HMSET", "settings",
+		"user_login_min_length", serverConfig.UserLoginMinLength,
 		"user_password_min_length", serverConfig.UserPwdMinLength,
 		"uuid_ttl", serverConfig.UUID_TTL,
-		"banks_ico_dir", serverConfig.BanksIcoDir)
+		"banks_ico_dir", serverConfig.BanksIcoDir,
+		"testing_mode", boolToInt(serverConfig.TestingMode))
 
 	preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
+	dropTestData(redis_cli)
 
 	REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
@@ -1369,11 +1786,17 @@ func main() {
 	router.HandleFunc("/banks", handlerBankList).Methods("GET")
 	router.HandleFunc("/banks", handlerBanksBatch).Methods("POST")
 	router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
-	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint)
+	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint).Methods("GET")
 	router.HandleFunc("/cashpoints", handlerCashpointsBatch).Methods("POST")
+	router.HandleFunc("/cashpoints/history", handlerCashpointsHistory).Methods("POST")
 	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
 	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints).Methods("POST")
 	router.HandleFunc("/nearby/towns", handlerNearbyTowns).Methods("POST")
+	router.HandleFunc("/nearby/clusters", handlerNearbyClusters).Methods("POST")
+
+	if serverConfig.TestingMode {
+		router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpointDelete).Methods("DELETE")
+	}
 
 	port := ":" + strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening 127.0.0.1" + port)

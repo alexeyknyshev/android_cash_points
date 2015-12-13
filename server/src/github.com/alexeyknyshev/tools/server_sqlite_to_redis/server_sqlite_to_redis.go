@@ -309,11 +309,6 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
 			log.Fatal(err)
 		}
 
-		err = redisCli.Cmd("SET", "cp:"+cashpointIdStr+":version", 1).Err
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		err = redisCli.Cmd("GEOADD", "cashpoints", cp.Longitude, cp.Latitude, cp.Id).Err
 		if err != nil {
 			log.Fatal(err)
