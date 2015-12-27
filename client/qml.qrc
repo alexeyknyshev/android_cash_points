@@ -32,5 +32,6 @@
         <file alias="marker.svg">ico/other/marker.svg</file>
         <file alias="place.svg">ico/other/place.svg</file>
         <file alias="add.svg">ico/other/add.svg</file>
+        <file alias="cluster.svg">ico/other/cluster.svg</file>
     </qresource>
 </RCC>
