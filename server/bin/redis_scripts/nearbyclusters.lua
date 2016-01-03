@@ -72,4 +72,5 @@ end
 
 req.zoom = math.floor(req.zoom + 0.5)
 local quadKey = getQuadKey(req.longitude, req.latitude, req.zoom)
+
 return quadKey

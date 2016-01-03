@@ -4,17 +4,18 @@ import (
 	"io"
 	"log"
 	"os"
-	//    "fmt"
+	//"fmt"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"strings"
-	//	"github.com/fiam/gounidecode/unidecode"
+	//"github.com/fiam/gounidecode/unidecode"
 	"github.com/gorilla/mux"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/nu7hatch/gouuid"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -31,7 +32,7 @@ func isAlphaNumeric(r rune) bool {
 
 func isAlphaNumericString(s string) bool {
 	for _, c := range s {
-		//        print("\\u" + strconv.FormatInt(int64(c), 16) + "\n")
+		//print("\\u" + strconv.FormatInt(int64(c), 16) + "\n")
 		if !isAlphaNumeric(c) {
 			return false
 		}
@@ -44,6 +45,18 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func removeDuplicates(arr []string) []string {
+	result := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, v := range arr {
+		if _, ok := seen[v]; !ok {
+			result = append(result, v)
+			seen[v] = struct{}{}
+		}
+	}
+	return result
 }
 
 // ========================================================
@@ -305,7 +318,7 @@ func dropTestData(redisCli *redis.Client) {
 // ========================================================
 
 type Message struct {
-    Text string `json:"text"`
+	Text string `json:"text"`
 }
 
 type User struct {
@@ -344,6 +357,30 @@ type SearchNearbyRequest struct {
 	Longitude float32 `json:"longitude"`
 	Latitude  float32 `json:"latitude"`
 	Radius    float32 `json:"radius"`
+	Zoom      uint32  `json:"zoom"`
+	Filter    string  `json:",string"`
+	//Radius    float32 `json:"radius"`
+}
+
+type SearchNearbyRequestInternal struct {
+	QuadKeys []string `json:"quadkeys"`
+	Filter   string   `json:"filter"`
+}
+
+func (req *SearchNearbyRequest) Validate() error {
+	err := isGeoCoordValid(req.Longitude, req.Latitude)
+	if err != nil {
+		return err
+	}
+
+	if req.Radius <= 0.0 {
+		return errors.New("radius must be positive")
+	}
+
+	if req.Zoom > MAX_VALID_ZOOM {
+		return errors.New("zoom is out of range")
+	}
+	return nil
 }
 
 type CashPoint struct {
@@ -442,17 +479,23 @@ const script_regions_batch = "REGIONSBATCH"
 const script_banks_batch = "BANKSBATCH"
 const script_cashpoints_batch = "CASHPOINTSBATCH"
 const script_cashpoints_history = "CASHPOINTSHISTORY"
-const script_nearby_clusters = "NEARBYCLUSTERS"
+const script_cluster_data_batch = "CLUSTERDATABATCH"
+const script_cluster_data_town = "CLUSTERDATATOWN"
+const script_cluster_data = "CLUSTERDATA"
 
 const SERVER_DEFAULT_CONFIG = "config.json"
 
 const UUID_TTL_MIN = 10
 const UUID_TTL_MAX = 1000
 
+const MAX_VALID_ZOOM = 16
+const MIN_CLUSTER_ZOOM = 10
+
 var MIN_LOGIN_LENGTH uint64 = 4
 var MIN_PWD_LENGTH uint64 = 4
 
 var REQ_RES_LOG_TTL uint64 = 60
+var MAX_CLUSTER_COUNT uint64 = 32
 
 // ========================================================
 
@@ -463,7 +506,7 @@ func handlerPing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go logRequest(w, r, requestId, "")
-	msg := &Message{ Text: "pong" }
+	msg := &Message{Text: "pong"}
 	jsonByteArr, _ := json.Marshal(msg)
 	writeResponse(w, r, requestId, string(jsonByteArr))
 }
@@ -1256,6 +1299,15 @@ func getGeoRectPart(minLon, maxLon, minLat, maxLat *float32, lon, lat float32) s
 	}
 }
 
+func isGeoCoordValid(lon, lat float32) error {
+	if math.Abs(float64(lon)) > 180.0 {
+		return errors.New("longitude is out of range")
+	} else if math.Abs(float64(lat)) > 85.0 {
+		return errors.New("latitude is out of range")
+	}
+	return nil
+}
+
 func getQuadKey(lon, lat float32, maxZoom uint32) string {
 	var minLon float32 = -180.0
 	var maxLon float32 = 180.0
@@ -1297,12 +1349,12 @@ func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
 	defer redis_cli_pool.Put(redisCli)
 
 	cpData := CashPoint{
-		Id: 0,
-		TownId: 0,
-		BankId: 0,
+		Id:        0,
+		TownId:    0,
+		BankId:    0,
 		Longitude: 0.0,
-		Latitude: 0.0,
-		Version: 1,
+		Latitude:  0.0,
+		Version:   1,
 	}
 
 	err = json.Unmarshal([]byte(jsonStr), &cpData)
@@ -1380,7 +1432,7 @@ func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	quadKey := getQuadKey(cpData.Longitude, cpData.Latitude, 16)
+	quadKey := getQuadKey(cpData.Longitude, cpData.Latitude, MAX_VALID_ZOOM)
 	for i := 0; i < len(quadKey); i++ {
 		clusterName := "cluster:" + quadKey[:(i+1)]
 		result = redisCli.Cmd("SADD", clusterName, cpData.Id)
@@ -1416,7 +1468,7 @@ func handlerCashpointDelete(w http.ResponseWriter, r *http.Request) {
 
 	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointDelete", map[string]string{
 		"requestId": strconv.FormatInt(requestId, 10),
-		"id": idStr,
+		"id":        idStr,
 	})
 
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -1461,7 +1513,7 @@ func handlerCashpointDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	townCp := "town:"+strconv.FormatUint(uint64(cp.TownId), 10) + ":cp"
+	townCp := "town:" + strconv.FormatUint(uint64(cp.TownId), 10) + ":cp"
 	result = redisCli.Cmd("SREM", townCp, cp.Id)
 	if result.Err != nil {
 		log.Printf("%s: cannot remove cashpoint id = %s from town cp set = %s", context, idStr, townCp)
@@ -1469,7 +1521,7 @@ func handlerCashpointDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bankCp := "bank:"+strconv.FormatUint(uint64(cp.BankId), 10) + ":cp"
+	bankCp := "bank:" + strconv.FormatUint(uint64(cp.BankId), 10) + ":cp"
 	result = redisCli.Cmd("SREM", bankCp, cp.Id)
 	if result.Err != nil {
 		log.Printf("%s: cannot remove cashpoint id = %s from bank cp set = %s", context, idStr, bankCp)
@@ -1689,19 +1741,52 @@ func handlerNearbyClusters(w http.ResponseWriter, r *http.Request) {
 	}
 	defer redis_cli_pool.Put(redisCli)
 
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_nearby_clusters], 0, jsonStr)
+	request := SearchNearbyRequest{}
+	err = json.Unmarshal([]byte(jsonStr), &request)
+	if err != nil {
+		log.Printf("%s: cannot unpack json request: %v\n", context, err)
+		w.WriteHeader(400)
+		return
+	}
+
+	err = request.Validate()
+	if err != nil {
+		log.Printf("%s: invalid request data: %v", context, err)
+		w.WriteHeader(400)
+		return
+	}
+
+	start := time.Now()
+	var result *redis.Resp
+	if request.Zoom < MIN_CLUSTER_ZOOM {
+		result = redisCli.Cmd("EVALSHA", redis_scripts[script_cluster_data_town], 0, jsonStr, MAX_CLUSTER_COUNT)
+	} else {
+		result = redisCli.Cmd("EVALSHA", redis_scripts[script_cluster_data], 0, jsonStr)
+	}
+	elapsed := time.Since(start)
+	log.Printf("%s: cluster lua time: %v", context, elapsed)
+
 	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
+		log.Printf("%s: cannot get cluster data: redis => %v\n", context, result.Err)
 		w.WriteHeader(500)
 		return
 	}
+
+	jsonStr, err = result.Str()
+	if err != nil {
+		log.Printf("%s: cannot convert cluster data to string: redis => %v\n", context, err)
+		w.WriteHeader(500)
+		return
+	}
+
+	writeResponse(w, r, requestId, jsonStr)
 }
 
 // ========================================================
 
 func main() {
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
-//	log.Println("CashPoints server build: " + BuildDate)
+	//log.Println("CashPoints server build: " + BuildDate)
 
 	args := os.Args[1:]
 

@@ -1,13 +1,13 @@
-local userPayload = ARGV[1]
+local reqPayload = ARGV[1]
 
-if not userPayload then
-    return 'No json data'
+if not reqPayload then
+    return redis.error_reply('no json request payload')
 end
 
-local req = cjson.decode(userPayload)
+local req = cjson.decode(reqPayload)
 
 if not req.towns then
-    return 'No such key: towns'
+    return redis.error_reply('no json request key: towns')
 end
 
 local result = {}

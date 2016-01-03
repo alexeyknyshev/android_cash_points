@@ -10,6 +10,9 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"bytes"
+	"sort"
+	"io"
 )
 
 func boolToInt(val bool) uint {
@@ -75,6 +78,17 @@ type CashPoint struct {
 	Version        uint32  `json:"version"`
 	Timestamp      uint32  `json:"timestamp"`
 }
+
+type ClusterData struct {
+	QuadKey   string  `json:"quadkey"`
+	Longitude float32 `json:"longitude"`
+	Latitude  float32 `json:"latitude"`
+	Size      uint32  `json:"size"`
+}
+
+var redis_scripts map[string]string
+
+const script_zcluster_data = "ZCLUSTERDATA"
 
 func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
 	var townsCount int
@@ -489,6 +503,8 @@ func getGeoRectPart(minLon, maxLon, minLat, maxLat *float32, lon, lat float32) s
 	}
 }
 
+const CHAN_BUFFER_SIZE = 512
+
 type CPClusteringRequest struct {
 	Id        uint32
 	Longitude float32
@@ -498,11 +514,12 @@ type CPClusteringRequest struct {
 type CPClusteringResponse struct {
 	Id      uint32
 	QuadKey string
+	Zoom    uint32
 }
 
-func clusteringWorker(in chan CPClusteringRequest, maxZoom uint32) chan CPClusteringResponse {
+func clusteringWorker(in chan CPClusteringRequest, minZoom, maxZoom uint32) chan CPClusteringResponse {
 	context := "clusteringWorker"
-	out := make(chan CPClusteringResponse)
+	out := make(chan CPClusteringResponse, CHAN_BUFFER_SIZE)
 	go func() {
 		log.Printf("%s: waiting for task", context)
 		for request := range in {
@@ -518,9 +535,12 @@ func clusteringWorker(in chan CPClusteringRequest, maxZoom uint32) chan CPCluste
 			quadKey := ""
 			for zoom := uint32(0); zoom < maxZoom; zoom++ {
 				quadKey += getGeoRectPart(&minLon, &maxLon, &minLat, &maxLat, request.Longitude, request.Latitude)
-				response.QuadKey = quadKey
-				// 				log.Printf("%s: response ready: id = %d, quadkey = %s", context, response.Id, response.QuadKey)
-				out <- response
+				if zoom >= minZoom {
+					response.QuadKey = quadKey
+					response.Zoom = zoom
+					//log.Printf("%s: response ready: id = %d, quadkey = %s", context, response.Id, response.QuadKey)
+					out <- response
+				}
 			}
 			// 			log.Printf("%s: clustering finished for cashpoint: %d", context, request.Id)
 		}
@@ -533,7 +553,7 @@ func mergeResponseChannels(channels []chan CPClusteringResponse) chan CPClusteri
 	context := "mergeResponseChannels"
 
 	var wg sync.WaitGroup
-	out := make(chan CPClusteringResponse)
+	out := make(chan CPClusteringResponse, CHAN_BUFFER_SIZE * 4)
 
 	output := func(c chan CPClusteringResponse) {
 		for response := range c {
@@ -558,7 +578,8 @@ func mergeResponseChannels(channels []chan CPClusteringResponse) chan CPClusteri
 	return out
 }
 
-func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) {
+
+func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) (map[string]struct{}, error) {
 	context := "migrateClustersNew"
 
 	log.Printf("%s: started", context)
@@ -569,10 +590,12 @@ func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) {
 
 	cp := CPClusteringRequest{}
 
+	var minZoom uint32 = 10
 	var maxZoom uint32 = 16
+
 	for i := 0; i < taskCount; i++ {
-		channelsRequest[i] = make(chan CPClusteringRequest)
-		channelsResponse[i] = clusteringWorker(channelsRequest[i], maxZoom)
+		channelsRequest[i] = make(chan CPClusteringRequest, CHAN_BUFFER_SIZE)
+		channelsResponse[i] = clusteringWorker(channelsRequest[i], minZoom, maxZoom)
 	}
 
 	log.Printf("%s: %d workers started", context, taskCount)
@@ -588,21 +611,24 @@ func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) {
 		log.Fatalf("%s: cashpoints: %v\n", context, err)
 	}
 
+	quadKeySet := make(map[string]struct{}, 0)
+
 	wait := make(chan bool)
 	go func() {
 		cashpointIndex := 0
 		progress := 0.0
 		for response := range mergeResponseChannels(channelsResponse) {
-			// 			log.Printf("%s: got response: id = %d, quadkey = %s", context, response.Id, response.QuadKey)
+			//log.Printf("%s: got response: id = %d, quadkey = %s", context, response.Id, response.QuadKey)
+			quadKeySet[response.QuadKey] = struct{}{}
 			result := redisCli.Cmd("SADD", "cluster:"+response.QuadKey, response.Id)
 			if result.Err != nil {
-				// 				log.Printf("%s: cannot add cp:%d to cluster:%s", context, response.Id, response.QuadKey)
+				log.Printf("%s: cannot add cp:%d to cluster:%s", context, response.Id, response.QuadKey)
 				break
 			}
 
 			cashpointIndex++
 
-			newProgress := math.Floor(float64(cashpointIndex) / float64(cashpointsCount) / float64(maxZoom) * 100.0)
+			newProgress := math.Floor(float64(cashpointIndex) / float64(cashpointsCount) / float64(maxZoom - minZoom) * 100.0)
 			if newProgress > progress {
 				progress = newProgress
 				log.Printf("%s: [%3d%%] clustering done", context, int(progress))
@@ -617,13 +643,13 @@ func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) {
 		err = rows.Scan(&cp.Id, &cp.Longitude, &cp.Latitude)
 		if err != nil {
 			log.Fatalf("%s: sql scan error: %v\n", context, err)
-			return
+			return quadKeySet, err
 		}
 
 		taskId := currentCashpointIndex % taskCount
 		currentCashpointIndex++
 
-		// 		log.Printf("%s: sending request to worker id = %d", context, taskId)
+		//log.Printf("%s: sending request to worker id = %d", context, taskId)
 		channelsRequest[taskId] <- cp
 	}
 
@@ -635,6 +661,166 @@ func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) {
 
 	<-wait
 	log.Printf("%s: all tasks finished", context)
+
+	return quadKeySet, nil
+}
+
+func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
+	context := "preloadRedisScripts: " + srcFilePath
+
+	buf := bytes.NewBuffer(nil)
+	file, err := os.Open(srcFilePath)
+	if err != nil {
+		log.Fatalf("%s => %v\n", context, err)
+	}
+	io.Copy(buf, file)
+	file.Close()
+	src := string(buf.Bytes())
+
+	response := redisCli.Cmd("SCRIPT", "LOAD", src)
+	if response.Err != nil {
+		log.Fatalf("%s => %v\n", context, response.Err)
+	}
+	scriptSha, err := response.Str()
+	if err != nil {
+		log.Fatalf("%s => %v\n", context, err)
+	}
+	return scriptSha
+}
+
+type SortQuadKeys []string
+
+func (s SortQuadKeys) Len() int {
+	return len(s)
+}
+
+func (s SortQuadKeys) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s SortQuadKeys) Less(i, j int) bool {
+	if (len(s[i]) < len(s[j])) {
+		return false
+	}
+
+	if (len(s[i]) == len(s[j])) {
+		return s[i] < s[j]
+	}
+
+	return true
+}
+
+func migrateClustersNewGeo(redisCli *redis.Client, quadKeySet map[string]struct{}) {
+	context := "migrateClustersNewGeo"
+
+	quadKeyList := make([]string, len(quadKeySet))
+	index := 0
+	for key := range quadKeySet {
+	        quadKeyList[index] = key
+		index++
+	}
+
+	// sort quadkeys for max zoom to min
+	// we need to calc avgLon & avgLat for each subcluster
+	// and just after that sumup from bottom to top
+	sort.Sort(SortQuadKeys(quadKeyList))
+	for _, key := range quadKeyList {
+		log.Printf("%s", key)
+	}
+
+	maxZoom := len(quadKeyList[0])
+	for _, quadKey := range quadKeyList {
+		if (len(quadKey) != maxZoom) {
+			break
+		}
+	}
+
+	//cp := CashPoint{}
+	quadKeyListSize := len(quadKeyList)
+	progress := 0.0
+	log.Printf("%s: processing geo hasing for %d clusters", context, quadKeyListSize)
+	for index, quadKey := range quadKeyList {
+		if len(quadKey) == 0 {
+			log.Fatalf("%s: detected quadkey with empty name", context)
+			return
+		}
+		log.Printf("%s: [%d/%d] clusters processed", context, index + 1, quadKeyListSize)
+/*
+		result := redisCli.Cmd("SMEMBERS", "cluster:"+quadKey)
+		if result.Err != nil {
+			log.Fatalf("%s: cannot get cluster members for quadkey = %s: redis => %v\n", context, quadKey, result.Err)
+			return
+		}
+
+		data, err := result.List()
+		if err != nil {
+			log.Fatalf("%s: cannot get cp for id = %s and quadkey = %s: redis => %v\n", context, quadKey, result.Err)
+			return
+		}
+
+		count := uint32(len(data))
+		if count == 0 {
+			log.Fatalf("%s: detected empty quadkey = %s\n", quadKey)
+			return
+		}
+
+		clusterData := ClusterData{Longitude: 0.0, Latitude: 0.0, Size: count}
+		for _, idStr := range data {
+			result = redisCli.Cmd("GET", "cp:"+idStr)
+			if result.Err != nil {
+				log.Fatalf("%s: cannot get cp for id = %s and quadkey = %s: redis => %v\n", context, idStr, quadKey, result.Err)
+				return
+			}
+
+			jsonStr, err := result.Str()
+			err = json.Unmarshal([]byte(jsonStr), &cp)
+			if err != nil {
+				log.Printf("%s: failed to unpack json for cp id = %s of cluster with quadkey = %s: %v", context, idStr, quadKey, err)
+				log.Printf("%s: json data:\n%s", context, jsonStr)
+				return
+			}
+
+			clusterData.Longitude += cp.Longitude
+			clusterData.Latitude += cp.Latitude
+		}
+
+		clusterData.Longitude = clusterData.Longitude / float32(count)
+		clusterData.Latitude = clusterData.Latitude / float32(count)*/
+
+		clusterData := ClusterData{Longitude: 0.0, Latitude: 0.0, Size: 0}
+		result := redisCli.Cmd("EVALSHA", redis_scripts[script_zcluster_data], 0, "cluster:"+quadKey)
+		if result.Err != nil {
+			log.Fatalf("%s: cannot get zcluster data for quadkey = %s: redis => %v\n", context, quadKey, result.Err)
+			return
+		}
+		jsonStr, err := result.Str()
+		if err != nil {
+			log.Fatalf("%s: cannot convert zcluster data to string for quadkey = %s: redis => %v\n", context, quadKey, err)
+			return
+		}
+		err = json.Unmarshal([]byte(jsonStr), &clusterData)
+		if err != nil {
+			log.Fatalf("%s: cannot unpack zcluster json data: %v\n%s", context, err, jsonStr)
+			return
+		}
+
+		zoom := uint64(len(quadKey) - 1)
+		result = redisCli.Cmd("GEOADD", "zcluster:"+strconv.FormatUint(zoom, 10), clusterData.Longitude, clusterData.Latitude, quadKey)
+		if result.Err != nil {
+			log.Printf("%s: cannot add cluster data = %s for quadkey = %s to geo index: redis => %v\n", context, jsonStr, quadKey, result.Err)
+			log.Printf("%s: clusterData = { %s, %s, %d }\n", context, clusterData.Longitude, clusterData.Latitude, clusterData.Size)
+			return
+		}
+
+		newProgress := math.Floor(float64(index + 1) / float64(quadKeyListSize) * 100.0)
+		if newProgress > progress {
+			log.Printf("%s: geo sorting of clusters finished", context)
+			progress = newProgress
+		}
+
+		//jsonData, _ := json.Marshal(clusterData)
+		//redisCli.Cmd("SET", "cluster:"+quadKey+":data", string(jsonData))
+	}
 }
 
 func migrateClusters(cpDb *sql.DB, redisCli *redis.Client) {
@@ -725,8 +911,13 @@ func migrate(townsDb, cpDb, banksDb *sql.DB, redisCli *redis.Client) {
 	migrateRegions(townsDb, redisCli)
 	migrateCashpoints(cpDb, redisCli)
 	migrateBanks(banksDb, redisCli)
-	//	migrateClusters(cpDb, redisCli)
-	migrateClustersNew(cpDb, redisCli)
+	//migrateClusters(cpDb, redisCli)
+	quadKeyList, err := migrateClustersNew(cpDb, redisCli)
+	if err != nil {
+		log.Fatalf("migrateClustersNew: cannot get list of quadkeys")
+		return
+	}
+	migrateClustersNewGeo(redisCli, quadKeyList)
 }
 
 func main() {
@@ -748,10 +939,15 @@ func main() {
 		log.Fatal("Redis database url is not specified")
 	}
 
+	if len(args) == 4 {
+	        log.Fatal("No such redis zcluster script path")
+	}
+
 	townsDbPath := args[0]
 	cashpointsDbPath := args[1]
 	banksDbPath := args[2]
 	redisUrl := args[3]
+	zclusterScriptPath := args[4]
 
 	townsDb, err := sql.Open("sqlite3", townsDbPath)
 	if err != nil {
@@ -772,10 +968,14 @@ func main() {
 	defer banksDb.Close()
 
 	redisCli, err := redis.Dial("tcp", redisUrl)
-	if err != nil {
+	if err != nil {	
 		log.Fatal(err)
 	}
 	defer redisCli.Close()
+
+	redisCli.Cmd("SCRIPT", "FLUSH")
+	redis_scripts = make(map[string]string)
+	redis_scripts[script_zcluster_data] = preloadRedisScriptSrc(redisCli, zclusterScriptPath)
 
 	migrate(townsDb, cashpointsDb, banksDb, redisCli)
 }
