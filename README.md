@@ -7,4 +7,4 @@ Android app for nearby Cash Point lookup
 
 ![Banks view](https://github.com/alexeyknyshev/android_cash_points/blob/master/misc/preview/banks_view.png)
 
-Android Cash Points are avaliable under the terms of the GNU GPL
+Android Cash Points are avaliable under the terms of the GNU GPLv3
