@@ -1,7 +1,7 @@
 local cluster = ARGV[1]
 
 if not cluster then
-    return redis.error_reply('no such cluster argument')
+    return redis.error_reply('no such required argument: cluster')
 end
 
 if redis.call('EXISTS', cluster) == 0 then

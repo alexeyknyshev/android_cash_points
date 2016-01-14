@@ -1,6 +1,14 @@
 local result = {}
 local regionIds = redis.call('ZRANGE', 'regions', 0, -1)
 for _, regionId in pairs(regionIds) do
-    result[#result + 1] = redis.call('GET', 'region:' .. tostring(regionId))
+    local regionJsonData = redis.call('GET', 'region:' .. tostring(regionId))
+    if regionJsonData then
+        result[#result + 1] = cjson.decode(regionJsonData)
+    end
 end
-return result
+
+if #result == 0 then
+    return '[]'
+end
+
+return cjson.encode(result)

@@ -31,6 +31,7 @@ type Town struct {
 	Latitude       float32 `json:"latitude"`
 	Longitude      float32 `json:"longitude"`
 	Zoom           uint32  `json:"zoom"`
+	Big            bool    `json:"big"`
 }
 
 type Region struct {
@@ -90,6 +91,49 @@ var redis_scripts map[string]string
 
 const script_zcluster_data = "ZCLUSTERDATA"
 
+func migrateMessages(townsDb *sql.DB, redisCli *redis.Client) {
+	rows, err := townsDb.Query(`SELECT * FROM tr`)
+	if err != nil {
+		log.Fatalf("migrate: messages: %v\n", err)
+	}
+	langList, err := rows.Columns()
+	if err != nil {
+		log.Fatalf("migrate: messages: %v\n", err)
+	}
+	msgs := make([]interface{}, len(langList))
+	rawResult := make([][]byte, len(langList))
+	for i, _ := range rawResult {
+		msgs[i] = &rawResult[i]
+	}
+	//row := 0
+	for rows.Next() {
+		err = rows.Scan(msgs...)
+		if err != nil {
+			log.Fatal("migrate: messages: failed to scan db row => %v", err)
+		}
+		trList := make([]string, len(langList))
+		for i, raw := range rawResult {
+			if raw == nil {
+				trList[i] = "\\N"
+			} else {
+				trList[i] = string(raw)
+			}
+		}
+		//log.Printf("%v", trList)
+		data := make(map[string]string)
+		for i, lang := range langList {
+			data[lang] = trList[i]
+		}
+		//log.Fatal(msgs)
+		err = redisCli.Cmd("HMSET", "msg:" + trList[0], data).Err
+		if err != nil {
+			log.Fatalf("migrate: messages: redis error => %v\n", err)
+		}
+		//row++
+	}
+	//log.Printf("%d", row)
+}
+
 func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
 	var townsCount int
 	err := townsDb.QueryRow(`SELECT COUNT(*) FROM towns`).Scan(&townsCount)
@@ -99,7 +143,7 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
 
 	rows, err := townsDb.Query(`SELECT id, name, name_tr, region_id,
                                        regional_center, latitude,
-                                       longitude, zoom FROM towns`)
+                                       longitude, zoom, has_emblem FROM towns`)
 	if err != nil {
 		log.Fatalf("migrate: towns: %v\n", err)
 	}
@@ -111,7 +155,8 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
 		var regionId uint32 = 0
 		err = rows.Scan(&town.Id, &town.Name, &town.NameTr,
 			&regionId, &town.RegionalCenter,
-			&town.Latitude, &town.Longitude, &town.Zoom)
+			&town.Latitude, &town.Longitude,
+			&town.Zoom, &town.Big)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -138,6 +183,13 @@ func migrateTowns(townsDb *sql.DB, redisCli *redis.Client) {
 		err = redisCli.Cmd("GEOADD", "towns", town.Longitude, town.Latitude, town.Id).Err
 		if err != nil {
 			log.Fatal(err)
+		}
+
+		if town.Big {
+			err = redisCli.Cmd("GEOADD", "towns:big", town.Longitude, town.Latitude, town.Id).Err
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		currentTownIdx++
@@ -328,12 +380,12 @@ func migrateCashpoints(cpDb *sql.DB, redisCli *redis.Client) {
 			log.Fatal(err)
 		}
 
-		err = redisCli.Cmd("SADD", "town:"+townIdStr+":cp", cp.Id).Err
+		err = redisCli.Cmd("SADD", "cp:town:"+townIdStr, cp.Id).Err
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = redisCli.Cmd("SADD", "bank:"+bankIdStr+":cp", cp.Id).Err
+		err = redisCli.Cmd("SADD", "cp:bank:"+bankIdStr, cp.Id).Err
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -601,12 +653,12 @@ func migrateClustersNew(cpDb *sql.DB, redisCli *redis.Client) (map[string]struct
 	log.Printf("%s: %d workers started", context, taskCount)
 
 	var cashpointsCount int
-	err := cpDb.QueryRow("SELECT COUNT(*) FROM cashpoints").Scan(&cashpointsCount)
+	err := cpDb.QueryRow("SELECT COUNT(*) FROM cashpoints WHERE hidden = 0").Scan(&cashpointsCount)
 	if err != nil {
 		log.Fatalf("%s: cashpoints: %v\n", context, err)
 	}
 
-	rows, err := cpDb.Query("SELECT id, longitude, latitude FROM cashpoints")
+	rows, err := cpDb.Query("SELECT id, longitude, latitude FROM cashpoints WHERE hidden = 0")
 	if err != nil {
 		log.Fatalf("%s: cashpoints: %v\n", context, err)
 	}
@@ -744,7 +796,9 @@ func migrateClustersNewGeo(redisCli *redis.Client, quadKeySet map[string]struct{
 			log.Fatalf("%s: detected quadkey with empty name", context)
 			return
 		}
-		log.Printf("%s: [%d/%d] clusters processed", context, index + 1, quadKeyListSize)
+		if (index + 1) % 500 == 0 {
+		    log.Printf("%s: [%d/%d] clusters processed", context, index + 1, quadKeyListSize)
+		}
 /*
 		result := redisCli.Cmd("SMEMBERS", "cluster:"+quadKey)
 		if result.Err != nil {
@@ -814,13 +868,13 @@ func migrateClustersNewGeo(redisCli *redis.Client, quadKeySet map[string]struct{
 
 		newProgress := math.Floor(float64(index + 1) / float64(quadKeyListSize) * 100.0)
 		if newProgress > progress {
-			log.Printf("%s: geo sorting of clusters finished", context)
 			progress = newProgress
 		}
 
 		//jsonData, _ := json.Marshal(clusterData)
 		//redisCli.Cmd("SET", "cluster:"+quadKey+":data", string(jsonData))
 	}
+	log.Printf("%s: geo sorting of clusters finished", context)
 }
 
 func migrateClusters(cpDb *sql.DB, redisCli *redis.Client) {
@@ -853,7 +907,7 @@ func migrateClusters(cpDb *sql.DB, redisCli *redis.Client) {
 	log.Printf("%s: bounds = { [%f, %f], [%f, %f] }", context, minLon, maxLon, minLat, maxLat)
 
 	stmt, err := cpDb.Prepare(`SELECT id, longitude, latitude FROM cashpoints
-					WHERE latitude > ? AND latitude <= ? AND
+					WHERE hidden = 0 AND latitude > ? AND latitude <= ? AND
 					longitude > ? AND longitude <= ?`)
 	if err != nil {
 		log.Fatalf("%s: sql prepare error: %v\n", context, err)
@@ -907,6 +961,7 @@ func migrateClusters(cpDb *sql.DB, redisCli *redis.Client) {
 }
 
 func migrate(townsDb, cpDb, banksDb *sql.DB, redisCli *redis.Client) {
+	migrateMessages(townsDb, redisCli)
 	migrateTowns(townsDb, redisCli)
 	migrateRegions(townsDb, redisCli)
 	migrateCashpoints(cpDb, redisCli)

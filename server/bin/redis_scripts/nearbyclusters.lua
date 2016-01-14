@@ -36,7 +36,7 @@ local getQuadKey = function(longitude, latitude, zoom)
     local maxLat = 85.0
 
     quadKey = ""
-    for currentZoom = 0,zoom do
+    for currentZoom = 0, zoom do
         local q = ""
         minLon, maxLon, minLat, maxLat, q = geoRectPart(minLon, maxLon, minLat, maxLat, longitude, latitude)
         quadKey = quadKey .. q
@@ -45,29 +45,29 @@ local getQuadKey = function(longitude, latitude, zoom)
 end
 
 if not reqPayload then
-    return 'No json data'
+    return redis.error_reply('no such json payload')
 end
 
 local req = cjson.decode(reqPayload)
 
 if not req.longitude then
-     return 'No such longitude'
+    return redis.error_reply('no such required argument: longitude')
 end
 
 if not req.latitude then
-     return 'No such latitude'
+    return redis.error_reply('no such required argument: latitude')
 end
 
 if not req.zoom then
-     return 'No such zoom'
+    return redis.error_reply('no such required argument: zoom')
 end
 
 if req.zoom < 0 then
-     return 'Zoom cannot be negative'
+    return redis.error_reply('zoom must be positive')
 end
 
 if req.zoom > 16 then
-     return 'Zoom too large'
+    return redis.error_reply('zoom is too large')
 end
 
 req.zoom = math.floor(req.zoom + 0.5)

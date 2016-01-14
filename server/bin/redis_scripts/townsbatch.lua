@@ -11,8 +11,15 @@ if not req.towns then
 end
 
 local result = {}
-for _, townid in pairs(req.towns) do
-    result[#result + 1] = redis.call('GET', 'town:' .. tostring(townid))
+for _, townId in pairs(req.towns) do
+    local townJsonData = redis.call('GET', 'town:' .. tostring(townId))
+    if townJsonData then
+        result[#result + 1] = cjson.decode(townJsonData)
+    end
 end
 
-return result
+if #result == 0 then
+    return '[]'
+end
+
+return cjson.encode(result)

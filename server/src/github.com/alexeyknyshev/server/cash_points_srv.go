@@ -1,15 +1,16 @@
 package main
 
 import (
-	"io"
-	"log"
-	"os"
-	//"fmt"
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log"
+	"os"
 	"strings"
 	//"github.com/fiam/gounidecode/unidecode"
+	"github.com/go-fsnotify/fsnotify"
 	"github.com/gorilla/mux"
 	"github.com/mediocregopher/radix.v2/pool"
 	"github.com/mediocregopher/radix.v2/redis"
@@ -20,6 +21,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -109,6 +111,10 @@ func getRequestUserId(r *http.Request) (int64, error) {
 	return requestId, nil
 }
 
+func getRequestUserLang(r *http.Request) string {
+	return r.Header.Get("Accept-Language")
+}
+
 func getRequestJsonStr(r *http.Request, context string) (string, error) {
 	jsonStr, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -116,6 +122,12 @@ func getRequestJsonStr(r *http.Request, context string) (string, error) {
 		return "", err
 	}
 	return string(jsonStr), nil
+}
+
+func jsonPrettify(jsonStr string) (string, error) {
+	var out bytes.Buffer
+	err := json.Indent(&out, []byte(jsonStr), "", "  ")
+	return string(out.Bytes()), err
 }
 
 // ========================================================
@@ -138,64 +150,106 @@ func checkConvertionFloat(val float32, err error, context string) float32 {
 
 // ========================================================
 
-func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
-	path := r.URL.Path
-	/*
-	   timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
-	   requestStr := "request:" + timeStr
-
-	   err := redis_cli.Cmd("HMSET", requestStr,
-	                                 "path", path,
-	                                 "data", requestBody,
-	                                 "time", timeStr,
-	                                 "user_id", requestId).Err
-	   if err != nil {
-	       log.Printf("logRequest: %v\n", err)
-	       return err
-	   }
-
-	   err = redis_cli.Cmd("EXPIRE", requestStr, REQ_RES_LOG_TTL).Err
-	   if err != nil {
-	       log.Printf("logRequest: %v\n", err)
-	   }
-
-	   return err
-	*/
-	endpointStr := path
+func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string, redisCliPool *pool.Pool) error {
+	endpointStr := r.URL.Path
 	if requestBody != "" {
-		endpointStr = endpointStr + " => " + requestBody
+		endpointStr = endpointStr + " =>"
+		body := ""
+		
+		redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("logRequest: cannot get redisCli from pool")
+			return err
+		}
+		defer redisCliPool.Put(redisCli)
+
+		if isTestingModeEnabled(redisCli) {
+			prettyJson, err := jsonPrettify(requestBody)
+			if err == nil {
+				body = "\n" + prettyJson
+			} else {
+				body = " " + requestBody
+			}
+		} else {
+			body = " " + requestBody
+		}
+		endpointStr = endpointStr + body
 	}
 	log.Printf("%s Request: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	return nil
 }
 
-func logResponse(context string, requestId int64, responseBody string) error {
-	/*
-	   timeStr := strconv.FormatInt(time.Now().UnixNano(), 10)
-	   responseStr := "response:" + timeStr
+func logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string, redisCliPool *pool.Pool) error {
+	endpointStr := r.URL.Path
+	if responseBody != "" {
+		endpointStr = endpointStr + " =>"
+		body := ""
 
-	   err := redis_cli.Cmd("HMSET", responseStr,
-	                                 "data", responseBody,
-	                                 "time", timeStr,
-	                                 "user_id", requestId).Err
-	   if err != nil {
-	       log.Printf("logResponse: %v\n", err)
-	       return err
-	   }
+		redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("logRequest: cannot get redisCli from pool")
+			return err
+		}
+		defer redisCliPool.Put(redisCli)
 
-	   err = redis_cli.Cmd("EXPIRE", responseStr, REQ_RES_LOG_TTL).Err
-	   if err != nil {
-	       log.Printf("logResponse: %v\n", err)
-	   }
-
-	   return err
-	*/
+		if isTestingModeEnabled(redisCli) {
+			prettyJson, err := jsonPrettify(responseBody)
+			if err == nil {
+				body = "\n" + prettyJson
+			} else {
+				body = " " + responseBody
+			}
+		} else {
+			body = " " + responseBody
+		}
+		endpointStr = endpointStr + body
+	}
+	log.Printf("%s: Response: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	return nil
 }
 
-func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string, redisCliPool *pool.Pool) {
 	io.WriteString(w, responseBody)
-	go logResponse(getRequestContexString(r), requestId, responseBody)
+	go logResponse(w, r, requestId, responseBody, redisCliPool)
+}
+
+func writeResponseRedisJson(w http.ResponseWriter, r *http.Request, requestId int64, result *redis.Resp, redisCliPool *pool.Pool) error {
+	if result.Err != nil {
+		err := fmt.Errorf("redis => %v", result.Err)
+		return err
+	}
+
+	if !result.IsType(redis.Str) {
+		err := errors.New("redis => script result type is not string")
+		return err
+	}
+
+	jsonRes, _ := result.Str()
+	writeResponse(w, r, requestId, jsonRes, redisCliPool)
+	return nil
+}
+
+func writeResponseRedisMsg(w http.ResponseWriter, r *http.Request, requestId int64, result *redis.Resp, redisCliPool *pool.Pool) (bool, error) {
+	if result.Err != nil {
+		log.Printf("redis error => %s", result.Err)
+		err := fmt.Errorf("redis => %v", result.Err)
+		return false, err
+	}
+
+	if result.IsType(redis.Str) {
+		ret, err := result.Str()
+		if err != nil {
+			err := fmt.Errorf("redis => %v: script result cannot be converted to string", err)
+			return false, err
+		}
+		msg := &Message{Text: ret}
+		jsonRes, _ := json.Marshal(msg)
+		//log.Printf("redis message => %s", string(jsonRes))
+		writeResponse(w, r, requestId, string(jsonRes), redisCliPool)
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
@@ -238,13 +292,11 @@ func redisListResponseExpected(w http.ResponseWriter, r *redis.Resp, context str
 
 // ========================================================
 
-func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
-	context := "preloadRedisScripts: " + srcFilePath
-
+func loadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) (string, error) {
 	buf := bytes.NewBuffer(nil)
 	file, err := os.Open(srcFilePath)
 	if err != nil {
-		log.Fatalf("%s => %v\n", context, err)
+		return "", err
 	}
 	io.Copy(buf, file)
 	file.Close()
@@ -252,44 +304,114 @@ func preloadRedisScriptSrc(redisCli *redis.Client, srcFilePath string) string {
 
 	response := redisCli.Cmd("SCRIPT", "LOAD", src)
 	if response.Err != nil {
-		log.Fatalf("%s => %v\n", context, response.Err)
+		return "", err
 	}
 	scriptSha, err := response.Str()
 	if err != nil {
-		log.Fatalf("%s => %v\n", context, err)
+		return "", err
 	}
-	return scriptSha
+	return scriptSha, nil
 }
 
-func preloadRedisScripts(redisCli *redis.Client, scriptsDir string) {
+func preloadRedisScripts(redisCliPool *pool.Pool, scriptsDir string) *fsnotify.Watcher {
 	redis_scripts = make(map[string]string)
+	redis_scripts_fs = make(map[string]string)
+	redis_scripts_mutex = new(sync.Mutex)
+
+	context := "preloadRedisScripts"
 
 	if _, err := os.Stat(scriptsDir); os.IsNotExist(err) {
-		log.Fatalf("preloadRedisScripts: No such directory file: %s\n", scriptsDir)
+		log.Fatalf("%s: No such directory file: %s\n", context, scriptsDir)
 	}
 
-	log.Printf("Flushing redis script cache")
+	log.Printf("%s: flushing redis script cache", context)
+	redisCli, err := redisCliPool.Get()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer redisCliPool.Put(redisCli)
 	redisCli.Cmd("SCRIPT", "FLUSH")
 
 	filepath.Walk(scriptsDir, func(path string, fi os.FileInfo, _ error) error {
 		if fi.IsDir() == false {
 			fileBaseName := fi.Name()
 			fileExt := filepath.Ext(fileBaseName)
-			if strings.ToLower(fileExt) == ".lua" {
-				logStr := "Loading redis script: " + fileBaseName
-				defer func() {
-					log.Printf(logStr)
-				}()
+			if strings.ToLower(fileExt) == ".lua" && !strings.HasPrefix(fileBaseName, ".") {
+				logStr :=  "loading redis script: " + fileBaseName + " => "
 				cmdName := strings.ToUpper(strings.TrimSuffix(fileBaseName, fileExt))
-				scriptSha := preloadRedisScriptSrc(redisCli, path)
-				redis_scripts[cmdName] = scriptSha
-				logStr = logStr + " => " + cmdName + "(" + scriptSha + ")"
+				scriptSha, err := loadRedisScriptSrc(redisCli, path)
+				if err != nil || scriptSha == "" {
+					logStr = logStr + "FAILED"
+					if err != nil {
+						logStr = logStr + ": " + err.Error()
+					}
+					log.Fatalf("%s: %s", context, logStr)
+				} else {
+					redis_scripts[cmdName] = scriptSha
+					redis_scripts_fs[path] = cmdName
+					logStr = logStr  + cmdName + "(" + scriptSha + ")"
+					log.Printf("%s: %s", context, logStr)
+				}
 			}
 		}
 		return nil
 	})
 
-	return
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Fatal("%s: cannot create fs watcher", context)
+	}
+
+	go func() {
+		context := "scriptReloader"
+		for {
+			select {
+			case event := <- watcher.Events:
+				//log.Println("fsnotify event:", event)
+				reload := false
+				if event.Op & fsnotify.Write == fsnotify.Write {
+					//log.Println("fsnotify modified file:", event.Name)
+					reload = true
+				} else if event.Op & fsnotify.Remove == fsnotify.Remove {
+					//log.Printf("fsnotify readding file: %s", event.Name)
+					reload = true
+					watcher.Add(event.Name)
+				}
+
+				if (reload) {
+					scriptName, ok := redis_scripts_fs[event.Name]
+					if !ok {
+						log.Printf("%s: cannot find registred script name for file: %s", context, event.Name)
+					} else {
+						log.Printf("%s: reloading script: %s", context, scriptName)
+						redisCli, err := redisCliPool.Get()
+						if err != nil {
+							log.Fatalf("%s: cannot get redis cli from pool: %v", context, err)
+						}
+						scriptSha, err := loadRedisScriptSrc(redisCli, event.Name)
+						if err != nil {
+							log.Printf("%s: script reloading failed: %v", err)
+						} else {
+							setRedisScriptSHA(scriptName, scriptSha)
+							log.Printf("%s: script reloaded with new sha: %s (%s)", context, scriptName, scriptSha)
+						}
+					}
+				}
+			case err := <- watcher.Errors:
+				log.Printf("%s: fsnotify error:", context, err)
+			}
+		}
+	}()
+
+	for path, _ := range redis_scripts_fs {
+		err = watcher.Add(path)
+		if err != nil {
+			log.Fatalf("Cannot register file path for watching: %s", path)
+		}
+		log.Printf("watching file path: %s", path)
+	}
+
+	return watcher
 }
 
 func dropTestData(redisCli *redis.Client) {
@@ -313,6 +435,23 @@ func dropTestData(redisCli *redis.Client) {
 			return
 		}
 	}
+}
+
+func getConfigString(redisCli *redis.Client, key string) (string, error) {
+	result := redisCli.Cmd("HGET", "settings", key)
+	if result.Err != nil {
+		return "", result.Err
+	}
+	str, err := result.Str()
+	return str, err
+}
+
+func isTestingModeEnabled(redisCli *redis.Client) bool {
+	str, _ := getConfigString(redisCli, "testing_mode")
+	if str == "1" {
+		return true
+	}
+	return false
 }
 
 // ========================================================
@@ -358,7 +497,7 @@ type SearchNearbyRequest struct {
 	Latitude  float32 `json:"latitude"`
 	Radius    float32 `json:"radius"`
 	Zoom      uint32  `json:"zoom"`
-	Filter    string  `json:",string"`
+	Filter    map[string]interface{} `json:"filter"`
 	//Radius    float32 `json:"radius"`
 }
 
@@ -469,17 +608,35 @@ type BankIco struct {
 var redis_cli_pool *pool.Pool
 
 var redis_scripts map[string]string
+var redis_scripts_fs map[string]string
+
+var redis_scripts_mutex *sync.Mutex
+
+func getRedisScriptSHA(scriptName string) string {
+    redis_scripts_mutex.Lock()
+    defer redis_scripts_mutex.Unlock()
+
+    return redis_scripts[scriptName]
+}
+
+func setRedisScriptSHA(scriptName, scriptSHA string) {
+    redis_scripts_mutex.Lock()
+    defer redis_scripts_mutex.Unlock()
+
+    redis_scripts[scriptName] = scriptSHA
+}
 
 const script_user_create = "USERCREATE"
 const script_user_login = "USERLOGIN"
 const script_bank_create = "BANKCREATE"
-const script_search_nearby = "SEARCHNEARBY"
+const script_search_nearby_town = "SEARCHNEARBYTOWN"
+const script_search_nearby_cp = "SEARCHNEARBYCP"
 const script_towns_batch = "TOWNSBATCH"
 const script_regions_batch = "REGIONSBATCH"
 const script_banks_batch = "BANKSBATCH"
 const script_cashpoints_batch = "CASHPOINTSBATCH"
 const script_cashpoints_history = "CASHPOINTSHISTORY"
-const script_cluster_data_batch = "CLUSTERDATABATCH"
+//const script_cluster_data_batch = "CLUSTERDATABATCH"
 const script_cluster_data_town = "CLUSTERDATATOWN"
 const script_cluster_data = "CLUSTERDATA"
 
@@ -499,743 +656,633 @@ var MAX_CLUSTER_COUNT uint64 = 32
 
 // ========================================================
 
-func handlerPing(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
-	}
+type EndpointCallback func(w http.ResponseWriter, r *http.Request)
 
-	go logRequest(w, r, requestId, "")
-	msg := &Message{Text: "pong"}
-	jsonByteArr, _ := json.Marshal(msg)
-	writeResponse(w, r, requestId, string(jsonByteArr))
+func handlerPing(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		go logRequest(w, r, requestId, "", redisCliPool)
+		msg := &Message{Text: "pong"}
+		jsonByteArr, _ := json.Marshal(msg)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
+	}
 }
 
 // ========================================================
 
-func handlerUserCreate(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerUserCreate(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserCreate", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, string(jsonStr), redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_user_create), 0, jsonStr)
+		_, err = writeResponseRedisMsg(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserCreate", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, string(jsonStr))
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_user_create], 0, jsonStr)
-	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	ret, err := result.Str()
-	if err != nil {
-		log.Printf("%s => %v: redis '%s' result cannot be converted to string\n", context, result.Err, script_user_create)
-		w.WriteHeader(500)
-		return
-	}
-
-	if strings.HasPrefix(ret, "User with already exists") {
-		// user already exists
-		w.WriteHeader(409)
-		return
-	} else if strings.HasPrefix(ret, "User login") {
-		w.WriteHeader(400)
-		return
-	} else if strings.HasPrefix(ret, "User password") {
-		w.WriteHeader(400)
-		return
-	} else if ret != "" {
-		// redis script internal err
-		log.Printf("%s => %s\n", context, ret)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.WriteHeader(200)
 }
 
-func handlerUserDelete(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerUserDelete(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserDelete", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserDelete", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	log.Printf("%s", jsonStr)
 }
 
-func handlerUserLogin(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerUserLogin(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		newUuid, err := uuid.NewV4()
+		if err != nil {
+			log.Printf("%s => %v\n", context, err)
+			return
+		}
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		uuidStr := newUuid.String()
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_user_login), 0, jsonStr, uuidStr)
+		msgWritten, err := writeResponseRedisMsg(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		} else if !msgWritten {
+			sess := Session{Key: uuidStr}
+			jsonByteArr, _ := json.Marshal(sess)
+			writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerUserLogin", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	newUuid, err := uuid.NewV4()
-	if err != nil {
-		log.Printf("%s => %v\n", context, err)
-		return
-	}
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	uuidStr := newUuid.String()
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_user_login], 0, jsonStr, uuidStr)
-	if result.Err != nil {
-		log.Printf("%s => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	ret, err := result.Str()
-	if err != nil {
-		log.Printf("%s => %v: redis '%s' result cannot be converted to string\n", context, result.Err, script_user_login)
-		w.WriteHeader(500)
-		return
-	}
-
-	code := 500
-	switch ret {
-	case "":
-		sess := Session{Key: uuidStr}
-		jsonByteArr, _ := json.Marshal(sess)
-		writeResponse(w, r, requestId, string(jsonByteArr))
-		return
-	case "Invalid password":
-		code = 417
-	case "No such user account":
-		code = 417
-	default:
-		log.Printf("%s: redis => %s", context, ret)
-	}
-
-	w.WriteHeader(code)
 }
 
 // ========================================================
 
-func handlerTownList(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerTownList(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s: => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("ZRANGE", "towns", 0, -1)
+		if result.Err != nil {
+			log.Fatal("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		data, err := result.List()
+		if err != nil {
+			log.Printf("%s: redis => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		idList := make([]uint32, len(data))
+
+		for i, idStr := range data {
+			id, err := strconv.ParseUint(idStr, 10, 32)
+			id32 := checkConvertionUint(uint32(id), err, context+" => TownIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+			idList[i] = id32
+		}
+
+		jsonByteArr, _ := json.Marshal(idList)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s: => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("ZRANGE", "towns", 0, -1)
-	if result.Err != nil {
-		log.Fatal("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, err := result.List()
-	if err != nil {
-		log.Printf("%s: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	res := new(TownIds)
-	if len(data) == 0 {
-		res.TownIds = make([]uint32, 0)
-	}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => TownIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		res.TownIds = append(res.TownIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerTownsBatch(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerTownsBatch(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_towns_batch), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTownList", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_towns_batch], 0, jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := new(TownList)
-	if len(data) == 0 {
-		res.TownList = make([]map[string]*json.RawMessage, 0)
-	}
-
-	for _, townJson := range data {
-		var town map[string]*json.RawMessage
-		//log.Printf("%s => %s\n", context, townJson)
-		json.Unmarshal([]byte(townJson), &town)
-		res.TownList = append(res.TownList, town)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerTown(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerTown(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		params := mux.Vars(r)
+		townId := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"townId":    townId,
+		})
+
+		/*redisCli, err := redisCliPool.Get)
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("GET", "town:"+townId)
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if result.IsType(redis.Nil) {
+			log.Printf("%s => no such townId=%s\n", context, townId)
+			w.WriteHeader(404)
+			return
+		}
+
+		jsonStr, err := result.Str()
+		if err != nil {
+			log.Printf("%s => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		writeResponse(w, r, requestId, jsonStr, redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	params := mux.Vars(r)
-	townId := params["id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-		"townId":    townId,
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("GET", "town:"+townId)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such townId=%s\n", context, townId)
-		w.WriteHeader(404)
-		return
-	}
-
-	jsonStr, err := result.Str()
-	if err != nil {
-		log.Printf("%s => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	writeResponse(w, r, requestId, jsonStr)
 }
 
-func handlerRegions(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerRegions(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_regions_batch), 0)
+		err := writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-	go logRequest(w, r, requestId, "")
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerTown", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_regions_batch], 0)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := new(RegionList)
-	if len(data) == 0 {
-		res.RegionList = make([]map[string]*json.RawMessage, 0)
-	}
-
-	for _, regionJson := range data {
-		var region map[string]*json.RawMessage
-		json.Unmarshal([]byte(regionJson), &region)
-		res.RegionList = append(res.RegionList, region)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 // ========================================================
 
-func handlerBankList(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerBankList(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankList", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("SMEMBERS", "banks")
+
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		data, ok := redisListResponseExpected(w, result, context)
+		if ok == false {
+			return
+		}
+
+		idList := make([]uint32, len(data))
+
+		for i, idStr := range data {
+			id, err := strconv.ParseUint(idStr, 10, 32)
+			id32 := checkConvertionUint(uint32(id), err, context+" => BankIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+			idList[i] = id32
+		}
+
+		jsonByteArr, _ := json.Marshal(idList)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankList", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("SMEMBERS", "banks")
-
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := new(BankIds)
-	if len(data) == 0 {
-		res.BankIds = make([]uint32, 0)
-	}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => BankIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		res.BankIds = append(res.BankIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerBanksBatch(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerBanksBatch(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBanksBatch", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_banks_batch), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBanksBatch", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_banks_batch], 0, jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Str) {
-		errStr, _ := result.Str()
-		log.Printf("%s: redis => %s\n", context, errStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := new(BankList)
-	if len(data) == 0 {
-		res.BankList = make([]map[string]*json.RawMessage, 0)
-	}
-
-	for _, bankJson := range data {
-		var town map[string]*json.RawMessage
-		json.Unmarshal([]byte(bankJson), &town)
-		res.BankList = append(res.BankList, town)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerBank(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerBank(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		params := mux.Vars(r)
+		bankId := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBank", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"bankId":    bankId,
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("GET", "bank:"+bankId)
+
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if result.IsType(redis.Nil) {
+			log.Printf("%s => no such bankId=%s\n", context, bankId)
+			w.WriteHeader(404)
+			return
+		}
+
+		jsonStr, err := result.Str()
+		if err != nil {
+			log.Printf("%s => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		writeResponse(w, r, requestId, jsonStr, redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	params := mux.Vars(r)
-	bankId := params["id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBank", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-		"bankId":    bankId,
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("GET", "bank:"+bankId)
-
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such bankId=%s\n", context, bankId)
-		w.WriteHeader(404)
-		return
-	}
-
-	jsonStr, err := result.Str()
-	if err != nil {
-		log.Printf("%s => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	writeResponse(w, r, requestId, jsonStr)
 }
 
-func handlerBankIco(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerBankIco(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		params := mux.Vars(r)
+		bankIdStr := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankIco", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"bankId":    bankIdStr,
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("HGET", "settings", "banks_ico_dir")
+
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if result.IsType(redis.Nil) {
+			log.Printf("%s: redis => no such settings entry: %s\n", context, "banks_ico_dir")
+			w.WriteHeader(500)
+			return
+		}
+
+		banksIcoDir, err := result.Str()
+		if err != nil {
+			log.Printf("%s: redis => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		icoFilePath := path.Join(banksIcoDir, bankIdStr+".svg")
+
+		if _, err := os.Stat(icoFilePath); os.IsNotExist(err) {
+			w.WriteHeader(404)
+			return
+		}
+
+		data, err := ioutil.ReadFile(icoFilePath)
+		if err != nil {
+			log.Printf("%s => cannot read file: %s", context, icoFilePath)
+			w.WriteHeader(500)
+			return
+		}
+
+		id, err := strconv.ParseUint(bankIdStr, 10, 32)
+		bankId := checkConvertionUint(uint32(id), err, context+" => BankIco.BankId")
+
+		ico := &BankIco{BankId: bankId, IcoData: string(data)}
+		jsonByteArr, _ := json.Marshal(ico)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
 	}
-
-	params := mux.Vars(r)
-	bankIdStr := params["id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankIco", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-		"bankId":    bankIdStr,
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("HGET", "settings", "banks_ico_dir")
-
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Nil) {
-		log.Printf("%s: redis => no such settings entry: %s\n", context, "banks_ico_dir")
-		w.WriteHeader(500)
-		return
-	}
-
-	banksIcoDir, err := result.Str()
-	if err != nil {
-		log.Printf("%s: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	icoFilePath := path.Join(banksIcoDir, bankIdStr+".svg")
-
-	if _, err := os.Stat(icoFilePath); os.IsNotExist(err) {
-		w.WriteHeader(404)
-		return
-	}
-
-	data, err := ioutil.ReadFile(icoFilePath)
-	if err != nil {
-		log.Printf("%s => cannot read file: %s", context, icoFilePath)
-		w.WriteHeader(500)
-		return
-	}
-
-	id, err := strconv.ParseUint(bankIdStr, 10, 32)
-	bankId := checkConvertionUint(uint32(id), err, context+" => BankIco.BankId")
-
-	ico := &BankIco{BankId: bankId, IcoData: string(data)}
-	jsonByteArr, _ := json.Marshal(ico)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerBankCreate(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerBankCreate(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankCreate", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_bank_create), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankCreate", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, jsonStr)
 }
 
-func handlerCashpoint(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerCashpoint(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		params := mux.Vars(r)
+		cashPointId := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpoint", map[string]string{
+			"requestId":   strconv.FormatInt(requestId, 10),
+			"cashPointId": cashPointId,
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("GET", "cp:"+cashPointId)
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if result.IsType(redis.Nil) {
+			log.Printf("%s => no such cashPointId=%s\n", context, cashPointId)
+			w.WriteHeader(404)
+			return
+		}
+
+		jsonStr, err := result.Str()
+		if err != nil {
+			log.Printf("%s: redis => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		writeResponse(w, r, requestId, jsonStr, redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	params := mux.Vars(r)
-	cashPointId := params["id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpoint", map[string]string{
-		"requestId":   strconv.FormatInt(requestId, 10),
-		"cashPointId": cashPointId,
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("GET", "cp:"+cashPointId)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Nil) {
-		log.Printf("%s => no such cashPointId=%s\n", context, cashPointId)
-		w.WriteHeader(404)
-		return
-	}
-
-	jsonStr, err := result.Str()
-	if err != nil {
-		log.Printf("%s: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	writeResponse(w, r, requestId, jsonStr)
 }
 
-func handlerCashpointsBatch(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerCashpointsBatch(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsBatch", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_cashpoints_batch), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsBatch", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoints_batch], 0, jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Str) == false {
-		log.Printf("%s: redis => script result type is not string\n", context)
-		w.WriteHeader(500)
-		return
-	}
-
-	jsonRes, _ := result.Str()
-	if strings.HasPrefix(jsonRes, "{") == false {
-		log.Printf("%s: redis => %s\n", context, jsonRes)
-		w.WriteHeader(500)
-		return
-	}
-
-	writeResponse(w, r, requestId, jsonRes)
 }
 
-func handlerCashpointsHistory(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerCashpointsHistory(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsHistory", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_cashpoints_history), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+		}
 	}
-	go logRequest(w, r, requestId, "")
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsHistory", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_cashpoints_history], 0, jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Str) {
-		errStr, _ := result.Str()
-		log.Printf("%s: redis => %s\n", context, errStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, err := result.List()
-	if err != nil {
-		log.Printf("%s: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	ids := &CashPointIds{CashPointIds: make([]uint32, 0)}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		ids.CashPointIds = append(ids.CashPointIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(ids)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 func getNextCashpointId(redisCli *redis.Client) (uint32, error) {
@@ -1322,464 +1369,436 @@ func getQuadKey(lon, lat float32, maxZoom uint32) string {
 	return quadKey
 }
 
-func handlerCashpointCreate(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
-	}
+func handlerCashpointCreate(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
 
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointCreate", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointCreate", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
 
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
 
-	go logRequest(w, r, requestId, jsonStr)
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
 
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
+		redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)
 
-	cpData := CashPoint{
-		Id:        0,
-		TownId:    0,
-		BankId:    0,
-		Longitude: 0.0,
-		Latitude:  0.0,
-		Version:   1,
-	}
+		cpData := CashPoint{
+			Id:        0,
+			TownId:    0,
+			BankId:    0,
+			Longitude: 0.0,
+			Latitude:  0.0,
+			Version:   1,
+		}
 
-	err = json.Unmarshal([]byte(jsonStr), &cpData)
-	if err != nil {
-		log.Printf("%s: failed to unpack json: %v", context, err)
-		log.Printf("%s: %s", context, jsonStr)
-		w.WriteHeader(500)
-		return
-	}
+		err = json.Unmarshal([]byte(jsonStr), &cpData)
+		if err != nil {
+			log.Printf("%s: failed to unpack json: %v", context, err)
+			log.Printf("%s: %s", context, jsonStr)
+			w.WriteHeader(500)
+			return
+		}
 
-	err = cpData.Validate()
-	if err != nil {
-		log.Printf("%s: invalid cashpoint data: %v", context, err)
-		w.WriteHeader(500)
-		return
-	}
+		err = cpData.Validate()
+		if err != nil {
+			log.Printf("%s: invalid cashpoint data: %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
 
-	bankIdStr := strconv.FormatUint(uint64(cpData.BankId), 10)
-	result := redisCli.Cmd("EXISTS", "bank:"+bankIdStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	exists, err := result.Int()
-	if err != nil {
-		log.Printf("%s: redis => %v", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if exists == 0 {
-		log.Printf("%s: invalid bank_id: %s", context, bankIdStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	townIdStr := strconv.FormatUint(uint64(cpData.TownId), 10)
-	result = redisCli.Cmd("EXISTS", "town:"+townIdStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	exists, err = result.Int()
-	if err != nil {
-		log.Printf("%s: redis => %v", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if exists == 0 {
-		log.Printf("%s: invlaid town_id: %d", context, townIdStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	cpData.Id, err = getNextCashpointId(redisCli)
-	if err != nil {
-		log.Printf("%s: getNextCashpointId: redis => %v", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	cpData.Timestamp = time.Now().Unix()
-
-	idStr := strconv.FormatUint(uint64(cpData.Id), 10)
-
-	jsonCpData, err := json.Marshal(cpData)
-	if err != nil {
-		log.Printf("%s: cannot pack new cp data: input = %s", jsonStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	quadKey := getQuadKey(cpData.Longitude, cpData.Latitude, MAX_VALID_ZOOM)
-	for i := 0; i < len(quadKey); i++ {
-		clusterName := "cluster:" + quadKey[:(i+1)]
-		result = redisCli.Cmd("SADD", clusterName, cpData.Id)
+		bankIdStr := strconv.FormatUint(uint64(cpData.BankId), 10)
+		result := redisCli.Cmd("EXISTS", "bank:"+bankIdStr)
 		if result.Err != nil {
-			log.Printf("%s: cannot add new cashpoint to cluster: redis => %v\n", context, result.Err)
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		exists, err := result.Int()
+		if err != nil {
+			log.Printf("%s: redis => %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if exists == 0 {
+			log.Printf("%s: invalid bank_id: %s", context, bankIdStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		townIdStr := strconv.FormatUint(uint64(cpData.TownId), 10)
+		result = redisCli.Cmd("EXISTS", "town:"+townIdStr)
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		exists, err = result.Int()
+		if err != nil {
+			log.Printf("%s: redis => %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if exists == 0 {
+			log.Printf("%s: invlaid town_id: %d", context, townIdStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		cpData.Id, err = getNextCashpointId(redisCli)
+		if err != nil {
+			log.Printf("%s: getNextCashpointId: redis => %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		cpData.Timestamp = time.Now().Unix()
+
+		idStr := strconv.FormatUint(uint64(cpData.Id), 10)
+
+		jsonCpData, err := json.Marshal(cpData)
+		if err != nil {
+			log.Printf("%s: cannot pack new cp data: input = %s", jsonStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		quadKey := getQuadKey(cpData.Longitude, cpData.Latitude, MAX_VALID_ZOOM)
+		for i := 0; i < len(quadKey); i++ {
+			clusterName := "cluster:" + quadKey[:(i+1)]
+			result = redisCli.Cmd("SADD", clusterName, cpData.Id)
+			if result.Err != nil {
+				log.Printf("%s: cannot add new cashpoint to cluster: redis => %v\n", context, result.Err)
+				w.WriteHeader(500)
+				return
+			}
+		}
+
+		redisCli.Cmd("SET", "cp:"+idStr, string(jsonCpData))
+		redisCli.Cmd("ZADD", "cp:history", cpData.Timestamp, cpData.Id)
+		redisCli.Cmd("GEOADD", "cashpoints", cpData.Longitude, cpData.Latitude, cpData.Id)
+		redisCli.Cmd("SADD", "cp:bank:"+bankIdStr, cpData.Id)
+
+		log.Printf("%s: created cashpoint with id: %s", context, idStr)
+
+		idList := make([]uint32, 1)
+		idList[0] = cpData.Id
+		jsonByteArr, _ := json.Marshal(idList)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
+	}
+}
+
+func handlerCashpointDelete(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		params := mux.Vars(r)
+		idStr := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointDelete", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"id":        idStr,
+		})
+
+		id, err := strconv.ParseUint(idStr, 10, 32)
+		cpId := checkConvertionUint(uint32(id), err, context+" => id")
+		if cpId == 0 {
+			w.WriteHeader(500)
+			return
+		}
+
+		redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)
+
+		result := redisCli.Cmd("GET", "cp:"+idStr)
+		if result.Err != nil {
+			log.Printf("%s: cannot get cashpoint by id = %s: redis => %v\n", context, idStr, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		if result.IsType(redis.Nil) {
+			log.Printf("%s: cannot delete cashpoint by id = %s: no such id\n", context, idStr)
+			w.WriteHeader(404)
+			return
+		}
+
+		cpData, err := result.Str()
+		if err != nil {
+			log.Printf("%s: cannot convert cashpoint data to string for id = %s: redis => %v\n", context, idStr, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		cp := CashPoint{Id: 0}
+		json.Unmarshal([]byte(cpData), &cp)
+		if cp.Id == 0 {
+			log.Printf("%s: cannot parse cashpoint json data for id = %s", context, idStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		townCp := "cp:town:" + strconv.FormatUint(uint64(cp.TownId), 10)
+		result = redisCli.Cmd("SREM", townCp, cp.Id)
+		if result.Err != nil {
+			log.Printf("%s: cannot remove cashpoint id = %s from town cp set = %s", context, idStr, townCp)
+			w.WriteHeader(500)
+			return
+		}
+
+		bankCp := "cp:bank:" + strconv.FormatUint(uint64(cp.BankId), 10)
+		result = redisCli.Cmd("SREM", bankCp, cp.Id)
+		if result.Err != nil {
+			log.Printf("%s: cannot remove cashpoint id = %s from bank cp set = %s", context, idStr, bankCp)
+			w.WriteHeader(500)
+			return
+		}
+
+		result = redisCli.Cmd("DEL", "cp:"+idStr)
+		if result.Err != nil {
+			log.Printf("%s: cannot remove cashpoint id = %s", context, idStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		result = redisCli.Cmd("ZREM", "cp:history", cp.Id)
+		if result.Err != nil {
+			log.Printf("%s: cannot remove cashpoint id = %s from history", context, idStr)
+			w.WriteHeader(500)
+			return
+		}
+
+		geoSet := "cashpoints"
+		result = redisCli.Cmd("ZREM", geoSet, cp.Id)
+		if result.Err != nil {
+			log.Printf("%s: cannot remove cashpoint id = %s from geo set = %s", context, idStr, geoSet)
 			w.WriteHeader(500)
 			return
 		}
 	}
-
-	redisCli.Cmd("SET", "cp:"+idStr, string(jsonCpData))
-	redisCli.Cmd("ZADD", "cp:history", cpData.Timestamp, cpData.Id)
-	redisCli.Cmd("GEOADD", "cashpoints", cpData.Longitude, cpData.Latitude, cpData.Id)
-	redisCli.Cmd("SADD", "bank:"+bankIdStr+":cp", cpData.Id)
-
-	log.Printf("%s: created cashpoint with id: %s", context, idStr)
-
-	res := &CashPointIds{CashPointIds: make([]uint32, 0)}
-	res.CashPointIds = append(res.CashPointIds, cpData.Id)
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerCashpointDelete(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerCashpointsByTownAndBank(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+		go logRequest(w, r, requestId, "", redisCliPool)
+
+		params := mux.Vars(r)
+		townIdStr := params["town_id"]
+		bankIdStr := params["bank_id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"townId":    townIdStr,
+			"bankId":    bankIdStr,
+		})
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("SINTER", "cp:town:"+townIdStr, "cp:bank:"+bankIdStr)
+		if result.Err != nil {
+			log.Printf("%s: redis => %v\n", context, result.Err)
+			w.WriteHeader(500)
+			return
+		}
+
+		data, err := result.List()
+		if err != nil {
+			log.Printf("%s: redis => %v\n", context, err)
+			w.WriteHeader(500)
+			return
+		}
+
+		id, err := strconv.ParseUint(townIdStr, 10, 32)
+		townId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.TownId")
+
+		id, err = strconv.ParseUint(bankIdStr, 10, 32)
+		bankId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.BankId")
+
+		ids := CashPointIdsInTown{TownId: townId, BankId: bankId}
+		if len(data) == 0 {
+			ids.CashPointIds = make([]uint32, 0)
+		}
+
+		for i, idStr := range data {
+			id, err := strconv.ParseUint(idStr, 10, 32)
+			id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
+			ids.CashPointIds = append(ids.CashPointIds, id32)
+		}
+
+		jsonByteArr, _ := json.Marshal(ids)
+		writeResponse(w, r, requestId, string(jsonByteArr), redisCliPool)
 	}
-	go logRequest(w, r, requestId, "")
-
-	params := mux.Vars(r)
-	idStr := params["id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointDelete", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-		"id":        idStr,
-	})
-
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	cpId := checkConvertionUint(uint32(id), err, context+" => id")
-	if cpId == 0 {
-		w.WriteHeader(500)
-		return
-	}
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("GET", "cp:"+idStr)
-	if result.Err != nil {
-		log.Printf("%s: cannot get cashpoint by id = %s: redis => %v\n", context, idStr, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	if result.IsType(redis.Nil) {
-		log.Printf("%s: cannot delete cashpoint by id = %s: no such id\n", context, idStr)
-		w.WriteHeader(404)
-		return
-	}
-
-	cpData, err := result.Str()
-	if err != nil {
-		log.Printf("%s: cannot convert cashpoint data to string for id = %s: redis => %v\n", context, idStr, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	cp := CashPoint{Id: 0}
-	json.Unmarshal([]byte(cpData), &cp)
-	if cp.Id == 0 {
-		log.Printf("%s: cannot parse cashpoint json data for id = %s", context, idStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	townCp := "town:" + strconv.FormatUint(uint64(cp.TownId), 10) + ":cp"
-	result = redisCli.Cmd("SREM", townCp, cp.Id)
-	if result.Err != nil {
-		log.Printf("%s: cannot remove cashpoint id = %s from town cp set = %s", context, idStr, townCp)
-		w.WriteHeader(500)
-		return
-	}
-
-	bankCp := "bank:" + strconv.FormatUint(uint64(cp.BankId), 10) + ":cp"
-	result = redisCli.Cmd("SREM", bankCp, cp.Id)
-	if result.Err != nil {
-		log.Printf("%s: cannot remove cashpoint id = %s from bank cp set = %s", context, idStr, bankCp)
-		w.WriteHeader(500)
-		return
-	}
-
-	result = redisCli.Cmd("DEL", "cp:"+idStr)
-	if result.Err != nil {
-		log.Printf("%s: cannot remove cashpoint id = %s", context, idStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	result = redisCli.Cmd("ZREM", "cp:history", cp.Id)
-	if result.Err != nil {
-		log.Printf("%s: cannot remove cashpoint id = %s from history", context, idStr)
-		w.WriteHeader(500)
-		return
-	}
-
-	geoSet := "cashpoints"
-	result = redisCli.Cmd("ZREM", geoSet, cp.Id)
-	if result.Err != nil {
-		log.Printf("%s: cannot remove cashpoint id = %s from geo set = %s", context, idStr, geoSet)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.WriteHeader(200)
-}
-
-func handlerCashpointsByTownAndBank(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
-	}
-	go logRequest(w, r, requestId, "")
-
-	params := mux.Vars(r)
-	townIdStr := params["town_id"]
-	bankIdStr := params["bank_id"]
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsByTownAndBank", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-		"townId":    townIdStr,
-		"bankId":    bankIdStr,
-	})
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("SINTER", "town:"+townIdStr+":cp", "bank:"+bankIdStr+":cp")
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, err := result.List()
-	if err != nil {
-		log.Printf("%s: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	id, err := strconv.ParseUint(townIdStr, 10, 32)
-	townId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.TownId")
-
-	id, err = strconv.ParseUint(bankIdStr, 10, 32)
-	bankId := checkConvertionUint(uint32(id), err, context+" => CashPointIds.BankId")
-
-	ids := CashPointIdsInTown{TownId: townId, BankId: bankId}
-	if len(data) == 0 {
-		ids.CashPointIds = make([]uint32, 0)
-	}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		ids.CashPointIds = append(ids.CashPointIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(ids)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
 // ========================================================
 
-func handlerNearbyCashPoints(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerNearbyCashPoints(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyCashPoints", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_search_nearby_cp), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyCashPoints", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_search_nearby], 1, "cashpoints", jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := CashPointIds{CashPointIds: make([]uint32, 0)}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => CashPointIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		res.CashPointIds = append(res.CashPointIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerNearbyTowns(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerNearbyTowns(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyTowns", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		result := redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_search_nearby_town), 0, jsonStr)
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyTowns", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	result := redisCli.Cmd("EVALSHA", redis_scripts[script_search_nearby], 1, "towns", jsonStr)
-	if result.Err != nil {
-		log.Printf("%s: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	data, ok := redisListResponseExpected(w, result, context)
-	if ok == false {
-		return
-	}
-
-	res := TownIds{TownIds: make([]uint32, 0)}
-
-	for i, idStr := range data {
-		id, err := strconv.ParseUint(idStr, 10, 32)
-		id32 := checkConvertionUint(uint32(id), err, context+" => TownIds["+strconv.FormatInt(int64(i), 10)+"] = "+idStr)
-		res.TownIds = append(res.TownIds, id32)
-	}
-
-	jsonByteArr, _ := json.Marshal(res)
-	writeResponse(w, r, requestId, string(jsonByteArr))
 }
 
-func handlerNearbyClusters(w http.ResponseWriter, r *http.Request) {
-	ok, requestId := prepareResponse(w, r)
-	if ok == false {
-		return
+func handlerNearbyClusters(redisCliPool *pool.Pool) EndpointCallback {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyClusters", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			go logRequest(w, r, requestId, "", redisCliPool)
+			w.WriteHeader(400)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr, redisCliPool)
+
+		/*redisCli, err := redisCliPool.Get()
+		if err != nil {
+			log.Fatal("%s => %v\n", context, err)
+			return
+		}
+		defer redisCliPool.Put(redisCli)*/
+
+		request := SearchNearbyRequest{}
+		err = json.Unmarshal([]byte(jsonStr), &request)
+		if err != nil {
+			log.Printf("%s: cannot unpack json request: %v\n", context, err)
+			w.WriteHeader(400)
+			return
+		}
+
+		err = request.Validate()
+		if err != nil {
+			log.Printf("%s: invalid request data: %v", context, err)
+			w.WriteHeader(400)
+			return
+		}
+
+		start := time.Now()
+		var result *redis.Resp
+		if request.Zoom < MIN_CLUSTER_ZOOM {
+			result = redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_cluster_data_town), 0, jsonStr, MAX_CLUSTER_COUNT)
+		} else {
+			result = redisCliPool.Cmd("EVALSHA", getRedisScriptSHA(script_cluster_data), 0, jsonStr)
+		}
+		elapsed := time.Since(start)
+		log.Printf("%s: cluster lua time: %v", context, elapsed)
+
+		err = writeResponseRedisJson(w, r, requestId, result, redisCliPool)
+		if err != nil {
+			log.Printf("%s: %v", context, err)
+			w.WriteHeader(500)
+			return
+		}
 	}
-
-	context := getRequestContexString(r) + " " + getHandlerContextString("handlerNearbyClusters", map[string]string{
-		"requestId": strconv.FormatInt(requestId, 10),
-	})
-
-	jsonStr, err := getRequestJsonStr(r, context)
-	if err != nil {
-		go logRequest(w, r, requestId, "")
-		w.WriteHeader(400)
-		return
-	}
-
-	go logRequest(w, r, requestId, jsonStr)
-
-	redisCli, err := redis_cli_pool.Get()
-	if err != nil {
-		log.Fatal("%s => %v\n", context, err)
-		return
-	}
-	defer redis_cli_pool.Put(redisCli)
-
-	request := SearchNearbyRequest{}
-	err = json.Unmarshal([]byte(jsonStr), &request)
-	if err != nil {
-		log.Printf("%s: cannot unpack json request: %v\n", context, err)
-		w.WriteHeader(400)
-		return
-	}
-
-	err = request.Validate()
-	if err != nil {
-		log.Printf("%s: invalid request data: %v", context, err)
-		w.WriteHeader(400)
-		return
-	}
-
-	start := time.Now()
-	var result *redis.Resp
-	if request.Zoom < MIN_CLUSTER_ZOOM {
-		result = redisCli.Cmd("EVALSHA", redis_scripts[script_cluster_data_town], 0, jsonStr, MAX_CLUSTER_COUNT)
-	} else {
-		result = redisCli.Cmd("EVALSHA", redis_scripts[script_cluster_data], 0, jsonStr)
-	}
-	elapsed := time.Since(start)
-	log.Printf("%s: cluster lua time: %v", context, elapsed)
-
-	if result.Err != nil {
-		log.Printf("%s: cannot get cluster data: redis => %v\n", context, result.Err)
-		w.WriteHeader(500)
-		return
-	}
-
-	jsonStr, err = result.Str()
-	if err != nil {
-		log.Printf("%s: cannot convert cluster data to string: redis => %v\n", context, err)
-		w.WriteHeader(500)
-		return
-	}
-
-	writeResponse(w, r, requestId, jsonStr)
 }
 
 // ========================================================
@@ -1831,12 +1850,14 @@ func main() {
 		}
 	}
 
-	redis_cli_pool, err = pool.New("tcp", serverConfig.RedisHost, 16)
+	redisCliPool, err := pool.New("tcp", serverConfig.RedisHost, 16)
 	if err != nil {
 		log.Fatal(err)
 	}
-	redis_cli, err := redis_cli_pool.Get()
-	defer redis_cli_pool.Put(redis_cli)
+	redisCli, err := redisCliPool.Get()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if serverConfig.UUID_TTL < UUID_TTL_MIN {
 		serverConfig.UUID_TTL = UUID_TTL_MIN
@@ -1844,43 +1865,45 @@ func main() {
 		serverConfig.UUID_TTL = UUID_TTL_MAX
 	}
 
-	redis_cli.Cmd("HMSET", "settings",
+	redisCli.Cmd("HMSET", "settings",
 		"user_login_min_length", serverConfig.UserLoginMinLength,
 		"user_password_min_length", serverConfig.UserPwdMinLength,
 		"uuid_ttl", serverConfig.UUID_TTL,
 		"banks_ico_dir", serverConfig.BanksIcoDir,
 		"testing_mode", boolToInt(serverConfig.TestingMode))
 
-	preloadRedisScripts(redis_cli, serverConfig.RedisScriptsDir)
-	dropTestData(redis_cli)
+	dropTestData(redisCli)
+	redisCliPool.Put(redisCli)
+
+	preloadRedisScripts(redisCliPool, serverConfig.RedisScriptsDir)
 
 	REQ_RES_LOG_TTL = serverConfig.ReqResLogTTL
 
 	router := mux.NewRouter()
-	router.HandleFunc("/ping", handlerPing).Methods("GET")
-	router.HandleFunc("/user", handlerUserCreate).Methods("POST")
-	router.HandleFunc("/user", handlerUserDelete).Methods("DELETE")
-	router.HandleFunc("/login", handlerUserLogin).Methods("POST")
-	router.HandleFunc("/towns", handlerTownList).Methods("GET")
-	router.HandleFunc("/towns", handlerTownsBatch).Methods("POST")
-	router.HandleFunc("/regions", handlerRegions)
-	router.HandleFunc("/town/{id:[0-9]+}", handlerTown)
-	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank)
-	router.HandleFunc("/bank/{id:[0-9]+}/ico", handlerBankIco).Methods("GET")
-	router.HandleFunc("/bank", handlerBankCreate).Methods("POST")
-	router.HandleFunc("/banks", handlerBankList).Methods("GET")
-	router.HandleFunc("/banks", handlerBanksBatch).Methods("POST")
-	router.HandleFunc("/cashpoint", handlerCashpointCreate).Methods("POST")
-	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint).Methods("GET")
-	router.HandleFunc("/cashpoints", handlerCashpointsBatch).Methods("POST")
-	router.HandleFunc("/cashpoints/history", handlerCashpointsHistory).Methods("POST")
-	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank)
-	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints).Methods("POST")
-	router.HandleFunc("/nearby/towns", handlerNearbyTowns).Methods("POST")
-	router.HandleFunc("/nearby/clusters", handlerNearbyClusters).Methods("POST")
+	router.HandleFunc("/ping", handlerPing(redisCliPool)).Methods("GET")
+	router.HandleFunc("/user", handlerUserCreate(redisCliPool)).Methods("POST")
+	router.HandleFunc("/user", handlerUserDelete(redisCliPool)).Methods("DELETE")
+	router.HandleFunc("/login", handlerUserLogin(redisCliPool)).Methods("POST")
+	router.HandleFunc("/towns", handlerTownList(redisCliPool)).Methods("GET")
+	router.HandleFunc("/towns", handlerTownsBatch(redisCliPool)).Methods("POST")
+	router.HandleFunc("/regions", handlerRegions(redisCliPool))
+	router.HandleFunc("/town/{id:[0-9]+}", handlerTown(redisCliPool))
+	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank(redisCliPool))
+	router.HandleFunc("/bank/{id:[0-9]+}/ico", handlerBankIco(redisCliPool)).Methods("GET")
+	router.HandleFunc("/bank", handlerBankCreate(redisCliPool)).Methods("POST")
+	router.HandleFunc("/banks", handlerBankList(redisCliPool)).Methods("GET")
+	router.HandleFunc("/banks", handlerBanksBatch(redisCliPool)).Methods("POST")
+	router.HandleFunc("/cashpoint", handlerCashpointCreate(redisCliPool)).Methods("POST")
+	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint(redisCliPool)).Methods("GET")
+	router.HandleFunc("/cashpoints", handlerCashpointsBatch(redisCliPool)).Methods("POST")
+	router.HandleFunc("/cashpoints/history", handlerCashpointsHistory(redisCliPool)).Methods("POST")
+	router.HandleFunc("/town/{town_id:[0-9]+}/bank/{bank_id:[0-9]+}/cashpoints", handlerCashpointsByTownAndBank(redisCliPool))
+	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints(redisCliPool)).Methods("POST")
+	router.HandleFunc("/nearby/towns", handlerNearbyTowns(redisCliPool)).Methods("POST")
+	router.HandleFunc("/nearby/clusters", handlerNearbyClusters(redisCliPool)).Methods("POST")
 
 	if serverConfig.TestingMode {
-		router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpointDelete).Methods("DELETE")
+		router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpointDelete(redisCliPool)).Methods("DELETE")
 	}
 
 	port := ":" + strconv.FormatUint(serverConfig.Port, 10)

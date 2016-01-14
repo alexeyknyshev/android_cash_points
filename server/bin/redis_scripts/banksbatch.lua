@@ -1,18 +1,25 @@
-local userPayload = ARGV[1]
+local reqPayload = ARGV[1]
 
-if not userPayload then
-    return 'No json data'
+if not reqPayload then
+    return redis.error_reply('no such json payload')
 end
 
-local req = cjson.decode(userPayload)
+local req = cjson.decode(reqPayload)
 
 if not req.banks then
-    return 'No such key: banks'
+    return redis.error_reply('no such required argument: banks')
 end
 
 local result = {}
-for _, bankid in pairs(req.banks) do
-    result[#result + 1] = redis.call('GET', 'bank:' .. tostring(bankid))
+for _, bankId in pairs(req.banks) do
+    local bankJsonData = redis.call('GET', 'bank:' .. tostring(bankId))
+    if bankJsonData then
+        result[#result + 1] = cjson.decode(bankJsonData)
+    end
 end
 
-return result
+if #result == 0 then
+    return '[]'
+end
+
+return cjson.encode(result)

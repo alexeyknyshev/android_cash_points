@@ -1,26 +1,27 @@
 local userPayload = ARGV[1]
 
 if not userPayload then
-    return 'No json data'
+    return redis.error_reply('no such json payload')
 end
 
 local req = cjson.decode(userPayload)
 
 if not req.cashpoints then
-    return 'No such key: cashpoints'
+    return redis.error_reply('no such required argument: cashpoints')
 end
 
-local result = { cashpoints = { } }
+local result = {}
 for _, cpid in pairs(req.cashpoints) do
     local cpkey = 'cp:' .. tostring(cpid)
     local cpdata = redis.call('GET', cpkey)
     if cpdata then
         local cp = cjson.decode(cpdata)
-        cp.version = redis.call('GET', cpkey .. ':version') or 0
-        cp.timestamp = redis.call('GET', cpkey .. ':timestamp') or 0
-        cp.owner = 0
-        result.cashpoints[#result.cashpoints + 1] = cp
+        result[#result + 1] = cp
     end
+end
+
+if #result == 0 then
+    return '[]'
 end
 
 return cjson.encode(result)
