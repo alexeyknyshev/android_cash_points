@@ -61,6 +61,22 @@ for k, _ in pairs(supportedFilters) do
     end
 end
 
+if req.filter.bank_id then
+    table.sort(req.filter.bank_id, function(a, b) return a < b end)
+
+    -- remove duplicates
+    local prevBankId = 0
+    local i = 1
+    while i <= #req.filter.bank_id do
+        if req.filter.bank_id[i] == prevBankId then
+            table.remove(req.filter.bank_id, i)
+        else
+            prevBankId = req.filter.bank_id[i]
+            i = i + 1
+        end
+    end
+end
+
 local filterData = function(idList, filter)
     if next(filter) == nil then
         return idList

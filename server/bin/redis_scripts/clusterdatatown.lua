@@ -85,6 +85,18 @@ local createBankCpUnion = function(bankIdList)
     -- sort to order ids => prevent bankIdChain variations
     table.sort(bankIdList, function(a, b) return a < b end)
 
+    -- remove duplicates
+    local prevBankId = 0
+    local i = 1
+    while i <= #bankIdList do
+        if bankIdList[i] == prevBankId then
+            table.remove(bankIdList, i)
+        else
+            prevBankId = bankIdList[i]
+            i = i + 1
+        end
+    end
+
     local bankCpSetList = {}
     for _, bankId in ipairs(bankIdList) do
         if type(bankId) == 'number' then

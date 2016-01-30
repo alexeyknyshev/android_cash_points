@@ -81,6 +81,18 @@ local createFilterChain = function(filter)
         -- sort to order ids => prevent bankIdChain variations
         table.sort(filter.bank_id, function(a, b) return a < b end)
 
+        -- remove duplicates
+        local prevBankId = 0
+        local i = 1
+        while i <= #filter.bank_id do
+            if filter.bank_id[i] == prevBankId then
+                table.remove(filter.bank_id, i)
+            else
+                prevBankId = filter.bank_id[i]
+                i = i + 1
+            end
+        end
+
         for _, bankId in ipairs(filter.bank_id) do
             if type(bankId) == 'number' then
                 chain = ':' .. tostring(math.floor(bankId))
@@ -116,7 +128,11 @@ local filterData = function(quadKeyList, filter)
         if clusterJsonData then
             local clusterData = cjson.decode(clusterJsonData)
             if clusterData then
-                if clusterData.size > 0 then
+                local valid = true
+                if clusterData.size and clusterData.size == 0 then
+                    valid = false
+                end
+                if valid then
                     result[#result + 1] = clusterData
                 end
             else
@@ -128,7 +144,7 @@ local filterData = function(quadKeyList, filter)
             if string.len(chain) == 0 then
                 local cpCount = tonumber(redis.call('SCARD', 'cluster:' .. tostring(quadKey)))
                 if cpCount > 0 then
-                    local pos = redis.call('GEOPOS', zclusterName, quadKey)
+                    local pos = redis.call('GEOPOS', 'zcluster:' .. tostring(req.zoom), quadKey)
                     if pos and pos[1] then
                         local lon = tonumber(pos[1][1])
                         local lat = tonumber(pos[1][2])
@@ -147,6 +163,8 @@ local filterData = function(quadKeyList, filter)
 
                 local avgLon = 0.0
                 local avgLat = 0.0
+
+                local lastMatchingCp
 
                 local cpIdList = redis.call('SMEMBERS', 'cluster:' .. tostring(quadKey))
                 for _, id in pairs(cpIdList) do
@@ -183,6 +201,7 @@ local filterData = function(quadKeyList, filter)
                                 avgLon = avgLon + cp.longitude
                                 avgLat = avgLat + cp.latitude
                                 count = count + 1
+                                lastMatchingCp = cp
                                 --return {}, redis.error_reply("match: " .. cpJsonData)
                                 --return {}, redis.error_reply('filter: ' .. cjson.encode(filter))
                             end
@@ -195,17 +214,25 @@ local filterData = function(quadKeyList, filter)
                     avgLat = avgLat / count
                 end
 
-                clusterData = {
-                    id = quadKey,
-                    longitude = avgLon,
-                    latitude = avgLat,
-                    size = count,
-                }
+                if count ~= 1 then
+                    clusterData = {
+                        id = quadKey,
+                        longitude = avgLon,
+                        latitude = avgLat,
+                        size = count,
+                    }
+                elseif lastMatchingCp then -- there is only 1 point in cluster => just show point
+                    clusterData = lastMatchingCp
+                end
             end
 
             if clusterData then
                 redis.call('SETEX', clusterJsonDataKey, dataExpireTime, cjson.encode(clusterData))
-                if clusterData.size > 0 then
+                local valid = true
+                if clusterData.size and clusterData.size == 0 then
+                    valid = false
+                end
+                if valid then
                     result[#result + 1] = clusterData
                 end
             end
