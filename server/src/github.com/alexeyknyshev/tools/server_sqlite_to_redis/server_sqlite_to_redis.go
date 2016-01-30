@@ -44,14 +44,15 @@ type Region struct {
 }
 
 type Bank struct {
-	Id        uint32 `json:"id"`
-	Name      string `json:"name"`
-	NameTr    string `json:"name_tr"`
-	NameTrAlt string `json:"name_tr_alt"`
-	Town      string `json:"town"`
-	Licence   uint32 `json:"licence"`
-	Rating    uint32 `json:"rating"`
-	Tel       string `json:"tel"`
+	Id        uint32   `json:"id"`
+	Name      string   `json:"name"`
+	NameTr    string   `json:"name_tr"`
+	NameTrAlt string   `json:"name_tr_alt"`
+	Town      string   `json:"town"`
+	Licence   uint32   `json:"licence"`
+	Rating    uint32   `json:"rating"`
+	Tel       string   `json:"tel"`
+	Partners  []uint32 `json:"partners"`
 }
 
 type CashPoint struct {
@@ -252,6 +253,8 @@ func migrateRegions(townsDb *sql.DB, redisCli *redis.Client) {
 }
 
 func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
+	context := "migrateBanks"
+
 	var banksCount int
 	err := banksDb.QueryRow(`SELECT COUNT(*) FROM banks`).Scan(&banksCount)
 	if err != nil {
@@ -264,10 +267,14 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
 		log.Fatalf("migrate: banks: %v", err)
 	}
 
+	bankList := make([]Bank, 0)
+
 	currentBankIdx := 1
 	var lastBankId uint32 = 0
 	for rows.Next() {
-		bank := new(Bank)
+		bank := Bank{}
+		bank.Partners = make([]uint32, 0)
+
 		var nameTr sql.NullString
 		err = rows.Scan(&bank.Id, &bank.Name, &nameTr, &bank.NameTrAlt,
 			&bank.Town, &bank.Licence, &bank.Rating, &bank.Tel)
@@ -278,6 +285,7 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
 		if bank.Id > lastBankId {
 			lastBankId = bank.Id
 		}
+		log.Printf("bank processed: %d", bank.Id)
 
 		if nameTr.Valid {
 			bank.NameTr = nameTr.String
@@ -285,17 +293,48 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
 			bank.NameTr = ""
 		}
 
-		jsonData, err := json.Marshal(bank)
+		bankList = append(bankList, bank)
+	}
+	//log.Printf("Banks count: %d", len(bankList))
+
+	err = redisCli.Cmd("SET", "bank_next_id", lastBankId).Err
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	stmt, err := banksDb.Prepare(`SELECT partner_id FROM partners WHERE id = ?`)
+	if err != nil {
+		log.Fatalf("%s: sql prepare error: %v\n", context, err)
+		return
+	}
+	defer stmt.Close()
+
+	for i := 0; i < len(bankList); i++ {
+		bankId := bankList[i].Id
+		partnerRows, err := stmt.Query(bankId)
+		if err != nil {
+			log.Fatalf("%s: sql partners get error: %v\n", context, err)
+		}
+
+		for partnerRows.Next() {
+			var partnerId uint32
+			partnerRows.Scan(&partnerId)
+			if partnerId > 0 {
+				bankList[i].Partners = append(bankList[i].Partners, partnerId)
+			}
+		}
+
+		jsonData, err := json.Marshal(bankList[i])
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = redisCli.Cmd("SET", "bank:"+strconv.FormatUint(uint64(bank.Id), 10), string(jsonData)).Err
+		err = redisCli.Cmd("SET", "bank:"+strconv.FormatUint(uint64(bankId), 10), string(jsonData)).Err
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		err = redisCli.Cmd("SADD", "banks", bank.Id).Err
+		err = redisCli.Cmd("SADD", "banks", bankId).Err
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -306,10 +345,7 @@ func migrateBanks(banksDb *sql.DB, redisCli *redis.Client) {
 			log.Printf("[%d/%d] Banks processed\n", currentBankIdx, banksCount)
 		}
 	}
-	err = redisCli.Cmd("SET", "bank_next_id", lastBankId).Err
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	log.Printf("[%d/%d] Banks processed\n", banksCount, banksCount)
 }
 
