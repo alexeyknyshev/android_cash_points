@@ -33,5 +33,7 @@
         <file alias="place.svg">ico/other/place.svg</file>
         <file alias="add.svg">ico/other/add.svg</file>
         <file alias="cluster.svg">ico/other/cluster.svg</file>
+        <file alias="place_add.svg">ico/other/place_add.svg</file>
+        <file alias="place_add_plus.svg">ico/other/place_add_plus.svg</file>
     </qresource>
 </RCC>
