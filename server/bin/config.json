@@ -12,5 +12,8 @@
     "ReqResLogTTL": 60,
     "UUID_TTL": 250,
     "BanksIcoDir": "./data/banks/ico",
-    "TestingMode": true
+    "TestingMode": false,
+    "TntUser": "admin",
+    "TntPass": "admin",
+    "TntUrl": "localhost:3301"
 }
