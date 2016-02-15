@@ -54,6 +54,7 @@ public:
         case RSC_Timeout: return QObject::trUtf8("Request's time is out");
         case RSC_ConnectionRefused: return QObject::trUtf8("Connection refused by server");
         case RSC_HostNotFound: return QObject::trUtf8("Server host is not found!");
+        case RSC_Unknown:;
         }
 
         return "Unknown request error";

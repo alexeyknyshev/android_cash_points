@@ -17,7 +17,13 @@ SOURCES += src/main.cpp \
     src/requests/cashpointinradius.cpp \
     src/requests/requestfactory.cpp \
     src/requests/cashpointrequestinradiusfactory.cpp \
-    src/cashpointresponse.cpp
+    src/cashpointresponse.cpp \
+    src/requests/cashpointcreate.cpp \
+    src/requests/nearbyclusters.cpp \
+    src/requests/nearbyclusterrequestfactory.cpp \
+    src/emptyimageprovider.cpp \
+    src/appstateproxy.cpp \
+    src/hostsmodel.cpp
 
 RESOURCES += qml.qrc
 
@@ -53,7 +59,13 @@ HEADERS += \
     src/requests/requestfactory.h \
     src/requests/cashpointrequestinradiusfactory.h \
     src/serverapi_fwd.h \
-    src/cashpointresponse.h
+    src/cashpointresponse.h \
+    src/requests/cashpointcreate.h \
+    src/requests/nearbyclusters.h \
+    src/requests/nearbyclusterrequestfactory.h \
+    src/numberimageprovider.h \
+    src/appstateproxy.h \
+    src/hostsmodel.h
 
 QMAKE_CXXFLAGS += -std=c++11
 

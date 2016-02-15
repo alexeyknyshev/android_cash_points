@@ -4,22 +4,25 @@
 #include <QtPositioning/QGeoCoordinate>
 
 #include "cashpointrequest.h"
+#include "../serverapi_fwd.h"
 
 class CashPointInRadius : public CashPointRequest
 {
+    Q_OBJECT
+
 public:
     CashPointInRadius(CashPointSqlModel *model);
 
-    void sendImpl(ServerApi *api, quint32 leftAttempts) override;
-    void fromJson(const QJsonObject &json);
+    bool fromJson(const QJsonObject &json);
 
-    void setRadius(qreal radius);
-
-    void setCoordinate(const QGeoCoordinate &coord);
+private slots:
+    void fetchIds(ServerApiPtr api, quint32 leftAttempts);
+    void fetchCashpoints(ServerApiPtr api, quint32 leftAttempts);
 
 private:
-    qreal mRadius;
-    QGeoCoordinate mCoord;
+    QJsonObject data;
+
+    QList<quint32> mCashpointsToProcess;
 };
 
 

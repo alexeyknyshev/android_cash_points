@@ -3,7 +3,11 @@
 #include "cashpointsqlmodel.h"
 #include "serverapi.h"
 #include "icoimageprovider.h"
+#include "emptyimageprovider.h"
 #include "locationservice.h"
+#include "searchengine.h"
+#include "appstateproxy.h"
+#include "hostsmodel.h"
 
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -44,6 +48,7 @@ int main(int argc, char *argv[])
             QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
 #endif
     QSettings settings(path, QSettings::NativeFormat);
+    qDebug() << "Settings: " << settings.fileName();
 
     // bank list db
     const QString dbName = "banks";
@@ -60,8 +65,11 @@ int main(int argc, char *argv[])
                                 "name_tr text, town text, rating integer, "
                                 "name_tr_alt text, tel text, ico_path text, mine integer)");
 
+    db.exec("CREATE TABLE partners (id integer, partner_id integer)");
+
     db.exec("CREATE TABLE towns (id integer primary key, name text, name_tr text, "
-                                "region_id integer, regional_center integer, mine integer)");
+                                "region_id integer, regional_center integer, mine integer, "
+                                "cord_lon real, cord_lat real, zoom real)");
 
     db.exec("CREATE TABLE regions (id integer primary key, name text)");
 
@@ -70,11 +78,17 @@ int main(int argc, char *argv[])
                              "address_comment text, metro_name text, main_office integer, "
                              "without_weekend integer, round_the_clock integer, "
                              "works_as_shop integer, rub integer, usd integer, "
-                             "eur integer, cash_in integer)");
+                             "eur integer, cash_in integer, timestamp integer)");
     db.commit();
 
     qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
-    ServerApi *api = new ServerApi("localhost", 8080);
+    ServerApi *api = new ServerApi(
+//                                   "192.168.1.126"
+                                   "localhost"
+//                                   "52.89.4.111"
+                                   , 8080);
+
+    HostsModel *hostsModel = new HostsModel(api, &settings, api);
 
     const QStringList icons = {
         ":/icon/star.svg",
@@ -82,38 +96,53 @@ int main(int argc, char *argv[])
         ":/icon/aim.svg",
         ":/icon/zoom_in.svg",
         ":/icon/zoom_out.svg",
-        ":/icon/marker.svg"
+        ":/icon/marker.svg",
+        ":/icon/place.svg",
+        ":/icon/place_add.svg",
+        ":/icon/place_add_plus.svg",
+        ":/icon/add.svg",
+        ":/icon/cluster.svg"
     };
-    IcoImageProvider *imageProvider = new IcoImageProvider;
+
+    IcoImageProvider *icoImageProvider = new IcoImageProvider;
     for (const QString &icoPath : icons) {
         QFile file(icoPath);
         if (file.open(QIODevice::ReadOnly)) {
             QString resName = icoPath.split('/').last();
-            imageProvider->loadSvgImage(resName, file.readAll());
+            icoImageProvider->loadSvgImage(resName, file.readAll());
             qDebug() << icoPath << "loaded as" << resName;
+        } else {
+            qDebug() << icoPath << "cannot load ico to image provider";
         }
     }
 
+    EmptyImageProvider *emptyImageProvider = new EmptyImageProvider;
+
     BankListSqlModel *bankListModel =
-            new BankListSqlModel(dbName, api, imageProvider, &settings);
+            new BankListSqlModel(dbName, api, icoImageProvider, &settings);
 
     TownListSqlModel *townListModel =
-            new TownListSqlModel(dbName, api, imageProvider, &settings);
+            new TownListSqlModel(dbName, api, icoImageProvider, &settings);
 
     CashPointSqlModel *cashpointModel =
-            new CashPointSqlModel(dbName, api, imageProvider, &settings);
+            new CashPointSqlModel(dbName, api, icoImageProvider, &settings);
+
+    SearchEngine *searchEngine = new SearchEngine(bankListModel, townListModel);
 
     LocationService *locationService = new LocationService(&app);
 
     QQmlApplicationEngine *engine = new QQmlApplicationEngine;
 
     engine->addImportPath("qrc:/ui");
-    engine->addImageProvider(QLatin1String("ico"), imageProvider);
+    engine->addImageProvider(QLatin1String("ico"), icoImageProvider);
+    engine->addImageProvider(QLatin1String("empty"), emptyImageProvider);
     engine->rootContext()->setContextProperty("bankListModel", bankListModel);
     engine->rootContext()->setContextProperty("townListModel", townListModel);
     engine->rootContext()->setContextProperty("cashpointModel", cashpointModel);
     engine->rootContext()->setContextProperty("serverApi", api);
     engine->rootContext()->setContextProperty("locationService", locationService);
+    engine->rootContext()->setContextProperty("searchEngine", searchEngine);
+    engine->rootContext()->setContextProperty("hostsModel", hostsModel);
     engine->load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
     QObject *appWindow = nullptr;
@@ -125,6 +154,9 @@ int main(int argc, char *argv[])
     }
     Q_ASSERT(appWindow);
     QObject::connect(api, SIGNAL(pong(bool)), appWindow, SIGNAL(pong(bool)));
+
+    AppStateProxy *proxy = new AppStateProxy(&app);
+    QObject::connect(proxy, SIGNAL(appStateChanged(int)), appWindow, SIGNAL(appStateChanged(int)));
 
     /// update bank and town list after successfull ping
     QMetaObject::Connection connection = QObject::connect(api, &ServerApi::pong,
@@ -149,6 +181,7 @@ int main(int argc, char *argv[])
 
     delete engine;
 
+    delete searchEngine;
     delete cashpointModel;
     delete townListModel;
     delete bankListModel;

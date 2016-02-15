@@ -5,6 +5,10 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonArray>
 #include <QtCore/QDebug>
+#include <QtCore/QSettings>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QFile>
+#include <QtCore/QDir>
 
 #include "serverapi.h"
 #include "rpctype.h"
@@ -15,6 +19,7 @@ struct Town : public RpcType<Town>
     QString nameTr;
     float longitude;
     float latitude;
+    float zoom;
     quint32 regionId;
     bool regionalCenter;
     quint32 mine;
@@ -32,12 +37,35 @@ struct Town : public RpcType<Town>
         result.nameTr    = obj["name_tr"].toString();
         result.latitude  = obj["latitude"].toDouble();
         result.longitude = obj["longitude"].toDouble();
+        result.zoom      = obj["zoom"].toDouble();
         result.regionId  = obj["region_id"].toInt(std::numeric_limits<int>::max());
 
         result.regionalCenter = obj["regional_center"].toBool();
         result.mine = obj["mine"].toInt();
 
         return result;
+    }
+
+    QJsonObject toJsonObject() const
+    {
+        QJsonObject json;
+
+        json["id"] = QJsonValue(qint64(id));
+        json["name"] = name;
+        json["name_tr"] = nameTr;
+        json["latitude"] = latitude;
+        json["longitude"] = longitude;
+        json["zoom"] = zoom;
+        json["region_id"] = QJsonValue(qint64(regionId));
+        json["regional_center"] = regionalCenter ? 1 : 0;
+
+        return json;
+    }
+
+    void fillItem(QStandardItem *) const override
+    {
+        qWarning() << "Town::fillItem should never be called";
+        Q_ASSERT_X(false, "Town::fillItem", "should never be called");
     }
 };
 
@@ -52,6 +80,12 @@ struct Region : public RpcType<Region>
         result.name = obj["name"].toString();
 
         return result;
+    }
+
+    void fillItem(QStandardItem *) const override
+    {
+        qWarning() << "Region::fillItem should never be called";
+        Q_ASSERT_X(false, "Region::fillItem", "should never be called");
     }
 };
 
@@ -75,7 +109,7 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
     setRoleName(CenterRole, "town_regional_center");
     setRoleName(MineRole,   "town_is_mine");
 
-    if (!mQuery.prepare("SELECT id, name, name_tr, mine FROM towns WHERE "
+    if (!mQuery.prepare("SELECT id, name, name_tr, mine, cord_lon, cord_lat, zoom FROM towns WHERE "
                         "       name LIKE :name"
                         " or name_tr LIKE :name_tr"
                         " or region_id IN (SELECT id FROM regions WHERE name LIKE :region_name) "
@@ -84,8 +118,10 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
     }
 
-    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, regional_center, mine) "
-                                   "VALUES (:id, :name, :name_tr, :region_id, :regional_center, :mine)"))
+    if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, "
+                                   "regional_center, mine, cord_lon, cord_lat, zoom) "
+                                   "VALUES (:id, :name, :name_tr, :region_id, "
+                                   ":regional_center, :mine, :cord_lon, :cord_lat, :zoom)"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQueryUpdateTowns.lastError().databaseText();
     }
@@ -99,8 +135,8 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
     connect(this, SIGNAL(updateTownsIdsRequest(quint32)),
             this, SLOT(updateTownsIds(quint32)), Qt::QueuedConnection);
 
-    connect(this, SIGNAL(townIdsUpdated(quint32)),
-            this, SIGNAL(updateTownsDataRequest(quint32)));
+    connect(this, SIGNAL(townIdsUpdated()),
+            this, SLOT(restoreTownsData()));
 
     connect(this, SIGNAL(updateTownsDataRequest(quint32)),
             this, SLOT(updateTownsData(quint32)), Qt::QueuedConnection);
@@ -135,8 +171,7 @@ void TownListSqlModel::setFilterImpl(const QString &filter)
 
     clear();
     int row = 0;
-    while (mQuery.next())
-    {
+    while (mQuery.next()) {
         QList<QStandardItem *> items;
 
         for (int i = 0; i < RoleLast - IdRole; ++i) {
@@ -154,14 +189,12 @@ static QList<int> getTownsIdList(const QJsonDocument &json)
 {
     QList<int> townIdList;
 
-    QJsonObject obj = json.object();
-    QJsonValue townsVal = obj["towns"];
-    if (!townsVal.isArray()) {
-        qWarning() << "Json field \"towns\" is not array";
+    if (!json.isArray()) {
+        qWarning() << "getTownsIdList: expected json array";
         return townIdList;
     }
 
-    const QJsonArray arr = townsVal.toArray();
+    const QJsonArray arr = json.array();
 
     for (const QJsonValue &val : arr) {
         static const int invalidId = -1;
@@ -176,8 +209,16 @@ static QList<int> getTownsIdList(const QJsonDocument &json)
 
 static QList<Town> getTownList(const QJsonDocument &json)
 {
-    const QJsonObject obj = json.object();
-    return Town::fromJsonArray(obj["towns"].toArray());
+    return Town::fromJsonArray(json.array());
+}
+
+static QJsonDocument getTownListJson(const QList<Town> &list)
+{
+    QJsonArray array;
+    for (const Town &town : list) {
+        array.append(QJsonValue(town.toJsonObject()));
+    }
+    return QJsonDocument(array);
 }
 
 void TownListSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -227,8 +268,16 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
         mTownsToProcess = getTownsIdList(json);
         //qDebug() << "got towns id list:" << mTownsToProcess.size();
 
-        emitTownIdsUpdated(getAttemptsCount());
+        emitTownIdsUpdated();
     });
+}
+
+void TownListSqlModel::restoreTownsData()
+{
+    restoreFromCache(mTownsToProcess);
+    if (!mTownsToProcess.isEmpty()) { // fetch left towns from server
+        emitUpdateTownData(getAttemptsCount());
+    }
 }
 
 void TownListSqlModel::updateTownsData(quint32 leftAttempts)
@@ -239,12 +288,9 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         return;
     }
 
-    if (mTownsToProcess.empty()) {
-        return;
-    }
-
     const quint32 townsToProcess = qMin(getRequestBatchSize(), (quint32)mTownsToProcess.size());
     if (townsToProcess == 0) {
+        saveInCache();
         return;
     }
 
@@ -301,17 +347,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         }
 
         for (const Town &town : townList) {
-            mQueryUpdateTowns.bindValue(0, town.id);
-            mQueryUpdateTowns.bindValue(1, town.name);
-            mQueryUpdateTowns.bindValue(2, town.nameTr);
-            mQueryUpdateTowns.bindValue(3, town.regionId);
-            mQueryUpdateTowns.bindValue(4, town.regionalCenter);
-            mQueryUpdateTowns.bindValue(5, town.mine);
-
-            if (!mQueryUpdateTowns.exec()) {
-                qWarning() << "updateTownsData: failed to update 'towns' table";
-                qWarning() << "updateTownsData: " << mQueryUpdateTowns.lastError().databaseText();
-            }
+            writeTownToDB(town);
         }
 
         emitUpdateTownData(getAttemptsCount());
@@ -369,4 +405,131 @@ void TownListSqlModel::updateRegions(quint32 leftAttempts)
             }
         }
     });
+}
+
+void TownListSqlModel::saveInCache()
+{
+    QSqlQuery query(QSqlDatabase::database(getDBConnectionName()));
+    if (!query.exec("SELECT id, name, name_tr, region_id, "
+                    "regional_center, cord_lon, cord_lat, zoom FROM towns"))
+    {
+        qWarning() << "Failed to save town data cache due to sql error:" << query.lastError().databaseText();
+        return;
+    }
+
+    QList<Town> townList;
+    while (query.next()) {
+        const int id = query.value(0).toInt();
+        if (id > 0) {
+            Town town;
+
+            town.id = id;
+            town.name = query.value(1).toString();
+            town.nameTr = query.value(2).toString();
+            town.regionId = query.value(3).toInt();
+            town.regionalCenter = query.value(4).toBool();
+            town.longitude = query.value(5).toFloat();
+            town.latitude = query.value(6).toFloat();
+            town.zoom = query.value(7).toFloat();
+
+            townList.append(town);
+        }
+    }
+
+    QJsonDocument json = getTownListJson(townList);
+    QByteArray rawJson = json.toJson();
+    QByteArray compressedJson = qCompress(rawJson);
+
+    qDebug() << "Raw Town data:" << rawJson.size();
+    qDebug() << "Compressed data:" << compressedJson.size();
+
+    const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString tdataPath = QDir(appDataPath).absoluteFilePath("tdata");
+    QFile dataFile(tdataPath);
+    if (!dataFile.open(QIODevice::WriteOnly)) {
+        qWarning("Cannot open tdata file for writing!");
+        return;
+    }
+
+    dataFile.write(compressedJson);
+}
+
+void TownListSqlModel::restoreFromCache(QList<int> &townIdList)
+{
+    const QString tdataPath = QStandardPaths::locate(QStandardPaths::AppDataLocation, "tdata");
+    if (tdataPath.isEmpty()) {
+        return;
+    }
+
+    QFile dataFile(tdataPath);
+    if (!dataFile.open(QIODevice::ReadOnly)) {
+        qWarning("Cannot open tdata file for reading!");
+        return;
+    }
+
+    QFileInfo finfo(dataFile);
+    const QDateTime lastModified = finfo.lastModified();
+    const qint64 daySecs = 3600 * 24;
+
+    qDebug() << "last tdata modified time:" << lastModified;
+
+    // cache is outdated
+    if (qAbs(lastModified.secsTo(QDateTime::currentDateTime())) > daySecs) {
+        return;
+    }
+
+    QByteArray compressedJson = dataFile.readAll();
+    dataFile.close();
+
+    QByteArray rawJson = qUncompress(compressedJson);
+
+    QJsonParseError err;
+    const QJsonDocument json = QJsonDocument::fromJson(rawJson, &err);
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "Cannot decode tdata json!" << err.errorString();
+
+        QFile rmFile(tdataPath);
+        rmFile.open(QIODevice::Truncate);
+        return;
+    }
+
+    //qDebug() << "Raw data has been read:" << rawJson;
+
+    if (!json.isArray()) {
+        qWarning() << "Json array expected in tdata file!";
+
+        QFile rmFile(tdataPath);
+        rmFile.open(QIODevice::Truncate);
+        return;
+    }
+
+    QList<Town> townList = getTownList(json);
+    qDebug() << "Restored towns from cache:" << townList.size();
+
+    for (auto it = townList.begin(); it != townList.end(); it++) {
+        bool removed = townIdList.removeOne((int)it->id);
+        if (!removed) { // no such town in server db
+            it = townList.erase(it);
+        } else { // town exists in server db
+            writeTownToDB(*it);
+        }
+    }
+}
+
+void TownListSqlModel::writeTownToDB(const Town &town)
+{
+    mQueryUpdateTowns.bindValue(0, town.id);
+    mQueryUpdateTowns.bindValue(1, town.name);
+    mQueryUpdateTowns.bindValue(2, town.nameTr);
+    mQueryUpdateTowns.bindValue(3, town.regionId);
+    mQueryUpdateTowns.bindValue(4, town.regionalCenter);
+    mQueryUpdateTowns.bindValue(5, town.mine);
+    mQueryUpdateTowns.bindValue(6, town.longitude);
+    mQueryUpdateTowns.bindValue(7, town.latitude);
+    mQueryUpdateTowns.bindValue(8, town.zoom);
+
+    if (!mQueryUpdateTowns.exec()) {
+        qWarning() << "updateTownsData: failed to update 'towns' table";
+        qWarning() << "updateTownsData: " << mQueryUpdateTowns.lastError().databaseText();
+    }
 }

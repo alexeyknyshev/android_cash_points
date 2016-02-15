@@ -1,6 +1,19 @@
 #include "cashpointresponse.h"
 
-void CashPointResponse::addCashPoint(const QJsonObject &o)
+void CashPointResponse::addCashPointData(const QJsonObject &o)
 {
-    data.append(o);
+    const int id = o["id"].toInt();
+    if (id > 0) {
+        cashPointData.insert(id, o);
+    }
+}
+
+void CashPointResponse::addVisiableCashpoint(quint32 id)
+{
+    visiableSet.insert(id);
+}
+
+void CashPointResponse::addClusterData(const QJsonObject &o)
+{
+    clusterData.append(o);
 }

@@ -22,6 +22,7 @@ struct Bank : public RpcType<Bank>
     quint32 licence;
     quint32 rating;
     quint32 mine;
+    QList<quint32> partners;
 
     Bank()
         : licence(0),
@@ -41,7 +42,29 @@ struct Bank : public RpcType<Bank>
         result.rating    = obj["rating"].toInt();
         result.mine      = obj["mine"].toInt();
 
+        QJsonArray partners = obj["partners"].toArray();
+        const auto partnersEnd = partners.constEnd();
+        for (auto it = partners.constBegin(); it != partnersEnd; it++) {
+            const int id = it->toInt();
+            if (id > 0) {
+                result.partners.append(id);
+            }
+        }
+
         return result;
+    }
+
+    void fillItem(QStandardItem *item) const override
+    {
+        item->setData(id,        BankListSqlModel::IdRole);
+        item->setData(name,      BankListSqlModel::NameRole);
+        item->setData(nameTr,    BankListSqlModel::NameTrRole);
+        item->setData(nameTrAlt, BankListSqlModel::NameTrAltRole);
+//        item->setData(town,      BankListSqlModel::);
+        item->setData(tel,       BankListSqlModel::TelRole);
+        item->setData(licence,   BankListSqlModel::LicenceRole);
+        item->setData(rating,    BankListSqlModel::RatingRole);
+        item->setData(mine,      BankListSqlModel::MineRole);
     }
 };
 
@@ -55,7 +78,11 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateBanks(QSqlDatabase::database(connectionName)),
       mQueryUpdateBankIco(QSqlDatabase::database(connectionName)),
-      mQuerySetBankMine(QSqlDatabase::database(connectionName))
+      mQuerySetBankMine(QSqlDatabase::database(connectionName)),
+      mQueryGetPartners(QSqlDatabase::database(connectionName)),
+      mQuerySetPartners(QSqlDatabase::database(connectionName)),
+      mQueryById(QSqlDatabase::database(connectionName)),
+      mQueryGetMineBanks(QSqlDatabase::database(connectionName))
 {
     setRowCount(600);
 
@@ -69,6 +96,7 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
     setRoleName(MineRole,      "bank_is_mine");
     setRoleName(IcoPathRole,   "bank_ico_path");
 
+    const QString queryErrPrefix = "BankListSqlModel cannot prepare query:";
 
     if (!mQuery.prepare("SELECT id, name, licence, name_tr, rating, town, name_tr_alt, tel, mine, ico_path FROM banks"
                         " WHERE"
@@ -77,23 +105,44 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
                         " or name_tr LIKE :name_tr"
                         " or    town LIKE :town"
                         " or     tel LIKE :tel"
-                        " ORDER BY mine DESC, rating"))
+                        " ORDER BY mine DESC, rating ASC"))
     {
-        qDebug() << "BankListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
+        qWarning() << queryErrPrefix << mQuery.lastError().databaseText();
     }
 
     if (!mQueryUpdateBanks.prepare("INSERT OR REPLACE INTO banks (id, name, licence, name_tr, rating, name_tr_alt, town, tel, mine)"
                                    "VALUES (:id, :name, :licence, :name_tr, :rating, :name_tr_alt, :town, :tel, :mine)"))
     {
-        qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBanks.lastError().databaseText();
+        qWarning() << queryErrPrefix << mQueryUpdateBanks.lastError().databaseText();
     }
 
     if (!mQueryUpdateBankIco.prepare("UPDATE banks SET ico_path = :ico_path WHERE id = :bank_id")) {
-        qDebug() << "BankListSqlModel cannot prepare query:" << mQueryUpdateBankIco.lastError().databaseText();
+        qWarning() << queryErrPrefix << mQueryUpdateBankIco.lastError().databaseText();
     }
 
     if (!mQuerySetBankMine.prepare("UPDATE banks SET mine = :mine WHERE id = :bank_id")) {
-        qDebug() << "BankListSqlModel cannot prepare query:" << mQuerySetBankMine.lastError().databaseText();
+        qWarning() << queryErrPrefix << mQuerySetBankMine.lastError().databaseText();
+    }
+
+    if (!mQueryGetMineBanks.prepare("SELECT id FROM banks WHERE mine = 1")) {
+        qWarning() << queryErrPrefix << mQueryGetMineBanks.lastError().databaseText();
+    }
+
+    if (!mQuerySetPartners.prepare("INSERT OR REPLACE INTO partners (id, partner_id)"
+                                   "VALUES (:id, :partner_id)"))
+    {
+        qWarning() << queryErrPrefix << mQuerySetPartners.lastError().databaseText();
+    }
+
+    if (!mQueryGetPartners.prepare("SELECT partner_id FROM partners WHERE id = :id"))
+    {
+        qWarning() << queryErrPrefix << mQueryGetPartners.lastError().databaseText();
+    }
+
+    if (!mQueryById.prepare("SELECT id, name, licence, name_tr, rating, name_tr_alt, town, tel, mine "
+                            "FROM banks WHERE id = :bank_id"))
+    {
+        qWarning() << queryErrPrefix << mQueryById.lastError().databaseText();
     }
 
     connect(this, SIGNAL(updateBanksIdsRequest(quint32)),
@@ -154,11 +203,90 @@ bool BankListSqlModel::setData(const QModelIndex &index,
         json["mine"] = QJsonValue(mine);
         /// TODO: add session
         getServerApi()->sendRequest("/bank/" + bankIdStr + "/mine", json,
-        [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode code, const QByteArray &data) {
+        [](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode code, const QByteArray &data) {
 
         });
     }
     return ListSqlModel::setData(index, value, role);
+}
+
+QList<int> BankListSqlModel::getMineBanks() const
+{
+    QList<int> result;
+    if (!mQueryGetMineBanks.exec()) {
+        qWarning() << "BankListSqlModel::getMineBanks query failed:" << mQueryGetMineBanks.lastError().databaseText();
+        return result;
+    }
+
+    while (mQueryGetMineBanks.next()) {
+        const int id = mQueryGetMineBanks.value(0).toInt();
+        if (id > 0) {
+            result.append(id);
+        }
+    }
+
+    return result;
+}
+
+QList<int> BankListSqlModel::getPartnerBanks(int bankId)
+{
+    QList<int> result;
+    mQueryGetPartners.bindValue(0, bankId);
+    if (!mQueryGetPartners.exec()) {
+        qWarning() << "BankListSqlModel::getPartnerBanks query failed:" << mQueryGetMineBanks.lastError().databaseText();
+        return result;
+    }
+
+    while (mQueryGetPartners.next()) {
+        const int id = mQueryGetPartners.value(0).toInt();
+        if (id > 0) {
+            result.append(id);
+        }
+    }
+
+    return result;
+}
+
+QString BankListSqlModel::getBankData(int bankId) const
+{
+    mQueryById.bindValue(0, bankId);
+    if (!mQueryById.exec()) {
+        qWarning() << "BankListSqlModel::getBankData query failed:" << mQueryById.lastError().databaseText();
+        return "";
+    }
+
+    if (mQueryById.next()) {
+        int id = mQueryById.value(0).toInt();
+        if (id > 0) {
+            QJsonObject obj;
+
+            obj["id"] = id;
+            obj["name"] = mQueryById.value(1).toString();
+            obj["licence"] = mQueryById.value(2).toInt();
+            obj["name_tr"] = mQueryById.value(3).toString();
+            obj["rating"] = mQueryById.value(4).toInt();
+            obj["name_tr_alt"] = mQueryById.value(5).toString();
+            /// TODO: obj["town"]
+            obj["tel"] = mQueryById.value(7).toString();
+            obj["mine"] = mQueryById.value(8).toBool();
+
+            return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+        }
+    }
+
+    return "";
+}
+
+QList<int> BankListSqlModel::getPartnerBanks(const QList<int> &bankIdList)
+{
+    QSet<int> result;
+    for (int id : bankIdList) {
+        const QList<int> partnerList = getPartnerBanks(id);
+        for (int partner : partnerList) {
+            result.insert(partner);
+        }
+    }
+    return result.toList();
 }
 
 void BankListSqlModel::updateFromServerImpl(quint32 leftAttempts)
@@ -203,14 +331,12 @@ static QList<int> getBanksIdList(const QJsonDocument &json)
 {
     QList<int> bankIdList;
 
-    QJsonObject obj = json.object();
-    QJsonValue banksVal = obj["banks"];
-    if (!banksVal.isArray()) {
-        qWarning() << "Json field \"banks\" is not array";
+    if (!json.isArray()) {
+        qWarning() << "getBankIdList: expected json int array";
         return bankIdList;
     }
 
-    const QJsonArray arr = banksVal.toArray();
+    const QJsonArray arr = json.array();
 
     for (const QJsonValue &val : arr) {
         static const int invalidId = -1;
@@ -225,8 +351,10 @@ static QList<int> getBanksIdList(const QJsonDocument &json)
 
 static QList<Bank> getBankList(const QJsonDocument &json)
 {
-    const QJsonObject obj = json.object();
-    return Bank::fromJsonArray(obj["banks"].toArray());
+    if (json.isArray()) {
+        return Bank::fromJsonArray(json.array());
+    }
+    return {};
 }
 
 void BankListSqlModel::updateBanksIds(quint32 leftAttempts)
@@ -362,6 +490,15 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
             if (!mQueryUpdateBanks.exec()) {
                 qWarning() << "updateBanksData: failed to update 'banks' table";
                 qWarning() << "updateBanksData: " << mQueryUpdateBanks.lastError().databaseText();
+            }
+
+            for (quint32 partnerId : bank.partners) {
+                mQuerySetPartners.bindValue(0, bank.id);
+                mQuerySetPartners.bindValue(1, partnerId);
+                if (!mQuerySetPartners.exec()) {
+                    qWarning() << "updateBanksData: failed to update 'partners' table";
+                    qWarning() << "updateBanksData: " << mQueryGetPartners.lastError().databaseText();
+                }
             }
 
             emitUpdateBankIco(getAttemptsCount(), bank.id);

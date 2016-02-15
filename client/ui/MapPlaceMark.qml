@@ -9,6 +9,7 @@ MapQuickItem {
     anchorPoint.y: height
 
     property alias source: marker.source
+    property alias logo: logo.source
 
     sourceItem: Item {
         width: item.width
@@ -19,6 +20,17 @@ MapQuickItem {
             anchors.fill: parent
             sourceSize.width: item.width
             sourceSize.height: item.height
+        }
+
+        Image {
+            id: logo
+            anchors.fill: parent
+            anchors.leftMargin: item.width * 0.22
+            anchors.rightMargin: item.width * 0.22
+            anchors.topMargin: item.width * 0.07
+            anchors.bottomMargin: item.width * 0.36
+            sourceSize.width: item.width * 0.8
+            sourceSize.height: item.width * 0.8
         }
     }
 }

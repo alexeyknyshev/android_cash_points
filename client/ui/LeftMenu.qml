@@ -197,6 +197,7 @@ Rectangle {
                 name: "bugreportSelectionItem"
                 text: qsTr("Сообщить об ошибке")
                 ico: "../icon/bug.svg"
+                property string qmlfile: ""
             }
         }
 

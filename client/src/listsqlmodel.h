@@ -35,11 +35,12 @@ public slots:
     void updateFromServer();
 
 protected:
+    ListSqlModel(ListSqlModel *submodel);
     virtual void setFilterImpl(const QString &filter) = 0;
     virtual void updateFromServerImpl(quint32 leftAttempts) = 0;
     virtual int getLastRole() const = 0;
 
-    virtual QSqlQuery &getQuery() = 0;
+    virtual QSqlQuery *getQuery() = 0;
     virtual bool needEscapeFilter() const = 0;
 
     void setAttemptsCount(quint32 count) { mRequestAttemptsCount = count; }
@@ -64,6 +65,9 @@ protected:
     QVariant data(const QModelIndex &item, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    const QString &getDBConnectionName() const
+    { return mDBConnectionName; }
+
 private slots:
     void _setFilter(QString filter);
 
@@ -76,6 +80,8 @@ private:
     ServerApi *mApi;
     IcoImageProvider *mImageProvider;
     QSettings *mSettings;
+
+    const QString mDBConnectionName;
 };
 
 #endif // LISTSQLMODEL_H

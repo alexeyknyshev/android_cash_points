@@ -5,6 +5,8 @@
 
 #include "listsqlmodel.h"
 
+struct Town;
+
 class TownListSqlModel : public ListSqlModel
 {
     Q_OBJECT
@@ -30,13 +32,15 @@ public:
 
     QVariant data(const QModelIndex &item, int role) const override;
 
+    QSqlQuery *getQuery() override { return &mQuery; }
+
 signals:
     void updateRegionsRequest(quint32 leftAttempts);
 
     void updateTownsIdsRequest(quint32 leftAttempts);
     void updateTownsDataRequest(quint32 leftAttempts);
 
-    void townIdsUpdated(quint32 leftAttempts);
+    void townIdsUpdated();
 
 protected:
     void updateFromServerImpl(quint32 leftAttempts) override;
@@ -44,10 +48,10 @@ protected:
 
     int getLastRole() const override { return RoleLast; }
 
-    QSqlQuery &getQuery() override { return mQuery; }
     bool needEscapeFilter() const override { return true; }
 
 private slots:
+    void restoreTownsData();
     void updateTownsIds(quint32 leftAttempts);
     void updateTownsData(quint32 leftAttempts);
 
@@ -57,14 +61,19 @@ private:
     void emitUpdateTownIds(quint32 leftAttempts)
     { emit updateTownsIdsRequest(leftAttempts); }
 
-    void emitTownIdsUpdated(quint32 leftAttempts)
-    { emit townIdsUpdated(leftAttempts); }
+    void emitTownIdsUpdated()
+    { emit townIdsUpdated(); }
 
     void emitUpdateTownData(quint32 leftAttempts)
     { emit updateTownsDataRequest(leftAttempts); }
 
     void emitUpdateRegions(quint32 leftAttempts)
     { emit updateRegionsRequest(leftAttempts); }
+
+    void saveInCache();
+    void restoreFromCache(QList<int> &townIdList);
+
+    void writeTownToDB(const Town &town);
 
     QList<int> mTownsToProcess;
 

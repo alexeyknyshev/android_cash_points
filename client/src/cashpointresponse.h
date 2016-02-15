@@ -2,13 +2,22 @@
 #define CASHPOINTRESPONSE_H
 
 #include <QtCore/QJsonObject>
-#include <QtCore/QList>
+#include <QtCore/QMap>
+#include <QtCore/QSet>
 
 struct CashPointResponse
 {
-    void addCashPoint(const QJsonObject &o);
+    void addCashPointData(const QJsonObject &o);
+    void addVisiableCashpoint(quint32 id);
 
-    QList<QJsonObject> data;
+    void addClusterData(const QJsonObject &o);
+
+    QMap<quint32, QJsonObject> cashPointData;
+    QSet<quint32> visiableSet;
+
+    QList<QJsonObject> clusterData;
+
+    QString message;
 };
 
 #endif // CASHPOINTRESPONSE_H

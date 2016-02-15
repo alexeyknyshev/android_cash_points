@@ -21,6 +21,7 @@ public:
     const QGeoCoordinate &getCoordinate() const { return mLastCoord; }
 
     Q_INVOKABLE qreal getGeoRegionRadius(const QGeoShape &shape) const;
+    Q_INVOKABLE qreal getGeoRegionRadiusEstimate(const QGeoCoordinate &from, const QGeoCoordinate &to) const;
 
 signals:
     void enabledChanged(bool enabled);

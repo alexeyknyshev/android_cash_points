@@ -38,6 +38,15 @@ public:
                  const QVariant &value,
                  int role) override;
 
+    Q_INVOKABLE QList<int> getMineBanks() const;
+
+    Q_INVOKABLE QList<int> getPartnerBanks(const QList<int> &bankIdList);
+    QList<int> getPartnerBanks(int bankId);
+
+    Q_INVOKABLE QString getBankData(int bankId) const;
+
+    QSqlQuery *getQuery() override { return &mQuery; }
+
 signals:
     void updateBanksIdsRequest(quint32 leftAttempts);
     void updateBanksDataRequest(quint32 leftAttempts);
@@ -53,7 +62,6 @@ protected:
     int getLastRole() const override { return RoleLast; }
     bool needEscapeFilter() const override { return true; }
 
-    QSqlQuery &getQuery() override { return mQuery; }
 
 private slots:
     void updateBanksIds(quint32 leftAttempts);
@@ -78,6 +86,10 @@ private:
     QSqlQuery mQueryUpdateBanks;
     QSqlQuery mQueryUpdateBankIco;
     QSqlQuery mQuerySetBankMine;
+    QSqlQuery mQueryGetPartners;
+    QSqlQuery mQuerySetPartners;
+    mutable QSqlQuery mQueryById;
+    mutable QSqlQuery mQueryGetMineBanks;
 };
 
 #endif // BANKLISTSQLMODEL_H

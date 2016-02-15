@@ -126,7 +126,11 @@ qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callbac
     if (data.isEmpty()) {
         mNetworkMgr->get(req);
     } else {
-        mNetworkMgr->post(req, QJsonDocument(data).toJson(QJsonDocument::Compact));
+        QByteArray byteData = QJsonDocument(data).toJson(QJsonDocument::Compact);
+        mNetworkMgr->post(req, byteData);
+#ifndef NDEBUG
+        qDebug() << requestUrl.toString() << " => " << QString::fromUtf8(byteData);
+#endif
     }
 
     return requestId;

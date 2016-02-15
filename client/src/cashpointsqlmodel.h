@@ -2,10 +2,12 @@
 #define CASHPOINTSQLMODEL_H
 
 #include <QtSql/QSqlQuery>
+#include <QtCore/QJsonObject>
 
 #include "listsqlmodel.h"
 
 class CashPointRequest;
+class CashPointResponse;
 class RequestFactory;
 
 class CashPointSqlModel : public ListSqlModel
@@ -32,6 +34,8 @@ public:
         EurRole,
         CashInRole,
 
+        SizeRole,
+
         RoleLast
     };
 
@@ -50,27 +54,54 @@ public:
 
     void sendRequest(CashPointRequest *request);
 
+    void addCashPoint(const QJsonObject &obj);
+
+    QJsonObject getCachedCashpointData(quint32 id);
+    QMap<quint32, int> getCachedCashpoints() const;
+
+    Q_INVOKABLE QString getLastGeoPos() const;
+
+public slots:
+    void createCashPoint(QString data);
+    void saveLastGeoPos(QString data);
 
 signals:
     void delayedUpdate();
+    void cashPointCreateError(QString errText);
 
 protected:
-    void updateFromServerImpl(quint32 leftAttempts) override;
+    void updateFromServerImpl(quint32 leftAttempts) override
+    { Q_UNUSED(leftAttempts); }
+
     void setFilterImpl(const QString &filter) override;
 
     int getLastRole() const override { return RoleLast; }
 
-    QSqlQuery &getQuery() override { return mQuery; }
+    QSqlQuery *getQuery() override { return &mQuery; }
     bool needEscapeFilter() const override { return false; }
+
+private slots:
+    void onRequestDataReceived(CashPointRequest *request, bool requestFinished);
+    void onRequestDeleted(QObject *request);
 
 private:
     void setFilterJson(const QJsonObject &json);
     void setFilterFreeForm(const QString &filter);
 
-    QSqlQuery mQuery;
-    CashPointRequest *mRequest;
+    void onCashpointDataReceived(CashPointResponse *response);
+    void onClusterDataReceived(CashPointResponse *response);
+
+    QStandardItem *getCachedItem(quint32 id, QList<QStandardItem *> &pool);
+
+    QMap<quint32, QStandardItem *> mItemsHash;
+
+    mutable QSqlQuery mQuery;
+    QSqlQuery mQueryUpdate;
+    QSqlQuery mQueryCashpoint;
 
     QMap<QString, RequestFactory *> mRequestFactoryMap;
+
+    CashPointRequest *mLastRequest;
 };
 
 #endif // CASHPOINTSQLMODEL_H

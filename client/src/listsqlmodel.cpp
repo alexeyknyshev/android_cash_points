@@ -9,12 +9,28 @@ ListSqlModel::ListSqlModel(const QString &connectionName,
                            QSettings *settings)
     : mApi(api),
       mImageProvider(imageProvider),
-      mSettings(settings)
+      mSettings(settings),
+      mDBConnectionName(connectionName)
 {
-    Q_UNUSED(connectionName);
-    Q_ASSERT_X(api, "ListSqlModel()", "null ServerApi ptr");
-    Q_ASSERT_X(imageProvider, "ListSqlModel()", "null IcoImageProvider ptr");
-    Q_ASSERT_X(settings, "ListSqlModel()", "null QSettiings ptr");
+    Q_ASSERT_X(api, "ListSqlModel(const QString &, ServerApi *, IcoImageProvider *, QSettings *)", "null ServerApi ptr");
+    Q_ASSERT_X(imageProvider, "ListSqlModel(const QString &, ServerApi *, IcoImageProvider *, QSettings *)", "null IcoImageProvider ptr");
+    Q_ASSERT_X(settings, "ListSqlModel(const QString &, ServerApi *, IcoImageProvider *, QSettings *)", "null QSettiings ptr");
+
+    setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
+    setRequestBatchSize(DEFAULT_BATCH_SIZE);
+
+    connect(this, SIGNAL(filterRequest(QString)),
+            this, SLOT(_setFilter(QString)), Qt::QueuedConnection);
+}
+
+ListSqlModel::ListSqlModel(ListSqlModel *submodel)
+    : mDBConnectionName(submodel->getDBConnectionName())
+{
+    Q_ASSERT_X(submodel, "ListSqlModel(ListSqlModel *)", "null ListSqlModel ptr");
+
+    mApi = submodel->getServerApi();
+    mImageProvider = submodel->getIcoImageProvider();
+    mSettings = submodel->getSettings();
 
     setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
     setRequestBatchSize(DEFAULT_BATCH_SIZE);
@@ -25,6 +41,10 @@ ListSqlModel::ListSqlModel(const QString &connectionName,
 
 QString ListSqlModel::escapeFilter(QString filter)
 {
+    if (filter.isEmpty()) {
+//        return "";
+    }
+
     filter.replace('_', "");
     filter.replace('%', "");
     filter.replace('*', '%');

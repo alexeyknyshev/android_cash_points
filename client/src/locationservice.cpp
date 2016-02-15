@@ -7,6 +7,8 @@
 #include <QtPositioning/QGeoRectangle>
 #include <QtPositioning/QGeoCircle>
 
+#include <QtCore/QDebug>
+
 LocationService::LocationService(QObject *parent)
     : QObject(parent)
 { }
@@ -55,5 +57,30 @@ qreal LocationService::getGeoRegionRadius(const QGeoShape &shape) const
 
     return 0.0;
 }
+
+qreal LocationService::getGeoRegionRadiusEstimate(const QGeoCoordinate &from, const QGeoCoordinate &to) const
+{
+    const qreal distance = from.distanceTo(to);
+    qDebug() << "distance: " << distance;
+    return distance;
+}
+/*{
+    if (zoomLevel > 19.0) {
+        return 79.0f;
+    } else if (zoomLevel < 0.0) {
+        return 4929715;
+    }
+
+    static const qreal map[] = { 4929715, 4929715, 4929715, 4929715, 2484252, 1252514,
+                                 632297,  318220,  159704,  80010,   40046,   20033,
+                                 10019,   5010,    2505,    1252,    626,     313,
+                                 157,     79,      79 };
+
+    const int index = (int)std::floor(zoomLevel);
+    const qreal multiplier = zoomLevel - index;
+    const qreal higher = map[index];
+    const qreal lower = map[index + 1];
+    return lower + ( (higher - lower) * multiplier );
+}*/
 
 

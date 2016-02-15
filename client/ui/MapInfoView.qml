@@ -42,6 +42,7 @@ Rectangle {
             PropertyChanges {
                 target: topItem
                 y: shownY
+                height: parent.height - shownY
             }
         },
         State {
@@ -82,6 +83,24 @@ Rectangle {
                 if (running) {
                     visible = true
                 }
+            }
+        },
+        Transition {
+            from: "shown"
+            to: "fullscreen"
+            PropertyAnimation {
+                duration: 500
+                easing.type: Easing.InOutQuart
+                properties: "y, height"
+            }
+        },
+        Transition {
+            from: "fullscreen"
+            to: ""
+            PropertyAnimation {
+                duration: 500
+                easing.type: Easing.InOutQuart
+                properties: "y, height"
             }
         }
     ]

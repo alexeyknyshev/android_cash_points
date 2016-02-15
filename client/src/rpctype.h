@@ -4,12 +4,16 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
+class QStandardItem;
+
 template<typename T>
 struct RpcType
 {
     RpcType()
         : id(0)
     { }
+
+    virtual ~RpcType() { }
 
     quint32 id;
 
@@ -36,6 +40,8 @@ struct RpcType
         }
         return result;
     }
+
+    virtual void fillItem(QStandardItem *out) const = 0;
 };
 
 #endif // RPCTYPE_H

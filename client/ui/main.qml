@@ -25,28 +25,68 @@ ApplicationWindow {
         }
     }
 
+    function saveLastGeoPos() {
+        var pos = mapView.getMapCenter()
+        var zoom = mapView.getMapZoom()
+        cashpointModel.saveLastGeoPos(JSON.stringify({
+                                          "longitude": pos.longitude,
+                                          "latitude": pos.latitude,
+                                          "zoom": zoom,
+                                      }))
+    }
+
+    signal appStateChanged(int state)
+    onAppStateChanged: {
+        console.log("State Changed:" + state.toString())
+        if (state == 2) {
+            saveLastGeoPos()
+        }
+    }
+
     property date lastExitAttempt: new Date()
     property int backExitThreathold: 500
 
-    onClosing: {
-        if (Qt.platform.os == "android") {
-            if (!flipable.flipped) {
-                flipable.flipped = true
-            } else {
-                console.log("exit")
-                var currentTime = new Date()
-                if (currentTime.valueOf() - lastExitAttempt.valueOf() < backExitThreathold) {
-                    close.accepted = true
-                    return
-                }
-                lastExitAttempt = currentTime
+    property var actions: []
 
-                var _ = mapView.aboutToClose()
-            }
-            close.accepted = false
-        } else {
-            close.accepted = mapView.aboutToClose()
+    function handleAction(action, blockSaving) {
+        if (!action) {
+            return true
         }
+
+        if (action.type === "undo") {
+            var lastAction = actions.pop()
+            if (!lastAction) {
+                return false
+            }
+
+            return lastAction.undo(lastAction)
+        } else {
+            var saveAction = action.do(action)
+            if (saveAction && !blockSaving) {
+                if (actions.length > 32) {
+                    actions.shift()
+                }
+                actions.push(action)
+            }
+            return true
+        }
+    }
+
+    onClosing: {
+//        if (Qt.platform.os == "android") {
+        {
+            console.log("exit")
+            var currentTime = new Date()
+            if (currentTime.valueOf() - lastExitAttempt.valueOf() < backExitThreathold) {
+                saveLastGeoPos()
+                close.accepted = true
+                return
+            }
+            lastExitAttempt = currentTime
+        }
+
+        var done = handleAction({ "type": "undo" })
+        close.accepted = !done
     }
 
     Keys.onReleased: {
@@ -58,11 +98,6 @@ ApplicationWindow {
     Flipable {
         id: flipable
         anchors.fill: parent
-        //focus: true
-
-        function onBankListCreated() {
-
-        }
 
         Keys.onEscapePressed: {
             if (flipped) {
@@ -74,7 +109,12 @@ ApplicationWindow {
             console.log("here")
             if (event.key === Qt.Key_Tab) {
                 if (!flipped) {
-                    flipped = !flipped
+                    handleAction({
+                                     "type": "flipBack",
+                                     "do": function(act) {
+                                         flipable.flipped = !flipable.flipped
+                                     }
+                                 }, true)
                 }
             }
         }
@@ -220,6 +260,10 @@ ApplicationWindow {
             showControls: leftMenu.state == "hidden"
             active: !leftMenu.visible
 
+            onAction: {
+                handleAction(action)
+            }
+
             LeftMenu {
                 id: leftMenu
                 x: 0
@@ -230,10 +274,20 @@ ApplicationWindow {
 
                 onItemClicked: {
                     if (itemName && itemName.length > 0) {
-                        ViewLoaderCreator.createViewLoader(function(loader) {
-                            loader.setView(itemName)
-                        })
-                        flipable.flipped = !flipable.flipped
+                        handleAction({
+                                         "type": "openView",
+                                         "do": function(act) {
+                                             ViewLoaderCreator.createViewLoader(function(loader) {
+                                                 loader.setView(itemName)
+                                             })
+                                             flipable.flipped = !flipable.flipped
+                                             return true
+                                         },
+                                         "undo": function(act) {
+                                             flipable.flipped = !flipable.flipped
+                                             return true
+                                         }
+                                     })
                     }
                 }
             }
@@ -260,11 +314,32 @@ ApplicationWindow {
             }
 
             onClicked: {
-                leftMenu.state = "hidden"
+                if (leftMenu.state === "") {
+                    handleAction({
+                                     "type": "hideMenu",
+                                     "do": function(act) {
+                                         leftMenu.state = "hidden"
+                                         return false
+                                     },
+                                     "undo": function(act) {
+                                         return true
+                                     }
+                                 })
+                }
             }
 
             onMenuClicked: {
-                leftMenu.state = ""
+                handleAction({
+                                 "type": "showMenu",
+                                 "do": function(act) {
+                                     leftMenu.state = ""
+                                     return true
+                                 },
+                                 "undo": function(act) {
+                                     leftMenu.state = "hidden"
+                                     return true
+                                 }
+                             })
             }
         }
     }
