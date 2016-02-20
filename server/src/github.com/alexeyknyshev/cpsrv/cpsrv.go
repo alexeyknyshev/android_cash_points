@@ -239,6 +239,7 @@ func main() {
 	router.HandleFunc("/banks", handlerBanksList(tnt)).Methods("GET")
 	router.HandleFunc("/banks", handlerBanksBatch(tnt)).Methods("POST")
 	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints(tnt)).Methods("POST")
+	router.HandleFunc("/nearby/clusters", handlerNearbyClusters(tnt)).Methods("POST")
 
 	port := strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening port: " + port)
