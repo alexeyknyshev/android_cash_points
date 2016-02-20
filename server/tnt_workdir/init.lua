@@ -22,6 +22,7 @@ end
 local cpapi = require('cpapi')
 local townapi = require('townapi')
 local bankapi = require('bankapi')
+local clusterapi = require('clusterapi')
 
 if not box.space.banks then
     local banks = box.schema.space.create('banks')
@@ -72,6 +73,11 @@ if not box.space.cashpoints then
         parts = { 2, 'ARRAY' },
         unique = false,
     })
+--     cashpoints:create_index('secondary', {
+--         type = 'TREE',
+--         parts = { 4, 'NUM',
+--         unique = false,
+--     })
     print('created space: cashpoints')
 else
     print('space already exists: cashpoints')
@@ -91,6 +97,17 @@ if not box.space.clusters then
     print('created space: clusters')
 else
     print('space already exists: clusters')
+end
+
+if not box.space.clusters_cache then
+     local clusters_cache = box.schema.space.create('clusters_cache')
+     clusters_cache:create_index('primary', {
+         type = 'HASH',
+         parts = { 1, 'STR' }
+     })
+     print('created space: clusters_cache')
+else
+     print('space already exists: clusters_cache')
 end
 
 local console = require('console')
