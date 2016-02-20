@@ -28,9 +28,13 @@ bool NearbyClusters::fromJson(const QJsonObject &json)
     const QJsonValue zoom      = json["zoom"];
     const QJsonValue filter    = json["filter"];
 
+    const QJsonValue topLeft =   json["topLeft"];
+    const QJsonValue botRight =  json["bottomRight"];
+
     if (!zoom.isDouble() || !radius.isDouble() ||
         !longitude.isDouble() || !latitude.isDouble() ||
-        !(filter.isObject() || filter.isUndefined()) )
+        !(filter.isObject() || filter.isUndefined()) ||
+        !(topLeft.isObject()) || !botRight.isObject() )
     {
         auto it = data.begin();
         while (it != data.end()) {
@@ -43,6 +47,8 @@ bool NearbyClusters::fromJson(const QJsonObject &json)
     data["latitude"] = latitude;
     data["radius"] = radius;
     data["zoom"] = qRound(zoom.toDouble());
+    data["topLeft"] = topLeft;
+    data["bottomRight"] = botRight;
 
     if (filter.isObject()) {
         data["filter"] = filter;
