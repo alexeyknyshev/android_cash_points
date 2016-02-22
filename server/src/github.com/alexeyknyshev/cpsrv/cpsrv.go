@@ -171,8 +171,8 @@ func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, resp
 
 type EndpointCallback func(w http.ResponseWriter, r *http.Request)
 
-func handlerPing(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerPing(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/ping", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -228,18 +228,18 @@ func main() {
 	defer tnt.Close()
 
 	router := mux.NewRouter()
-	router.HandleFunc("/ping", handlerPing(tnt)).Methods("GET")
-	router.HandleFunc("/cashpoint/{id:[0-9]+}", handlerCashpoint(tnt)).Methods("GET")
-	router.HandleFunc("/cashpoints", handlerCashpointsBatch(tnt)).Methods("POST")
-	router.HandleFunc("/town/{id:[0-9]+}", handlerTown(tnt)).Methods("GET")
-	router.HandleFunc("/towns", handlerTownsBatch(tnt)).Methods("POST")
-	router.HandleFunc("/towns", handlerTownsList(tnt)).Methods("GET")
-	router.HandleFunc("/bank/{id:[0-9]+}", handlerBank(tnt)).Methods("GET")
-	router.HandleFunc("/bank/{id:[0-9]+}/ico", handlerBankIco(serverConfig)).Methods("GET")
-	router.HandleFunc("/banks", handlerBanksList(tnt)).Methods("GET")
-	router.HandleFunc("/banks", handlerBanksBatch(tnt)).Methods("POST")
-	router.HandleFunc("/nearby/cashpoints", handlerNearbyCashPoints(tnt)).Methods("POST")
-	router.HandleFunc("/nearby/clusters", handlerNearbyClusters(tnt)).Methods("POST")
+	router.HandleFunc(handlerPing(tnt)).Methods("GET")
+	router.HandleFunc(handlerCashpoint(tnt)).Methods("GET")
+	router.HandleFunc(handlerCashpointsBatch(tnt)).Methods("POST")
+	router.HandleFunc(handlerTown(tnt)).Methods("GET")
+	router.HandleFunc(handlerTownsBatch(tnt)).Methods("POST")
+	router.HandleFunc(handlerTownsList(tnt)).Methods("GET")
+	router.HandleFunc(handlerBank(tnt)).Methods("GET")
+	router.HandleFunc(handlerBankIco(serverConfig)).Methods("GET")
+	router.HandleFunc(handlerBanksList(tnt)).Methods("GET")
+	router.HandleFunc(handlerBanksBatch(tnt)).Methods("POST")
+	router.HandleFunc(handlerNearbyCashPoints(tnt)).Methods("POST")
+	router.HandleFunc(handlerNearbyClusters(tnt)).Methods("POST")
 
 	port := strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening port: " + port)

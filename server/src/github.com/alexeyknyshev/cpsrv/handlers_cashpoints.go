@@ -10,8 +10,8 @@ import (
 
 var MAX_CLUSTER_COUNT uint64 = 32
 
-func handlerCashpoint(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerCashpoint(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/cashpoint/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -55,8 +55,8 @@ func handlerCashpoint(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerCashpointsBatch(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerCashpointsBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/cashpoints", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -92,8 +92,8 @@ func handlerCashpointsBatch(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerNearbyCashPoints(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerNearbyCashPoints(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/nearby/cashpoints", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -129,8 +129,8 @@ func handlerNearbyCashPoints(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerNearbyClusters(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerNearbyClusters(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/nearby/clusters", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return

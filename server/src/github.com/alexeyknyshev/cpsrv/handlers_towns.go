@@ -8,8 +8,8 @@ import (
 	"strconv"
 )
 
-func handlerTown(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerTown(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/town/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -53,8 +53,8 @@ func handlerTown(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerTownsBatch(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerTownsBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/towns", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -90,8 +90,8 @@ func handlerTownsBatch(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerTownsList(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerTownsList(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/towns", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return

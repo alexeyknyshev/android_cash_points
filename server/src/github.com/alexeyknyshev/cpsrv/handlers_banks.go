@@ -12,8 +12,8 @@ import (
 	"strconv"
 )
 
-func handlerBank(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerBank(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/bank/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -62,8 +62,8 @@ type BankIco struct {
 	IcoData string `json:"ico_data"`
 }
 
-func handlerBankIco(conf ServerConfig) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerBankIco(conf ServerConfig) (string, EndpointCallback) {
+	return "/bank/{id:[0-9]+}/ico", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -100,8 +100,8 @@ func handlerBankIco(conf ServerConfig) EndpointCallback {
 	}
 }
 
-func handlerBanksBatch(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerBanksBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/banks", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
@@ -137,8 +137,8 @@ func handlerBanksBatch(tnt *tarantool.Connection) EndpointCallback {
 	}
 }
 
-func handlerBanksList(tnt *tarantool.Connection) EndpointCallback {
-	return func(w http.ResponseWriter, r *http.Request) {
+func handlerBanksList(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/banks", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
 		if ok == false {
 			return
