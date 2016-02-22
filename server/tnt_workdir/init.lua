@@ -83,6 +83,39 @@ else
     print('space already exists: cashpoints')
 end
 
+-- [patch_id] [cp_id] [user_id] [json_data_string] [timestamp]
+if not box.space.cashpoints_patches then
+    local patches = box.schema.space.create('cashpoints_patches')
+    patches:create_index('primary', { -- patch_id
+        type = 'TREE',
+        parts = { 1, 'NUM' },
+    })
+    patches:create_index('target', { -- cp_id
+        type = 'TREE',
+        parts = { 2, 'NUM', 3, 'NUM' },
+        unique = false,
+    })
+    print('created space: cashpoints_patches')
+else
+    print('space already exists: cashpoints_patches')
+end
+
+-- [vote_id] [patch_id] [user_id] [vote] [timestamp]
+if not box.space.cashpoints_patches_votes then
+    local votes = box.schema.space.create('cashpoints_patches_votes')
+    votes:create_index('primary', { -- vote_id
+        type = 'TREE',
+        parts = { 1, 'NUM' },
+    })
+    votes:create_index('votes', {
+        type = 'TREE',
+        parts = { 2, 'NUM', 3, 'NUM' },
+    })
+    print('created space: cashpoints_patches_votes')
+else
+    print('space already exists: cashpoints_patches_votes')
+end
+
 if not box.space.clusters then
     local clusters = box.schema.space.create('clusters')
     clusters:create_index('primary', {

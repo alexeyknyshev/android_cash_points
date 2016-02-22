@@ -20,6 +20,14 @@ local COL_EUR = 19
 local COL_CASH_IN = 20
 local COL_VERSION = 21
 
+function malformedRequest(err, func)
+    if func then
+        func = func .. ": "
+    else
+        func = ""
+    end
+    return { code = 400, reason =  func .. err }
+end
 
 local function _cashpointTupleToTable(t)
     local cp = {
@@ -57,7 +65,7 @@ function _getCashpointById(cpId)
         return nil
     end
 
-    return _cashpointTupleToTable(t[COL_ID])
+    return _cashpointTupleToTable(t[COL_ID]), t
 end
 
 function getCashpointById(cpId)
@@ -67,6 +75,61 @@ function getCashpointById(cpId)
     end
 end
 
+function getQuadKey(longitude, latitude, zoom)
+    if not longitude or not latitude then
+        return ''
+    end
+
+    local geoRectPart = function(minLon, maxLon, minLat, maxLat, lon, lat)
+        local midLon = (minLon + maxLon) * 0.5
+        local midLat = (minLat + maxLat) * 0.5
+
+        local quad = ""
+        if lat < midLat then
+            maxLat = midLat
+            if lon < midLon then
+                maxLon = midLon
+                quad = '0'
+            else
+                minLon = midLon
+                quad = '1'
+            end
+        else
+            minLat = midLat
+            if lon < midLon then
+                maxLon = midLon
+                quad = '2'
+            else
+                minLon = midLon
+                quad = '3'
+            end
+        end
+
+        return minLon, maxLon, minLat, maxLat, quad
+    end
+
+    local minLon = -180.0
+    local maxLon = 180.0
+
+    local minLat = -90.0
+    local maxLat = 90.0
+
+    if longitude < minLon or maxLon < longitude then
+        return ""
+    end
+
+    if latitude < minLat or maxLat < latitude then
+        return ""
+    end
+
+    quadKey = ""
+    for currentZoom = 0, zoom do
+        local q = ""
+        minLon, maxLon, minLat, maxLat, q = geoRectPart(minLon, maxLon, minLat, maxLat, longitude, latitude)
+        quadKey = quadKey .. q
+    end
+    return quadKey
+end
 
 function getSupportedFilters()
     return {
@@ -105,10 +168,12 @@ function createFilterChain(filter)
         return ""
     end
 
+    local func = "createFilterChain"
+
     local chain = ""
     if filter.bank_id then
         if type(filter.bank_id) ~= 'table' then
-            return "", { code = 400, reason = 'filter.bank_id must be an array' }
+            return "", malformedRequest('filter.bank_id must be an array', func)
         end
 
         -- sort to order ids => prevent bankIdChain variations
@@ -130,7 +195,7 @@ function createFilterChain(filter)
             if type(bankId) == 'number' then
                 chain = ':' .. tostring(math.floor(bankId))
             else
-                return "", { code = 400, reason = 'filter.bank_id contains non-numerical value' }
+                return "",  malformedRequest('filter.bank_id contains non-numerical value', func)
             end
         end
 
@@ -211,35 +276,145 @@ function matchingWithoutWeekend(tuple, filter)
     return true
 end
 
-
 function validateRequest(req, func)
     if not req then
-        return { code = 400, reason = func .. ": malformed request" }
+        return malformedRequest("empty request", func)
     end
 
     local missingReqired = "missing required request field"
     if not req.topLeft then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": topLeft" }
+        return malformedRequest(missingReqired .. ": topLeft", func)
     end
 
     if not req.topLeft.longitude then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": topLeft.longitude" }
+        return malformedRequest(missingReqired .. ": topLeft.longitude", func)
     end
 
     if not req.topLeft.latitude then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": topLeft.latitude" }
+        return malformedRequest(missingReqired .. ": topLeft.latitude", func)
     end
 
     if not req.bottomRight then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": bottomRight" }
+        return malformedRequest(missingReqired .. ": bottomRight", func)
     end
 
     if not req.bottomRight.longitude then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": bottomRight.longitude" }
+        return malformedRequest(missingReqired .. ": bottomRight.longitude", func)
     end
 
     if not req.bottomRight.latitude then
-        return { code = 400, reason = func .. ": " .. missingReqired .. ": bottomRight.latitude" }
+        return malformedRequest(missingReqired .. ": bottomRight.latitude", func)
+    end
+
+    return nil
+end
+
+local function isValidCashpointType(cpType)
+    local avaliableTypes = { "atm", "office", "branch", "cash" }
+    for _, v in ipairs(avaliableTypes) do
+        if cpType == v then
+            return true
+        end
+    end
+    return false
+end
+
+local function isValidCoordinate(longitude, latitude)
+    if type(longitude) ~= 'number' or type(latitude) ~= 'number' then
+        return false
+    end
+
+    if math.abs(latitude) > 90.0 or math.abs(longitude) > 180.0 then
+        return false
+    end
+
+    return true
+end
+
+local function validateCashpointFields(cp, checkRequired, func)
+    local allowedFields = {
+        id = { type = 'number', required = false },
+        type = { type = 'string', required = true },
+        bank_id = { type = 'number', required = true },
+        town_id = { type = 'number', required = true },
+        longitude = { type = 'number', required = true },
+        latitude = { type = 'number', required = true },
+        address = { type = 'string', required = false },
+        address_comment = { type = 'string', required = false },
+        metro_name = { type = 'string', required = false },
+        free_access = { type = 'boolean', required = true },
+        main_office = { type = 'boolean', required = true },
+        without_weekend = { type = 'boolean', required = true },
+        round_the_clock = { type = 'boolean', required = true },
+        works_as_shop = { type = 'boolean', required = true },
+        schedule = { type = 'string', required = false },
+        tel = { type = 'string', required = false },
+        additional = { type = 'string', required = false },
+        rub = { type = 'boolean', required = true },
+        usd = { type = 'boolean', required = true },
+        eur = { type = 'boolean', required = true },
+        cash_in = { type = 'boolean', required = true },
+        version = { type = 'number', required = false },
+        timestamp = { type = 'number', required = false },
+    }
+
+    if checkRequired then
+        for k, v in pairs(allowedFields) do
+            if v.required and cp[k] == nil then
+                return malformedRequest("missing required cashpoint field '" .. tostring(k) .. "'")
+            end
+            if cp[k] ~= nil then
+                local cpKType = type(cp[k])
+                if cpKType ~= v.type then
+                    return malformedRequest("wrong type of cashpoint field '" .. tostring(k) .. "'. " ..
+                                            "Expected '" .. v.type .. "' but got '" .. cpKType .. "'", func)
+                end
+            end
+        end
+    end
+
+    for k, v in pairs(cp) do
+        if allowedFields[k] == nil then -- unknown field
+            return malformedRequest("unknown cashpoint field '" .. tostring(k) .. "'", func)
+        end
+        local fieldType = type(v)
+        local expectedType = allowedFields[k].type
+        if fieldType ~= expectedType then -- type missmatch
+            return malformedRequest("wrong type of cashpoint field '" .. tostring(k) .. "'. Expected '" .. expectedType .. "' but got '" .. fieldType .. "'", func)
+        end
+    end
+end
+
+function validateCashpoint(cp, checkRequired, func)
+    local err = validateCashpointFields(cp, checkRequired, func)
+    if err then
+        return err
+    end
+
+    if cp.bank_id then
+        local t = box.space.banks.index[0]:select{ cp.bank_id }
+        if #t == 0 then
+            return malformedRequest("no such bank_id: " .. tostring(cp.bank_id), func)
+        end
+    end
+
+    if cp.town_id then
+        local t = box.space.towns.index[0]:select{ cp.town_id }
+        if #t == 0 then
+            return malformedRequest("no such town_id: " .. tostring(cp.town_id), func)
+        end
+    end
+
+    if cp.type then
+        if not isValidCashpointType(cp.type) then
+            return malformedRequest("wrong cashpoint type '" .. tostring(cp.type) .. "'", func)
+        end
+    end
+
+    if checkRequired or (cp.longitude and cp.latitude) then
+        if not isValidCoordinate(cp.longitude, cp.latitude) then
+            return malformedRequest("invalid cashpoint coordinate (" .. tostring(cp.longitude) .. ", " .. tostring(cp.latitude) .. ")", func)
+        end
     end
 
     return nil

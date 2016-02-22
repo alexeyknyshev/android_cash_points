@@ -25,15 +25,16 @@ func boolToInt(val bool) uint {
 }
 
 type Town struct {
-	Id             uint32  `json:"id"`
-	Name           string  `json:"name"`
-	NameTr         string  `json:"name_tr"`
-	RegionId       *uint32 `json:"region_id"`
-	RegionalCenter bool    `json:"regional_center"`
-	Latitude       float32 `json:"latitude"`
-	Longitude      float32 `json:"longitude"`
-	Zoom           uint32  `json:"zoom"`
-	Big            bool    `json:"big"`
+	Id              uint32  `json:"id"`
+	Name            string  `json:"name"`
+	NameTr          string  `json:"name_tr"`
+	RegionId        *uint32 `json:"region_id"`
+	RegionalCenter  bool    `json:"regional_center"`
+	Latitude        float32 `json:"latitude"`
+	Longitude       float32 `json:"longitude"`
+	Zoom            uint32  `json:"zoom"`
+	Big             bool    `json:"big"`
+	CashpointsCount uint32  `json:"cashpoints_count"`
 }
 
 type Region struct {
@@ -332,7 +333,7 @@ func migrateMessages(townsDb *sql.DB, tnt *tarantool.Connection) {
 	
 }
 
-func migrateTowns(townsDb *sql.DB, tnt *tarantool.Connection) {
+func migrateTowns(townsDb, cpDb *sql.DB, tnt *tarantool.Connection) {
 	spaceId, err := getTntSpaceId(tnt, "towns")
 	if err != nil {
 		log.Fatalf("cannot get space id: %v", err)
@@ -354,8 +355,15 @@ func migrateTowns(townsDb *sql.DB, tnt *tarantool.Connection) {
 	rows, err := townsDb.Query(`SELECT id, name, name_tr, region_id,
                                        regional_center, latitude,
                                        longitude, zoom, has_emblem FROM towns`)
+
 	if err != nil {
 		log.Fatalf("%s: %v\n", context, err)
+	}
+
+	stmt, err := cpDb.Prepare(`SELECT COUNT(*) FROM cashpoints WHERE town_id = ?`)
+	if err != nil {
+		log.Fatalf("%s: sql prepare error: %v\n", context, err)
+		return
 	}
 
 	currentTownIdx := 1
@@ -366,6 +374,11 @@ func migrateTowns(townsDb *sql.DB, tnt *tarantool.Connection) {
 			&regionId, &town.RegionalCenter,
 			&town.Latitude, &town.Longitude,
 			&town.Zoom, &town.Big)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = stmt.QueryRow(town.Id).Scan(&town.CashpointsCount)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -384,7 +397,7 @@ func migrateTowns(townsDb *sql.DB, tnt *tarantool.Connection) {
 		resp, err := tnt.Insert(spaceId, []interface{}{
 			uint(town.Id), coord, town.Name,
 			town.NameTr, regionId, town.RegionalCenter,
-			town.Zoom, town.Big,
+			town.Zoom, town.Big, town.CashpointsCount,
 		})
 		if err != nil {
 			log.Println("Insert")
@@ -856,7 +869,7 @@ func migrateClustersGeo(tnt *tarantool.Connection, quadKeySet map[string][]uint3
 
 func migrate(townsDb, cpDb, banksDb *sql.DB, tnt *tarantool.Connection) {
 	migrateMessages(townsDb, tnt)
-	migrateTowns(townsDb, tnt)
+	migrateTowns(townsDb, cpDb, tnt)
 	migrateRegions(townsDb, tnt)
 	migrateCashpoints(cpDb, tnt)
 	migrateBanks(banksDb, tnt)

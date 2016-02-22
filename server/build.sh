@@ -13,6 +13,7 @@ go install github.com/alexeyknyshev/cpsrv
 go install github.com/alexeyknyshev/server
 go install github.com/alexeyknyshev/tools/server_sqlite_to_redis
 go install github.com/alexeyknyshev/tools/server_sqlite_to_tarantool
+[ -e "$SCRIPT_DIR/cpsrv" ] && rm "$SCRIPT_DIR/cpsrv"
 [ -e "$SCRIPT_DIR/server" ] && rm "$SCRIPT_DIR/server"
 [ -e "$SCRIPT_DIR/server_sqlite_to_redis" ] && rm "$SCRIPT_DIR/server_sqlite_to_redis"
 [ -e "$SCRIPT_DIR/server_sqlite_to_tarantool" ] && rm "$SCRIPT_DIR/server_sqlite_to_tarantool"
