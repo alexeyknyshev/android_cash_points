@@ -2,23 +2,24 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"encoding/json"
+	"errors"
 	"github.com/gorilla/mux"
+	"github.com/tarantool/go-tarantool"
 	"github.com/yudai/gojsondiff"
 	"github.com/yudai/gojsondiff/formatter"
-	"github.com/tarantool/go-tarantool"
-	"testing"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"testing"
 )
 
 type TestRequest struct {
 	RequestType string
 	EndpointUrl string
-	HandlerUrl string
-	Data string
+	HandlerUrl  string
+	Data        string
 }
 
 type TestResponse struct {
@@ -76,7 +77,7 @@ func tarantoolConnect() (*tarantool.Connection, error) {
 func testRequest(request TestRequest, handler EndpointCallback) *httptest.ResponseRecorder {
 	var req *http.Request = nil
 
-        if request.Data != "" {
+	if request.Data != "" {
 		req, _ = http.NewRequest(request.RequestType, request.EndpointUrl, bytes.NewBufferString(request.Data))
 	} else {
 		req, _ = http.NewRequest(request.RequestType, request.EndpointUrl, nil)
@@ -98,7 +99,7 @@ func testRequest(request TestRequest, handler EndpointCallback) *httptest.Respon
 // ======================================================================
 
 func TestPing(t *testing.T) {
-        tntUrl := "localhost:3301"
+	tntUrl := "localhost:3301"
 	tntOpts := tarantool.Opts{
 		User: "admin",
 		Pass: "admin",
@@ -111,14 +112,14 @@ func TestPing(t *testing.T) {
 	defer tnt.Close()
 
 	url, handler := handlerPing(tnt)
-	request := TestRequest{ RequestType: "GET", EndpointUrl: url }
+	request := TestRequest{RequestType: "GET", EndpointUrl: url}
 	response, err := readResponse(testRequest(request, handler))
 
 	if response.Code != http.StatusOK {
 		t.Errorf("Expected 200 OK but got %d", response.Code)
 	}
 
-	expected := Message{ Text: "pong" }
+	expected := Message{Text: "pong"}
 	expectedJson, _ := json.Marshal(expected)
 
 	diffStr, err := diff(expectedJson, response.Data)
@@ -152,7 +153,7 @@ func TestTown(t *testing.T) {
 	defer tnt.Close()
 
 	url, handler := handlerTown(tnt)
-	request := TestRequest{ RequestType: "GET", EndpointUrl: "/town/4", HandlerUrl: url }
+	request := TestRequest{RequestType: "GET", EndpointUrl: "/town/4", HandlerUrl: url}
 	response, err := readResponse(testRequest(request, handler))
 	if err != nil {
 		t.Errorf("%v", err)
@@ -162,15 +163,15 @@ func TestTown(t *testing.T) {
 	}
 
 	expected := Town{
-		Id: 4,
-		Name: "Москва",
-		NameTr: "Moskva",
-		Longitude: 37.61775970459,
-		Latitude: 55.755771636963,
-		RegionId: 3,
+		Id:             4,
+		Name:           "Москва",
+		NameTr:         "Moskva",
+		Longitude:      37.61775970459,
+		Latitude:       55.755771636963,
+		RegionId:       3,
 		RegionalCenter: true,
-		Big: true,
-		Zoom: 10,
+		Big:            true,
+		Zoom:           10,
 	}
 	expectedJson, _ := json.Marshal(expected)
 
@@ -182,3 +183,157 @@ func TestTown(t *testing.T) {
 		t.Errorf("\n%s", diffStr)
 	}
 }
+
+// ======================================================================
+
+type CashpointResponse struct {
+	Id             uint32  `json:"id"`
+	Longitude      float64 `json:"longitude"`
+	Latitude       float64 `json:"latitude"`
+	Type           string  `json:"type"`
+	BankId         uint32  `json:"bank_id"`
+	TownId         uint32  `json:"town_id"`
+	Address        string  `json:"address"`
+	AddressComment string  `json:"address_comment"`
+	MetroName      string  `json:"metro_name"`
+	FreeAccess     bool    `json:"free_access"`
+	MainOffice     bool    `json:"main_office"`
+	WithoutWeekend bool    `json:"without_weekend"`
+	RoundTheClock  bool    `json:"round_the_clock"`
+	WorksAsShop    bool    `json:"works_as_shop"`
+	Schedule       string  `json:"schedule"`
+	Tel            string  `json:"tel"`
+	Additional     string  `json:"additional"`
+	Rub            bool    `json:"rub"`
+	Usd            bool    `json:"usd"`
+	Eur            bool    `json:"eur"`
+	CashIn         bool    `json:"cash_in"`
+	Version        uint32  `json:"version"`
+	//	Timestamp      uint64  `json:"timestamp"` // TODO: timestamp on server
+	Approved bool `json:"approved"`
+}
+
+type CashpointReq struct {
+}
+
+func TestCashpoint(t *testing.T) {
+	tnt, err := tarantoolConnect()
+	if err != nil {
+		t.Errorf("Connection to tarantool failed: %v", err)
+	}
+	defer tnt.Close()
+
+	url, handler := handlerCashpoint(tnt)
+	var id uint32 = 7138832
+	request := TestRequest{
+		RequestType: "GET",
+		EndpointUrl: "/cashpoint/" + strconv.FormatUint(uint64(id), 10),
+		HandlerUrl:  url,
+	}
+	response, err := readResponse(testRequest(request, handler))
+
+	cp := CashpointResponse{
+		Id:             id,
+		Longitude:      37.562019348145,
+		Latitude:       55.6633644104,
+		Type:           "atm",
+		BankId:         2764,
+		TownId:         4,
+		Address:        "г. Москва, ул. Новочеремушкинская, д. 69",
+		AddressComment: "ОАО «Вниизарубежгеология»",
+		MetroName:      "",
+		FreeAccess:     true,
+		MainOffice:     false,
+		WithoutWeekend: false,
+		RoundTheClock:  false,
+		WorksAsShop:    true,
+		Schedule:       "",
+		Tel:            "",
+		Additional:     "",
+		Rub:            true,
+		Usd:            false,
+		Eur:            false,
+		CashIn:         false,
+		Version:        0,
+		// 		Timestamp: 0,
+		Approved: true,
+	}
+	expectedJson, _ := json.Marshal(cp)
+
+	diffStr, err := diff(expectedJson, response.Data)
+	if err != nil {
+		t.Errorf("Failed to compare json pair: %v", err)
+	}
+	if diffStr != "" {
+		t.Errorf("\n%s", diffStr)
+	}
+}
+
+// ======================================================================
+
+type CashpointRequest struct {
+	Id             uint32  `json:"id,omitempty"`
+	Longitude      float64 `json:"longitude"`
+	Latitude       float64 `json:"latitude"`
+	Type           string  `json:"type"`
+	BankId         uint32  `json:"bank_id"`
+	TownId         uint32  `json:"town_id"`
+	Address        string  `json:"address"`
+	AddressComment string  `json:"address_comment"`
+	MetroName      string  `json:"metro_name"`
+	FreeAccess     bool    `json:"free_access"`
+	MainOffice     bool    `json:"main_office"`
+	WithoutWeekend bool    `json:"without_weekend"`
+	RoundTheClock  bool    `json:"round_the_clock"`
+	WorksAsShop    bool    `json:"works_as_shop"`
+	Schedule       string  `json:"schedule"`
+	Tel            string  `json:"tel"`
+	Additional     string  `json:"additional"`
+	Rub            bool    `json:"rub"`
+	Usd            bool    `json:"usd"`
+	Eur            bool    `json:"eur"`
+	CashIn         bool    `json:"cash_in"`
+}
+
+/*
+func TestCashpointCreate(t *testing.T) {
+	tnt, err := tarantoolConnect()
+	if err != nil {
+		t.Errorf("Connection to tarantool failed: %v", err)
+	}
+	defer tnt.Close()
+
+	cp := Cashpoint{
+		Longitude: 37.62644,
+		Latitude: 55.75302,
+		Type: "atm",
+		BankId: 322, // Sberbank
+		TownId: 4, // Moscow
+		Address: "",
+		AddressComment: "",
+//		MetroName: "",
+		FreeAccess: true,
+		MainOffice: false,
+		WithoutWeekend: true,
+		RoundTheClock: false,
+		WorksAsShop: false,
+		Schedule: "",
+		Tel: "",
+		Additional: "",
+		Rub: true,
+		Usd: false,
+		Eur: false,
+		CashIn: true,
+	}
+	cpJson, _ := json.Marshal(cp)
+	request := TestRequest{ RequestType: "POST", EndpointUrl: "/cashpoint", HandlerUrl: url, Data: string(cpJson) }
+
+	url, handler := handlerCashpointCreate(tnt)
+	response, err := readResponse(testRequest(request, handler))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	if response.Code != http.Status
+}*/
+
+// TODO: approved hack test
