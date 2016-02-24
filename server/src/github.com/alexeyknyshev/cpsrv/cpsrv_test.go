@@ -273,13 +273,7 @@ func TestCashpoint(t *testing.T) {
 	}
 	expectedJson, _ := json.Marshal(cp)
 
-	diffStr, err := diff(expectedJson, response.Data)
-	if err != nil {
-		t.Errorf("Failed to compare json pair: %v", err)
-	}
-	if diffStr != "" {
-		t.Errorf("\n%s", diffStr)
-	}
+	checkJsonResponse(t, response.Data, expectedJson)
 }
 
 // ======================================================================
@@ -403,9 +397,7 @@ func TestQuadTreeBranch(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if response.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusOK)
 
 	// test short quadkey
 	request.EndpointUrl = "/quadtree/branch/3201323213002"
@@ -414,9 +406,7 @@ func TestQuadTreeBranch(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if response.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusOK)
 
 	// test empty quadkey
 	request.EndpointUrl = "/quadtree/branch/"
@@ -425,9 +415,7 @@ func TestQuadTreeBranch(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if response.Code != http.StatusNotFound {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusNotFound)
 
 	// test too long quadkey
 	request.EndpointUrl = "/quadtree/branch/320132321300211100"
@@ -436,9 +424,7 @@ func TestQuadTreeBranch(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if response.Code != http.StatusBadRequest {
-		t.Errorf("Expected 400 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusBadRequest)
 
 	// test wrong quadkey
 	request.EndpointUrl = "/quadtree/branch/3201323253002023"
@@ -447,9 +433,7 @@ func TestQuadTreeBranch(t *testing.T) {
 		t.Errorf("%v", err)
 	}
 
-	if response.Code != http.StatusNotFound {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusNotFound)
 }
 
 // ======================================================================
@@ -507,9 +491,7 @@ func TestCashpointCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	if response.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusOK)
 
 	var cashpointId uint64 = 0
 	err = json.Unmarshal(response.Data, &cashpointId)
@@ -530,9 +512,7 @@ func TestCashpointCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	if response.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusOK)
 
 	// try to get deleted cashpoint
 
@@ -547,9 +527,7 @@ func TestCashpointCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	if response.Code != http.StatusNotFound {
-		t.Errorf("Expected 404 Not Found but got %d", response.Code)
-	}
+	checkHttpCode(t, response.Code, http.StatusNotFound)
 }
 
 // TODO: approved hack test
