@@ -1,24 +1,36 @@
-local COL_ID = 1
-local COL_COORD = 2
-local COL_TYPE = 3
-local COL_BANK_ID = 4
-local COL_TOWN_ID = 5
-local COL_ADDRESS = 6
-local COL_ADDRESS_COMMENT = 7
-local COL_METRO_NAME = 8
-local COL_FREE_ACCESS = 9
-local COL_MAIN_OFFICE = 10
-local COL_WITHOUT_WEEKEND = 11
-local COL_ROUND_THE_CLOCK = 12
-local COL_WORKS_AS_SHOP = 13
-local COL_SCHEDULE = 14
-local COL_TEL = 15
-local COL_ADDITIONAL = 16
-local COL_RUB = 17
-local COL_USD = 18
-local COL_EUR = 19
-local COL_CASH_IN = 20
-local COL_VERSION = 21
+local COL_CP_ID = 1
+local COL_CP_COORD = 2
+local COL_CP_TYPE = 3
+local COL_CP_BANK_ID = 4
+local COL_CP_TOWN_ID = 5
+local COL_CP_ADDRESS = 6
+local COL_CP_ADDRESS_COMMENT = 7
+local COL_CP_METRO_NAME = 8
+local COL_CP_FREE_ACCESS = 9
+local COL_CP_MAIN_OFFICE = 10
+local COL_CP_WITHOUT_WEEKEND = 11
+local COL_CP_ROUND_THE_CLOCK = 12
+local COL_CP_WORKS_AS_SHOP = 13
+local COL_CP_SCHEDULE = 14
+local COL_CP_TEL = 15
+local COL_CP_ADDITIONAL = 16
+local COL_CP_RUB = 17
+local COL_CP_USD = 18
+local COL_CP_EUR = 19
+local COL_CP_CASH_IN = 20
+local COL_CP_VERSION = 21
+local COL_CP_TIMESTAMP = 22
+local COL_CP_APPROVED = 23
+
+local COL_TOWN_CP_COUNT = 9
+
+local COL_CLUSTER_ID = 1
+local COL_CLUSTER_COORD = 2
+local COL_CLUSTER_MEMBERS = 3
+local COL_CLUSTER_SIZE = 4
+
+local CLUSTER_ZOOM_MIN = 10
+local CLUSTER_ZOOM_MAX = 16
 
 function malformedRequest(err, func)
     if func then
@@ -31,32 +43,45 @@ end
 
 local function _cashpointTupleToTable(t)
     local cp = {
-        id = t[COL_ID],
-        longitude = t[COL_COORD][1],
-        latitude = t[COL_COORD][2],
-        type = t[COL_TYPE],
-        bank_id = t[COL_BANK_ID],
-        town_id = t[COL_TOWN_ID],
-        address = t[COL_ADDRESS],
-        address_comment = t[COL_ADDRESS_COMMENT],
-        metro_name = t[COL_METRO_NAME],
-        free_access = t[COL_FREE_ACCESS],
-        main_office = t[COL_MAIN_OFFICE],
-        without_weekend = t[COL_WITHOUT_WEEKEND],
-        round_the_clock = t[COL_ROUND_THE_CLOCK],
-        works_as_shop = t[COL_WORKS_AS_SHOP],
-        schedule = t[COL_SCHEDULE],
-        tel = t[COL_TEL],
-        additional = t[COL_ADDITIONAL],
-        rub = t[COL_RUB],
-        usd = t[COL_USD],
-        eur = t[COL_EUR],
-        cash_in = t[COL_CASH_IN],
-        version = t[COL_VERSION],
--- TODO: timestamp
+        id = t[COL_CP_ID],
+        longitude = t[COL_CP_COORD][1],
+        latitude = t[COL_CP_COORD][2],
+        type = t[COL_CP_TYPE],
+        bank_id = t[COL_CP_BANK_ID],
+        town_id = t[COL_CP_TOWN_ID],
+        address = t[COL_CP_ADDRESS],
+        address_comment = t[COL_CP_ADDRESS_COMMENT],
+        metro_name = t[COL_CP_METRO_NAME],
+        free_access = t[COL_CP_FREE_ACCESS],
+        main_office = t[COL_CP_MAIN_OFFICE],
+        without_weekend = t[COL_CP_WITHOUT_WEEKEND],
+        round_the_clock = t[COL_CP_ROUND_THE_CLOCK],
+        works_as_shop = t[COL_CP_WORKS_AS_SHOP],
+        schedule = t[COL_CP_SCHEDULE],
+        tel = t[COL_CP_TEL],
+        additional = t[COL_CP_ADDITIONAL],
+        rub = t[COL_CP_RUB],
+        usd = t[COL_CP_USD],
+        eur = t[COL_CP_EUR],
+        cash_in = t[COL_CP_CASH_IN],
+        version = t[COL_CP_VERSION],
+        timestamp = t[COL_CP_TIMESTAMP],
+        approved = t[COL_CP_APPROVED] or true,
     }
 
     return cp
+end
+
+local function _clusterTupleToTable(t)
+    local cluster = {
+        id = t[COL_CLUSTER_ID],
+        longitude = t[COL_CLUSTER_COORD][1],
+        latitude = t[COL_CLUSTER_COORD][2],
+        members = t[COL_CLUSTER_MEMBERS],
+        size = t[COL_CLUSTER_SIZE],
+    }
+
+    return cluster
 end
 
 function _getCashpointById(cpId)
@@ -65,7 +90,9 @@ function _getCashpointById(cpId)
         return nil
     end
 
-    return _cashpointTupleToTable(t[COL_ID]), t
+    local tuple = t[1]
+
+    return _cashpointTupleToTable(tuple)
 end
 
 function getCashpointById(cpId)
@@ -73,6 +100,198 @@ function getCashpointById(cpId)
     if cp then
         return json.encode(cp)
     end
+
+    return ""
+end
+
+-- TODO: set access control
+function deleteCashpointById(cpId)
+    local func = "deleteCashpointById"
+    print(func)
+    local tuple = box.space.cashpoints.index[0]:delete(cpId)
+    if tuple then
+        print("Found cashpoint by id: " .. tostring(cpId))
+        local quadKey = getQuadKey(tuple[COL_CP_COORD][1], tuple[COL_CP_COORD][2])
+        if quadKey:len() == 0 then
+            return false
+        end
+        if not _deleteCashpointFromQuadTree(tuple[COL_CP_ID], quadKey) then
+            -- TODO: log warning
+            print("Cashpoint has been deleted but has not found in quadtree")
+        end
+        if tuple[COL_CP_APPROVED] == true then -- dec town cashpoint count only if cashpoint has been commited
+            box.space.towns:update(cp.town_id, {{ '-',  COL_TOWN_CP_COUNT, 1 }})
+        end
+
+        _deleteCashpointPatches(cpId)
+        return true
+    end
+    print("Cannot find cashpoint by id: " .. tostring(cpId))
+    return false
+end
+
+function _deleteCashpointPatchById(patchId)
+    local votes = box.space.cashpoints_patches_votes.index[1]:select{ patchId }
+    for _, vote in pairs(votes) do
+        local voteId = vote[1]
+        box.space.cashpoints_patches_votes:delete{ voteId }
+        print("deleted vote " .. tostring(voteId) .. " for patch " .. tostring(patchId))
+    end
+    box.space.cashpoints_patches:delete{ patchId }
+    print("deleted patch " .. tostring(patchId))
+end
+
+function _deleteCashpointPatches(cpId)
+    local patches = box.space.cashpoints_patches.index[1]:select{ cpId }
+    for _, patch in pairs(patches) do
+        _deleteCashpointPatchById(patch[1])
+    end
+end
+
+function _insertCashpointIntoQuadTree(cp, quadKey)
+    for zoom = CLUSTER_ZOOM_MIN, CLUSTER_ZOOM_MAX do
+        local quadPrefix = quadKey:sub(1, zoom)
+        _insertCashpointIntoQuadKey(cp, quadPrefix)
+    end
+end
+
+function _deleteCashpointFromQuadTree(cpId, quadKey)
+    local deleted = false
+    for zoom = CLUSTER_ZOOM_MAX, CLUSTER_ZOOM_MIN, -1 do
+        local quadPrefix = quadKey:sub(1, zoom)
+        if not _deleteCashpointFromQuadKey(cpId, quadPrefix) then
+            break
+        end
+        deleted = true
+    end
+    return deleted
+end
+
+-- Insert cashpoint exactly into passed quadKey
+function _insertCashpointIntoQuadKey(cp, quadKey)
+    local cluster = _getClusterById(quadKey)
+
+    if cluster then -- cluster already exists
+        cluster = _recalcClusterCoords(cluster)
+
+        cluster.members[#cluster.members + 1] = cp.id
+        cluster.size = cluster.size + 1
+
+        cluster.longitude = (cluster.longitude + cp.longitude) / cluster.size
+        cluster.latitude  = (cluster.latitude  + cp.latitude)  / cluster.size
+
+        box.space.clusters:replace{
+            quadKey,
+            { cluster.longitude, cluster.latitude },
+            cluster.members,
+            cluster.size,
+        }
+    else -- no such cluster, need to create one
+        box.space.clusters:insert{
+            quadKey,
+            { cp.longitude, cp.latitude },
+            { cp.id },
+            1,
+        }
+    end
+end
+
+-- Remove cashpoint exactly from passed quadKey
+function _deleteCashpointFromQuadKey(cpId, quadKey)
+    local cluster = _getClusterById(quadKey)
+
+    local deleted = false
+    if cluster then
+        for j = 1, #cluster.members do
+            if cluster.members[j] == cpId then
+                table.remove(cluster.members, j)
+                deleted = true
+                break
+            end
+        end
+    else -- no such cluster, assuming that deleting was successfull
+        deleted = true
+    end
+
+    if deleted and cluster then
+        cluster = _recalcClusterCoords(cluster)
+        if cluster.size > 0 then
+            cluster.longitude = cluster.longitude / cluster.size
+            cluster.latitude  = cluster.latitude  / cluster.size
+
+            box.space.clusters:replace{
+                cluster.id,
+                { cluster.longitude, cluster.latitude },
+                cluster.members,
+                cluster.size,
+            }
+        else -- delete empty cluster
+            box.space.clusters:delete(cluster.id)
+        end
+    end
+
+    return deleted
+end
+
+-- WARNING: This function does NOT avg coord
+function _recalcClusterCoords(cluster)
+    cluster.longitude = 0.0
+    cluster.latitude  = 0.0
+    cluster.size      = 0
+
+    for _, member in pairs(cluster.members) do
+        local cp = _getCashpointById(member)
+        if cashpoint then
+            cluster.longitude = cluster.longitude + cp.longitude
+            cluster.latitude  = cluster.latitude  + cp.latitude
+            cluster.size      = cluster.size + 1
+        end
+    end
+
+    return cluster
+end
+
+function _changeCashpointQuadKey(cp, oldQuadKey, newQuadKey)
+    for zoom = CLUSTER_ZOOM_MIN, CLUSTER_ZOOM_MAX do
+        local newQuadPrefix = newQuadKey:sub(1, zoom)
+        local oldQuadPrefix = oldQuadKey:sub(1, zoom)
+        if newQuadPrefix ~= oldQuadPrefix then
+            _deleteCashpointFromQuadKey(cp, oldQuadPrefix)
+            _insertCashpointIntoQuadKey(cp, newQuadPrefix)
+        end
+    end
+end
+
+function _getClusterById(clusterId)
+    local t = box.space.clusters.index[0]:select(clusterId)
+    if #t == 0 then
+        return nil
+    end
+
+    local tuple = t[1]
+
+    return _clusterTupleToTable(tuple)
+end
+
+function getClusterById(clusterId)
+    local cluster = _getClusterById(clusterId)
+    if cluster then
+        return json.encode(cluster)
+    end
+
+    return ""
+end
+
+function getQuadKeyFromCoord(reqJson)
+    local req = json.decode(reqJson)
+    if req then
+        local quadkey = getQuadKey(req.longitude, req.latitude, req.zoom)
+        if quadkey:len() > 0 then
+            return json.encode({ quadkey = quadkey })
+        end
+    end
+
+    return ""
 end
 
 function getQuadKey(longitude, latitude, zoom)
@@ -122,13 +341,29 @@ function getQuadKey(longitude, latitude, zoom)
         return ""
     end
 
-    quadKey = ""
-    for currentZoom = 0, zoom do
+    zoom = zoom or CLUSTER_ZOOM_MAX -- use maximum zoom by default
+    zoom = math.floor(zoom)
+
+    if zoom < CLUSTER_ZOOM_MIN or zoom > CLUSTER_ZOOM_MAX then
+        return ""
+    end
+
+    local quadKey = ""
+    for currentZoom = 1, zoom do
         local q = ""
         minLon, maxLon, minLat, maxLat, q = geoRectPart(minLon, maxLon, minLat, maxLat, longitude, latitude)
         quadKey = quadKey .. q
     end
     return quadKey
+end
+
+function getQuadTreeBranch(quadKey)
+    local result = {}
+    for zoom = CLUSTER_ZOOM_MIN, #quadKey do
+        local quadPrefix = quadKey:sub(1, zoom)
+        result[#result + 1] = _getClusterById(quadPrefix)
+    end
+    return json.encode(setmetatable(result, { __serialize = "seq" }))
 end
 
 function getSupportedFilters()
@@ -219,7 +454,7 @@ function matchingBankFilter(tuple, filter)
     end
 
     for _, id in ipairs(filter.bank_id) do
-        if tuple[COL_BANK_ID] == id then
+        if tuple[COL_CP_BANK_ID] == id then
             return true
         end
     end
@@ -229,51 +464,63 @@ end
 
 function matchingTypeFilter(tuple, filter)
     if filter.type ~= nil then
-        return tuple[COL_TYPE] == filter.type
+        return tuple[COL_CP_TYPE] == filter.type
     end
     return true
 end
 
 function matchingFreeAccess(tuple, filter)
     if filter.free_access ~= nil then
-        return tuple[COL_FREE_ACCESS] == filter.free_access
+        return tuple[COL_CP_FREE_ACCESS] == filter.free_access
     end
     return true
 end
 
 function matchingRubFilter(tuple, filter)
     if filter.rub ~= nil then
-        return tuple[COL_RUB] == filter.rub
+        return tuple[COL_CP_RUB] == filter.rub
     end
     return true
 end
 
 function matchingUsdFilter(tuple, filter)
     if filter.usd ~= nil then
-        return tuple[COL_USD] == filter.usd
+        return tuple[COL_CP_USD] == filter.usd
     end
     return true
 end
 
 function matchingEurFilter(tuple, filter)
     if filter.eur ~= nil then
-        return tuple[COL_EUR] == filter.eur
+        return tuple[COL_CP_EUR] == filter.eur
     end
     return true
 end
 
 function matchingRoundTheClock(tuple, filter)
     if filter.round_the_clock ~= nil then
-        return tuple[COL_ROUND_THE_CLOCK] == filter.round_the_clock
+        return tuple[COL_CP_ROUND_THE_CLOCK] == filter.round_the_clock
     end
     return true
 end
 
 function matchingWithoutWeekend(tuple, filter)
     if filter.without_weekend ~= nil then
-        return tuple[COL_WITHOUT_WEEKEND] == filter.without_weekend
+        return tuple[COL_CP_WITHOUT_WEEKEND] == filter.without_weekend
     end
     return true
+end
+
+function matchingApproved(tuple, filter)
+    local approved = false
+    if tuple[COL_CP_APPROVED] ~= nil then
+        approved = tuple[COL_CP_APPROVED]
+    end
+
+    if filter.approved ~= nil then
+        return approved == filter.approved
+    end
+    return approved
 end
 
 function validateRequest(req, func)

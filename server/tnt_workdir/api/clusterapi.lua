@@ -13,7 +13,8 @@ local TOWN_ID = 1
 local TOWN_COORD = 2
 local TOWN_CASHPOINTS_COUNT = 9
 
-local MIN_CLUSTER_ZOOM = 10
+local CLUSTER_ZOOM_MIN = 10
+local CLUSTER_ZOOM_MAX = 16
 
 function getNearbyClusters(reqJson, countLimit)
     local fund = "getNearbyClusters"
@@ -32,7 +33,7 @@ function getNearbyClusters(reqJson, countLimit)
         return nil
     end
 
-    if req.zoom < MIN_CLUSTER_ZOOM then
+    if req.zoom < CLUSTER_ZOOM_MIN then
         return _getNearbyTownClusters(req, countLimit)
     else
         return _getNearbyQuadClusters(req)
@@ -52,6 +53,7 @@ function _getNearbyQuadClusters(req)
         matchingRoundTheClock,
         matchingWithoutWeekend,
         matchingFreeAccess,
+        matchingApproved,
     }
 
     local result = {}
@@ -104,9 +106,9 @@ function _getNearbyQuadClusters(req)
             if cluster.size > 0 then
                 if cluster.size == 1 and lastCpId then
                     result[#result + 1] = _getCashpointById(lastCpId)
-		else
+                else
                     result[#result + 1] = cluster
-		end
+                end
             end
         end
 

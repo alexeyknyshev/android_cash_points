@@ -2,27 +2,29 @@ json = require('json')
 local fiber = require('fiber')
 local common = require('common')
 
-local COL_ID = 1
-local COL_COORD = 2
-local COL_TYPE = 3
-local COL_BANK_ID = 4
-local COL_TOWN_ID = 5
-local COL_ADDRESS = 6
-local COL_ADDRESS_COMMENT = 7
-local COL_METRO_NAME = 8
-local COL_FREE_ACCESS = 9
-local COL_MAIN_OFFICE = 10
-local COL_WITHOUT_WEEKEND = 11
-local COL_ROUND_THE_CLOCK = 12
-local COL_WORKS_AS_SHOP = 13
-local COL_SCHEDULE = 14
-local COL_TEL = 15
-local COL_ADDITIONAL = 16
-local COL_RUB = 17
-local COL_USD = 18
-local COL_EUR = 19
-local COL_CASH_IN = 20
-local COL_VERSION = 21
+local COL_CP_ID = 1
+--local COL_CP_COORD = 2
+--local COL_TYPE = 3
+--local COL_BANK_ID = 4
+--local COL_TOWN_ID = 5
+--local COL_ADDRESS = 6
+--local COL_ADDRESS_COMMENT = 7
+--local COL_METRO_NAME = 8
+--local COL_FREE_ACCESS = 9
+--local COL_MAIN_OFFICE = 10
+--local COL_WITHOUT_WEEKEND = 11
+--local COL_ROUND_THE_CLOCK = 12
+--local COL_WORKS_AS_SHOP = 13
+--local COL_SCHEDULE = 14
+--local COL_TEL = 15
+--local COL_ADDITIONAL = 16
+--local COL_RUB = 17
+--local COL_USD = 18
+--local COL_EUR = 19
+--local COL_CASH_IN = 20
+--local COL_VERSION = 21
+--local COL_CP_TIMESTAMP = 22
+local COL_CP_APPROVED = 23
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -103,7 +105,8 @@ function getNearbyCashpoints(reqJson)
         matchingRoundTheClock,
         matchingWithoutWeekend,
         matchingFreeAccess,
-    } 
+        matchingApproved,
+    }
 
     local result = {}
 
@@ -121,7 +124,7 @@ function getNearbyCashpoints(reqJson)
         end
 
         if matching then
-            result[#result + 1] = tuple[COL_ID]
+            result[#result + 1] = tuple[COL_CP_ID]
         end
     end
 
@@ -139,8 +142,21 @@ local function updateOldCp(old, new)
     return old, dataChanged
 end
 
+local function isCashpointPatchTable(cp)
+    for k, _ in pairs(cp) do
+        if k ~= 'id' then
+            return true
+        end
+    end
+    return false
+end
+
+-- return id of created / updated cashpoint if success, 0 otherwise
 function cashpointCommit(reqJson)
     local func = "cashpointCommit"
+    local timestamp = fiber.time64()
+
+    print(func)
 
     local cp = json.decode(reqJson)
 
@@ -148,28 +164,32 @@ function cashpointCommit(reqJson)
         local err = validateCashpoint(cp, false, func)
         if err then
             box.error(err)
-            return false
+            return 0
         end
 
-        local oldCp, t = _getCashpointById(cp.id)
+        local oldCp = _getCashpointById(cp.id)
         if not oldCp then
             box.error(malformedRequest("attempt to edit non existing cashpoint with id: " .. tostring(cp.id)), func)
-            return false
+            return 0
+        end
+
+        if not isCashpointPatchTable(cp) then -- req is not patch, it is mark of new cashpoint
+            box.space.cashpoints:update(cp.id, {{ "=", COL_CP_APPROVED, true }})
+            box.space.towns:update(oldCp.town_id, {{ '+', COL_TOWN_CP_COUNT, 1 }})
+            return cp.id
         end
 
         if cp.longitude and cp.latitude then -- coordinates changed
-            local oldQuadKey = getQuadKey(oldCp.longitude, oldCp.latitude, 15)
-            local newQuadKey = getQuadKey(cp.longitude, cp.latitude, 15)
+            local oldQuadKey = getQuadKey(oldCp.longitude, oldCp.latitude)
+            local newQuadKey = getQuadKey(cp.longitude, cp.latitude)
 
             if newQuadKey:len() == 0 then
                 box.error(malformedRequest("invalid coordinates of cashpoint: (" .. tostring(cp.longitude) .. ", " .. tostring(cp.latitude) .. ")"), func)
-                return false
+                return 0
             end
 
             if oldQuadKey ~= newQuadKey then -- quadkey changed
-                -- TODO: update quadkeys
-                box.error{ code = 404, reason = "quadkey update is not implemented yet!" }
-                return false
+                _changeCashpointQuadKey(cp, oldQuadKey, newQuadKey)
             end
         end
 
@@ -181,90 +201,130 @@ function cashpointCommit(reqJson)
         local updated = false
         cp, updated = updateOldCp(oldCp, cp)
         if not updated then
-            return false
+            return 0
         end
+        cp.version = (cp.version or 0) + 1
+        local approved = true
+
+        box.space.cashpoints:replace{
+            cp.id, { cp.longitude, cp.latitude }, cp.type, cp.bank_id, cp.town_id,
+            cp.address, cp.address_comment, cp.metro_name, cp.free_access,
+            cp.main_office, cp.without_weekend, cp.round_the_clock,
+            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
+            cp.usd, cp.eur, cp.cash_in, cp.version, timestamp, approved,
+        }
+
+        return cp.id
     else -- creating new cashpoint
+        print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
+            print(func .. ": validation failed")
             box.error(err)
-            return false
+            return 0
         end
 
-        local quadkey = getQuadKey(cp.longitude, cp.latitude, 15)
-        if quadkey:len() == 0 then
+        local quadKey = getQuadKey(cp.longitude, cp.latitude)
+        if quadKey:len() == 0 then
+            print(func .. ": generation quadkey failed")
             box.error(malformedRequest("invalid coordinates of cashpoint: (" .. tostring(cp.longitude) .. ", " .. tostring(cp.latitude) .. ")"), func)
-            return false
+            return 0
         end
 
-        -- TODO: update quadtree
+        print(func .. ": got quadKey for new cashpoint: " .. quadKey)
+        local version = 0
+        local approved = false
+        local tuple = box.space.cashpoints:auto_increment{
+            { cp.longitude, cp.latitude }, cp.type, cp.bank_id, cp.town_id,
+            cp.address, cp.address_comment, cp.metro_name, cp.free_access,
+            cp.main_office, cp.without_weekend, cp.round_the_clock,
+            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
+            cp.usd, cp.eur, cp.cash_in, version, timestamp, approved,
+        }
+        cp.id = tuple[COL_CP_ID]
 
-        box.space.towns:update(cp.town_id, {{ '+', COL_TOWN_CP_COUNT, 1 }})
-        -- TODO: creating new cashpoint
+        _insertCashpointIntoQuadTree(cp, quadKey)
+
+        --box.space.towns:update(cp.town_id, {{ '+', COL_TOWN_CP_COUNT, 1 }})
+        local patch = { id = cp.id }
+        local patchTuple = box.space.cashpoints_patches:auto_increment{ cp.id, json.encode(patch), timestamp } -- patch is unique (due to unique cp.id)
+        print(func .. ": created patch for cashpoint: " .. tostring(patchTuple[1]))
+        return cp.id
     end
-
-    return true
 end
 
+-- return id of created / pached cashpoint if success, 0 otherwise
 function cashpointProposePatch(reqJson)
     local func = "cashpointProposePatch"
     local timestamp = fiber.time64()
+
+    print(func)
 
     local req = json.decode(reqJson)
 
     local userId = req.user_id
     if not userId then
-        return false
+        box.error(malformedRequest("missing required field user_id in request", func))
+        return 0
     end
     -- TODO: check session exists
 
     local cp = req.data
     if not cp then
-        return false
+        box.error(malformedRequest("missing required field data in request", func))
+        return 0
     end
-
-    local cpId = INT32_MAX
 
     if cp.id then -- editing existing cashpoint
         local err = validateCashpoint(cp, false, func)
         if err then
-            return false
+            return 0
         end
 
-        cpId = cp.id
+        local cpId = cp.id
         cp.id = nil -- don't save cashpoint id in patch
 
-        local oldCp, t = _getCashpointById(cp.id)
+        local oldCp = _getCashpointById(cp.id)
         if not oldCp then
-            return false
+            return 0
         end
 
         local updated = false
         updatedCp, updated = updateOldCp(oldCp, cp)
         if not updated then
-            return false
+            return 0
         end
+
+        -- TODO: transaction here?
+        local t = box.space.cashpoints_patches.index[1]:select{ cpId }
+
+        reqJson = json.encode(cp)
+        for _, tuple in pairs(t) do
+            if reqJson == tuple[COL_CP_PATCH_DATA] then -- same patch already exists
+                return 0
+            end
+        end
+
+        box.space.cashpoints_patches:auto_increment{ cpId, userId, reqJson, timestamp }
+        return cpId
     else -- creating new cashpoint
+        print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
-            return false
+            print(func .. ": validation failed")
+            return 0
         end
-    end
 
-    local t = box.space.cashpoints_patches.index[1]:select{ cpId }
-
-    reqJson = json.encode(cp)
-    for _, tuple in pairs(t) do
-        if reqJson == tuple[COL_CP_PATCH_DATA] then -- same patch already exists
-            return false
+        box.begin()
+        local id = cashpointCommit(json.encode(cp))
+        if id > 0 then
+            box.commit()
+        else
+            box.rollback()
         end
-    end
 
---     print('before auto_increment: ' .. tostring(cpId) .. ', type = ' .. type(cpId))
---     if cp then
---         return true
---     end
-    box.space.cashpoints_patches:auto_increment{ cpId, userId, reqJson, timestamp }
-    return true
+        return id
+    end
 end
 
 function getCashpointPatches(cpId)
@@ -276,8 +336,8 @@ function getCashpointPatches(cpId)
 
     local result = {}
     for _, tuple in pairs(t) do
-        local patchId = tuple[1]
-        local cpPatchJson = tuple[3]
+        local patchId = tuple[COL_CP_PATCH_ID]
+        local cpPatchJson = tuple[COL_CP_PATCH_DATA]
         local cp = json.decode(cpPatchJson)
         if cp then
             result[patchId] = cp
@@ -366,12 +426,18 @@ function cashpointVotePatch(reqJson)
         return false
     end
 
+    box.begin()
     box.space.cashpoints_patches_votes:auto_increment{ vote.patch_id, vote.user_id, vote.score }
     if isCashpointPatchApproved(vote.patch_id) then
-        if not cashpointCommit(patchTuple[COL_CP_PATCH_DATA]) then
+        if cashpointCommit(patchTuple[COL_CP_PATCH_DATA]) == 0 then
+            box.rollback()
             box.error{ code = 400, reason = "cannot commit approved cashpoint patch" }
             return false
         end
+        -- TODO: deleting and archiving patches
+        --box.space.cashpoints_patches_votes:delete{ vote.patch_id }
     end
+    box.commit()
+
     return true
 end
