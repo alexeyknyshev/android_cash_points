@@ -230,6 +230,7 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc(handlerPing(tnt)).Methods("GET")
 	router.HandleFunc(handlerCashpoint(tnt)).Methods("GET")
+	router.HandleFunc(handlerCashpointCreate(tnt)).Methods("POST")
 	router.HandleFunc(handlerCashpointsBatch(tnt)).Methods("POST")
 	router.HandleFunc(handlerTown(tnt)).Methods("GET")
 	router.HandleFunc(handlerTownsBatch(tnt)).Methods("POST")
@@ -240,6 +241,12 @@ func main() {
 	router.HandleFunc(handlerBanksBatch(tnt)).Methods("POST")
 	router.HandleFunc(handlerNearbyCashPoints(tnt)).Methods("POST")
 	router.HandleFunc(handlerNearbyClusters(tnt)).Methods("POST")
+
+	if serverConfig.TestingMode {
+		router.HandleFunc(handlerCoordToQuadKey(tnt)).Methods("POST")
+		router.HandleFunc(handlerQuadTreeBranch(tnt)).Methods("GET")
+		router.HandleFunc(handlerCashpointDelete(tnt)).Methods("DELETE")
+	}
 
 	port := strconv.FormatUint(serverConfig.Port, 10)
 	log.Println("Listening port: " + port)

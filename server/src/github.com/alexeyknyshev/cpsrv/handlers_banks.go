@@ -49,7 +49,11 @@ func handlerBank(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			if jsonStr != "" {
+				writeResponse(w, r, requestId, jsonStr)
+			} else {
+				w.WriteHeader(404)
+			}
 		} else {
 			log.Printf("%s => cannot convert bank reply for id: %d\n", context, bankId)
 			w.WriteHeader(500)

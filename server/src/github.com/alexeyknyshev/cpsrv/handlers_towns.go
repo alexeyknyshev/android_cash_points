@@ -45,7 +45,11 @@ func handlerTown(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			if jsonStr != "" {
+				writeResponse(w, r, requestId, jsonStr)
+			} else {
+				w.WriteHeader(404)
+			}
 		} else {
 			log.Printf("%s => cannot convert town reply for id: %d\n", context, townId)
 			w.WriteHeader(500)
