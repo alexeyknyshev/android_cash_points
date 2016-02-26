@@ -127,10 +127,8 @@ function _getNearbyTownClusters(req, countLimit)
     local t = box.space.towns.index[1]:select({ req.topLeft.longitude, req.topLeft.latitude,
                                                 req.bottomRight.longitude, req.bottomRight.latitude },
                                               { iterator = "le" })
-    local filtersList = {
-    }
 
-    local result = {}
+    local result = {} -- town cluster list
 
     for _, tuple in pairs(t) do
         local townId = tuple[TOWN_ID]
@@ -169,6 +167,8 @@ function _getNearbyTownClusters(req, countLimit)
         end
     end
 
+    -- remove town clusters which has been consumed
+    -- by bigger ones
     for i = #result, 1, -1 do
         if result[i].size == 0 then
             table.remove(result, i)
@@ -177,6 +177,68 @@ function _getNearbyTownClusters(req, countLimit)
 
     while #result > countLimit do
         table.remove(result)
+    end
+
+    local filtersList = {
+        matchingTypeFilter,
+        matchingRubFilter,
+        matchingUsdFilter,
+        matchingEurFilter,
+        matchingRoundTheClock,
+        matchingWithoutWeekend,
+        matchingFreeAccess,
+        matchingApproved,
+    }
+
+    local countMatching = function(t)
+        local size = 0
+
+        for _, tuple in pairs(t) do
+            local matching = true
+            if tuple then
+                for _, filter in ipairs(filtersList) do
+                    matching = filter(tuple, req.filter)
+                    if not matching then
+                        break
+                    end
+                end
+            else
+                 matching = false
+            end
+
+            if matching then
+                 size = size + 1
+            end
+        end
+
+        return size
+    end
+
+    if req.filter.bank_id and #req.filter.bank_id > 0 then
+        for _, bankId in ipairs(req.filter.bank_id) do
+            for i = 1, #result do
+                -- select by composite key: (town_id, bank_id)
+                local t = box.space.cashpoints.index[2]:select{ result[i].id, bankId }
+
+                -- count of matching cashpoints for this town
+                result[i].size = countMatching(t)
+            end
+        end
+    elseif next(req.filter) then-- no filter.bank_id but others filters
+        for i = 1, #result do
+            -- select only by first part of composite key: (town_id)
+            local t = box.space.cashpoints.index[2]:select{ result[i].id }
+
+            -- count of matching cashpoints for this town
+            result[i].size = countMatching(t)
+        end
+    end
+
+    -- remove town clusters which has been filtered out
+    for i = #result, 1, -1 do
+        if result[i].size == 0 then
+            table.remove(result, i)
+        end
     end
 
     return json.encode(setmetatable(result, { __serialize = "seq" }))
