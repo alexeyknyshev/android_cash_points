@@ -205,7 +205,7 @@ func doTask(task *Task, maxZoom uint32, asyncSubCount int, stmt *sql.Stmt, dbMut
 	}
 }
 
-func getGeoRectPart(minLon, maxLon, minLat, maxLat *float32, lon, lat float32) string {
+func getGeoRectPart(minLon, maxLon, minLat, maxLat *float64, lon, lat float64) string {
 	midLon := (*minLon + *maxLon) * 0.5
 	midLat := (*minLat + *maxLat) * 0.5
 
@@ -234,8 +234,8 @@ const CHAN_BUFFER_SIZE = 512
 
 type CPClusteringRequest struct {
 	Id        uint32
-	Longitude float32
-	Latitude  float32
+	Longitude float64
+	Latitude  float64
 }
 
 type CPClusteringResponse struct {
@@ -253,11 +253,11 @@ func clusteringWorker(in chan CPClusteringRequest, minZoom, maxZoom uint32) chan
 			// 			log.Printf("%s: got task: id = %d, lon = %f, lat = %f", context, request.Id, request.Longitude, request.Latitude)
 			response := CPClusteringResponse{Id: request.Id}
 
-			var minLon float32 = -180.0
-			var maxLon float32 = 180.0
+			var minLon float64 = -180.0
+			var maxLon float64 = 180.0
 
-			var minLat float32 = -85.0
-			var maxLat float32 = 85.0
+			var minLat float64 = -90.0
+			var maxLat float64 = 90.0
 
 			quadKey := ""
 			for zoom := uint32(0); zoom < maxZoom; zoom++ {
