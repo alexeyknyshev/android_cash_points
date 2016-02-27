@@ -47,58 +47,42 @@ func checkConvertionUint(val uint32, err error, context string) uint32 {
 	return val
 }
 
-func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string/*, redisCliPool *pool.Pool*/) error {
+func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
 	endpointStr := r.URL.Path
 	if requestBody != "" {
 		endpointStr = endpointStr + " =>"
 		body := ""
-		
-// 		redisCli, err := redisCliPool.Get()
-// 		if err != nil {
-// 			log.Fatal("logRequest: cannot get redisCli from pool")
-// 			return err
-// 		}
-// 		defer redisCliPool.Put(redisCli)
 
-// 		if isTestingModeEnabled(redisCli) {
-// 			prettyJson, err := jsonPrettify(requestBody)
-// 			if err == nil {
-// 				body = "\n" + prettyJson
-// 			} else {
-// 				body = " " + requestBody
-// 			}
-// 		} else {
-			body = " " + requestBody
-// 		}
+		//if isTestingModeEnabled(redisCli) {
+		//	prettyJson, err := jsonPrettify(requestBody)
+		//	if err == nil {
+		//		body = "\n" + prettyJson
+		//	} else {
+		//		body = " " + requestBody
+		//	}
+		//}
+		body = " " + requestBody
 		endpointStr = endpointStr + body
 	}
 	log.Printf("%s Request: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	return nil
 }
 
-func logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string/*, redisCliPool *pool.Pool*/) error {
+func logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) error {
 	endpointStr := r.URL.Path
 	if responseBody != "" {
 		endpointStr = endpointStr + " =>"
 		body := ""
 
-// 		redisCli, err := redisCliPool.Get()
-// 		if err != nil {
-// 			log.Fatal("logRequest: cannot get redisCli from pool")
-// 			return err
-// 		}
-// 		defer redisCliPool.Put(redisCli)
-// 
-// 		if isTestingModeEnabled(redisCli) {
-// 			prettyJson, err := jsonPrettify(responseBody)
-// 			if err == nil {
-// 				body = "\n" + prettyJson
-// 			} else {
-// 				body = " " + responseBody
-// 			}
-// 		} else {
-			body = " " + responseBody
-// 		}
+		//if isTestingModeEnabled(redisCli) {
+		//	prettyJson, err := jsonPrettify(responseBody)
+		//	if err == nil {
+		//		body = "\n" + prettyJson
+		//	} else {
+		//		body = " " + responseBody
+		//	}
+		//
+		body = " " + responseBody
 		endpointStr = endpointStr + body
 	}
 	log.Printf("%s: Response: %s %s", getRequestContexString(r), r.Method, endpointStr)
@@ -164,9 +148,9 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 	return true, requestId
 }
 
-func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string/*, redisCliPool *pool.Pool*/) {
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
 	io.WriteString(w, responseBody)
-	go logResponse(w, r, requestId, responseBody/*, redisCliPool*/)
+	go logResponse(w, r, requestId, responseBody)
 }
 
 type EndpointCallback func(w http.ResponseWriter, r *http.Request)
@@ -216,10 +200,10 @@ func main() {
 	}
 
 	opts := tarantool.Opts{
-		Reconnect: 1 * time.Second,
+		Reconnect:     1 * time.Second,
 		MaxReconnects: 3,
-		User: serverConfig.TntUser,
- 		Pass: serverConfig.TntPass,
+		User:          serverConfig.TntUser,
+		Pass:          serverConfig.TntPass,
 	}
 	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
 	if err != nil {
