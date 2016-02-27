@@ -241,7 +241,7 @@ function _recalcClusterCoords(cluster)
 
     for _, member in pairs(cluster.members) do
         local cp = _getCashpointById(member)
-        if cashpoint then
+        if cp then
             cluster.longitude = cluster.longitude + cp.longitude
             cluster.latitude  = cluster.latitude  + cp.latitude
             cluster.size      = cluster.size + 1
@@ -294,6 +294,18 @@ function getQuadKeyFromCoord(reqJson)
     return ""
 end
 
+local function isValidCoordinate(longitude, latitude)
+    if type(longitude) ~= 'number' or type(latitude) ~= 'number' then
+        return false
+    end
+
+    if math.abs(latitude) > 90.0 or math.abs(longitude) > 180.0 then
+        return false
+    end
+
+    return true
+end
+
 function getQuadKey(longitude, latitude, zoom)
     if not longitude or not latitude then
         return ''
@@ -333,11 +345,7 @@ function getQuadKey(longitude, latitude, zoom)
     local minLat = -90.0
     local maxLat = 90.0
 
-    if longitude < minLon or maxLon < longitude then
-        return ""
-    end
-
-    if latitude < minLat or maxLat < latitude then
+    if not isValidCoordinate(longitude, latitude) then
         return ""
     end
 
@@ -368,17 +376,16 @@ end
 
 function getSupportedFilters()
     return {
-        type = "",
-        free_access = true,
-        main_office = true,
-        without_weekend = true,
-        round_the_clock = true,
-        works_as_shop = true,
-        rub = true,
-        usd = true,
-        eur = true,
-        cash_in = true,
-        bank_id = 0
+        type = 'string',
+        free_access = 'boolean',
+        main_office = 'boolean',
+        without_weekend = 'boolean',
+        round_the_clock = 'boolean',
+        works_as_shop = 'boolean',
+        rub = 'boolean',
+        usd = 'boolean',
+        eur = 'boolean',
+        cash_in = 'boolean',
     }
 end
 
@@ -512,7 +519,7 @@ function matchingWithoutWeekend(tuple, filter)
 end
 
 function matchingApproved(tuple, filter)
-    local approved = false
+    local approved = true
     if tuple[COL_CP_APPROVED] ~= nil then
         approved = tuple[COL_CP_APPROVED]
     end
@@ -553,6 +560,27 @@ function validateRequest(req, func)
         return malformedRequest(missingReqired .. ": bottomRight.latitude", func)
     end
 
+    if req.filter.bank_id then
+        for i, id in ipairs(req.filter.bank_id) do
+            local idType = type(id)
+            if idType ~= 'number' then
+                return malformedRequest("invalid type of " .. tostring(i) " bank_id in filter.bank_id, " ..
+                                        "expected 'number' but got '" .. idType .. "'")
+            end
+        end
+    end
+
+    local supportedFilters = getSupportedFilters()
+    for expectedName, expectedType in pairs(supportedFilters) do
+        if req.filter[expectedName] ~= nil then
+            local filterType = type(req.filter[expectedName])
+            if filterType ~= expectedType then
+                return malformedRequest("invalid type of filter '" .. expectedName .. "', expected '" ..
+                                        expectedType .. "' but got '" .. filterType .. "'")
+            end
+        end
+    end
+
     return nil
 end
 
@@ -564,18 +592,6 @@ local function isValidCashpointType(cpType)
         end
     end
     return false
-end
-
-local function isValidCoordinate(longitude, latitude)
-    if type(longitude) ~= 'number' or type(latitude) ~= 'number' then
-        return false
-    end
-
-    if math.abs(latitude) > 90.0 or math.abs(longitude) > 180.0 then
-        return false
-    end
-
-    return true
 end
 
 local function validateCashpointFields(cp, checkRequired, func)
