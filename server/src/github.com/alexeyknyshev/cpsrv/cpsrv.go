@@ -246,6 +246,7 @@ func main() {
 		router.HandleFunc(handlerCoordToQuadKey(tnt)).Methods("POST")
 		router.HandleFunc(handlerQuadTreeBranch(tnt)).Methods("GET")
 		router.HandleFunc(handlerCashpointDelete(tnt)).Methods("DELETE")
+		router.HandleFunc(handlerSpaceMetrics(tnt)).Methods("GET")
 	}
 
 	port := strconv.FormatUint(serverConfig.Port, 10)
