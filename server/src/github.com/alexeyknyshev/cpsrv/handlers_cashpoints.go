@@ -241,7 +241,6 @@ func handlerCashpointCreate(tnt *tarantool.Connection) (string, EndpointCallback
 		}
 
 		data := resp.Data[0].([]interface{})[0]
-// 		log.Printf("%v", reflect.TypeOf(data))
 		if cashpointId, ok := data.(uint64); ok {
 			if cashpointId != 0 {
 				jsonData, _ := json.Marshal(cashpointId)
@@ -271,8 +270,6 @@ func handlerCashpointDelete(tnt *tarantool.Connection) (string, EndpointCallback
 			"cashPointId": cashPointIdStr,
 		})
 
-// 		log.Printf("%s: before parsing id", context)
-
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
 			go logRequest(w, r, requestId, "")
@@ -282,16 +279,12 @@ func handlerCashpointDelete(tnt *tarantool.Connection) (string, EndpointCallback
 
 		go logRequest(w, r, requestId, "")
 
-// 		log.Printf("%s: before calling tnt", context)
-
 		resp, err := tnt.Call("deleteCashpointById", []interface{}{ cashPointId })
 		if err != nil {
 			log.Printf("%s => cannot delete cashpoint by id: %v => %s\n", context, err, cashPointIdStr)
 			w.WriteHeader(500)
 			return
 		}
-
-// 		log.Printf("%s: before reading tnt response", context)
 
 		data := resp.Data[0].([]interface{})[0]
 		if done, ok := data.(bool); ok {
