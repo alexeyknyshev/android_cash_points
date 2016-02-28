@@ -42,6 +42,12 @@ function malformedRequest(err, func)
 end
 
 local function _cashpointTupleToTable(t)
+    local approved = false
+    if t[COL_CP_APPROVED] ~= nil then
+        approved = t[COL_CP_APPROVED]
+    else
+        approved = true
+    end
     local cp = {
         id = t[COL_CP_ID],
         longitude = t[COL_CP_COORD][1],
@@ -66,7 +72,7 @@ local function _cashpointTupleToTable(t)
         cash_in = t[COL_CP_CASH_IN],
         version = t[COL_CP_VERSION],
         timestamp = t[COL_CP_TIMESTAMP],
-        approved = t[COL_CP_APPROVED] or true,
+        approved = approved,
     }
 
     return cp
