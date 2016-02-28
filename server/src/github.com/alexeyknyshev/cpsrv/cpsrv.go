@@ -153,6 +153,11 @@ func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, resp
 	go logResponse(w, r, requestId, responseBody)
 }
 
+func writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int) {
+	w.WriteHeader(code)
+	go logResponse(w, r, requestId, "code " + strconv.FormatInt(int64(code), 10))
+}
+
 type EndpointCallback func(w http.ResponseWriter, r *http.Request)
 
 func handlerPing(tnt *tarantool.Connection) (string, EndpointCallback) {

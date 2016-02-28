@@ -32,20 +32,20 @@ func handlerCashpoint(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
 		resp, err := tnt.Call("getCashpointById", []interface{}{ cashPointId })
 		if err != nil {
 			log.Printf("%s => cannot get cashpoint %d by id: %v\n", context, cashPointId, err)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
 		if (len(resp.Data) == 0) {
 			log.Printf("%s => no such cashpoint with id: %d\n", context, cashPointId)
-			w.WriteHeader(404)
+			writeHeader(w, r, requestId, http.StatusNotFound)
 			return
 		}
 
@@ -54,11 +54,11 @@ func handlerCashpoint(tnt *tarantool.Connection) (string, EndpointCallback) {
 			if jsonStr != "" {
 				writeResponse(w, r, requestId, jsonStr)
 			} else {
-				w.WriteHeader(404)
+				writeHeader(w, r, requestId, http.StatusNotFound)
 			}
 		} else {
 			log.Printf("%s => cannot convert cashpoint reply for id: %d\n", context, cashPointId)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -76,8 +76,7 @@ func handlerCashpointsBatch(tnt *tarantool.Connection) (string, EndpointCallback
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -86,7 +85,7 @@ func handlerCashpointsBatch(tnt *tarantool.Connection) (string, EndpointCallback
 		resp, err := tnt.Call("getCashpointsBatch", []interface{}{ jsonStr })
 		if err != nil {
 			log.Printf("%s => cannot get cashpoints batch: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -95,7 +94,7 @@ func handlerCashpointsBatch(tnt *tarantool.Connection) (string, EndpointCallback
 			writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert cashpoints batch reply to json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -114,7 +113,7 @@ func handlerNearbyCashPoints(tnt *tarantool.Connection) (string, EndpointCallbac
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
 			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -123,7 +122,7 @@ func handlerNearbyCashPoints(tnt *tarantool.Connection) (string, EndpointCallbac
 		resp, err := tnt.Call("getNearbyCashpoints", []interface{}{ jsonStr })
 		if err != nil {
 			log.Printf("%s => cannot get neraby cashpoints: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -132,7 +131,7 @@ func handlerNearbyCashPoints(tnt *tarantool.Connection) (string, EndpointCallbac
 			writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert nearby cashpoints batch reply to json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -151,7 +150,7 @@ func handlerNearbyClusters(tnt *tarantool.Connection) (string, EndpointCallback)
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
 			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -160,7 +159,7 @@ func handlerNearbyClusters(tnt *tarantool.Connection) (string, EndpointCallback)
 		resp, err := tnt.Call("getNearbyClusters", []interface{}{ jsonStr, MAX_CLUSTER_COUNT })
 		if err != nil {
 			log.Printf("%s => cannot get nearby clusters: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -169,7 +168,7 @@ func handlerNearbyClusters(tnt *tarantool.Connection) (string, EndpointCallback)
 			writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert nearby clusters batch reply to json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -192,14 +191,14 @@ func handlerQuadTreeBranch(tnt *tarantool.Connection) (string, EndpointCallback)
 
 		quadKeyStrLen := len(quadKeyStr)
 		if quadKeyStrLen > MAX_QUADKEY_LENGTH || quadKeyStrLen < MIN_QUADKEY_LENGTH {
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
 		resp, err := tnt.Call("getQuadTreeBranch", []interface{}{ quadKeyStr })
 		if err != nil {
 			log.Printf("%s => cannot get quad tree branch: %v => %s\n", context, err, quadKeyStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -208,7 +207,7 @@ func handlerQuadTreeBranch(tnt *tarantool.Connection) (string, EndpointCallback)
 			writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert quad tree branch reply to json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -226,8 +225,7 @@ func handlerCashpointCreate(tnt *tarantool.Connection) (string, EndpointCallback
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -236,7 +234,7 @@ func handlerCashpointCreate(tnt *tarantool.Connection) (string, EndpointCallback
 		resp, err := tnt.Call("cashpointProposePatch", []interface{}{ jsonStr })
 		if err != nil {
 			log.Printf("%s => cannot propose patch: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -246,11 +244,11 @@ func handlerCashpointCreate(tnt *tarantool.Connection) (string, EndpointCallback
 				jsonData, _ := json.Marshal(cashpointId)
 				writeResponse(w, r, requestId, string(jsonData))
 			} else {
-				w.WriteHeader(500)
+				writeHeader(w, r, requestId, http.StatusInternalServerError)
 			}
 		} else {
 			log.Printf("%s => cannot convert response to uint64 for request json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -273,7 +271,7 @@ func handlerCashpointDelete(tnt *tarantool.Connection) (string, EndpointCallback
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
 			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -282,20 +280,20 @@ func handlerCashpointDelete(tnt *tarantool.Connection) (string, EndpointCallback
 		resp, err := tnt.Call("deleteCashpointById", []interface{}{ cashPointId })
 		if err != nil {
 			log.Printf("%s => cannot delete cashpoint by id: %v => %s\n", context, err, cashPointIdStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if done, ok := data.(bool); ok {
 			if done {
-				w.WriteHeader(200)
+				writeHeader(w, r, requestId, http.StatusOK)
 			} else {
-				w.WriteHeader(404)
+				writeHeader(w, r, requestId, http.StatusNotFound)
 			}
 		} else {
 			log.Printf("%s => cannot convert response to bool for request cashpoint id: %s\n", context, cashPointIdStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -313,8 +311,7 @@ func handlerCoordToQuadKey(tnt *tarantool.Connection) (string, EndpointCallback)
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
@@ -323,7 +320,7 @@ func handlerCoordToQuadKey(tnt *tarantool.Connection) (string, EndpointCallback)
 		resp, err := tnt.Call("getQuadKeyFromCoord", []interface{}{ jsonStr })
 		if err != nil {
 			log.Printf("%s => cannot convert coord to quadkey: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -332,11 +329,11 @@ func handlerCoordToQuadKey(tnt *tarantool.Connection) (string, EndpointCallback)
 			if jsonStrResp != "" {
 				writeResponse(w, r, requestId, jsonStrResp)
 			} else {
-				w.WriteHeader(400)
+				writeHeader(w, r, requestId, http.StatusBadRequest)
 			}
 		} else {
 			log.Printf("%s => cannot convert response for quadkey from coord: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
