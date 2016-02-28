@@ -9,6 +9,7 @@ import (
 	"github.com/alexeyknyshev/gojsondiff/formatter"
 	"github.com/gorilla/mux"
 	"github.com/tarantool/go-tarantool"
+	"log"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -258,7 +259,7 @@ func TestPing(t *testing.T) {
 
 	tnt, err := tarantool.Connect(tntUrl, tntOpts)
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -301,7 +302,7 @@ type Town struct {
 func TestTown(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -372,7 +373,7 @@ type CashpointFull struct {
 func TestCashpoint(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -447,7 +448,7 @@ type QuadKeyResponse struct {
 func TestQuadKeyFromCoord(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -578,7 +579,7 @@ func (c ClusterArray) Compare(other ClusterArray) (bool, string) {
 func TestQuadTreeBranch(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -647,10 +648,11 @@ type CashpointCreateRequest struct {
 	Data   CashpointShort `json:"data"`
 }
 
-func TestCashpointCreate(t *testing.T) {
+func TestCashpointCreateSuccessful(t *testing.T) {
+	log.SetFlags(log.Flags() | log.Lmicroseconds)
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -764,7 +766,45 @@ func TestCashpointCreate(t *testing.T) {
 		t.Errorf("Cannot unpack cashpoint id response: %v => %s", err, string(response.Data))
 	}
 
+	cashpointIdStr := strconv.FormatUint(cashpointId, 10)
+	t.Logf("created cashpoint with id: %s", cashpointIdStr)
+
 	// TODO: check cashpoint data
+	urlGet, handlerGet := handlerCashpoint(tnt)
+	request = TestRequest{
+		RequestType: "GET",
+		EndpointUrl: "/cashpoint/" + cashpointIdStr,
+		HandlerUrl:  urlGet,
+	}
+
+	response, err = readResponse(testRequest(request, handlerGet))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	if !checkHttpCode(t, response.Code, http.StatusOK) {
+		t.Fatalf("Cannot get created cashpoint with id: %d", cashpointId)
+	}
+
+	// extend cashpoint short data with returned id
+	cp.Id = uint32(cashpointId)
+	cpFull := CashpointFull{
+		CashpointShort: cp,
+		Version:        0,
+		Approved:       false,
+	}
+	expectedJson, _ := json.Marshal(cpFull)
+
+	// repack response to remove timestamp field
+	var tmpJson map[string]interface{}
+	err = json.Unmarshal(response.Data, &tmpJson)
+	if err != nil {
+		t.Fatalf("Cannot unpack cashpoint data retrieved by id: %d", cashpointId)
+	}
+	delete(tmpJson, "timestamp")
+
+	responseJson, _ := json.Marshal(tmpJson)
+
+	checkJsonResponse(t, responseJson, expectedJson)
 
 	// TODO: check cluster data
 
@@ -774,7 +814,7 @@ func TestCashpointCreate(t *testing.T) {
 	url, handlerDelete := handlerCashpointDelete(tnt)
 	request = TestRequest{
 		RequestType: "DELETE",
-		EndpointUrl: "/cashpoint/" + strconv.FormatUint(cashpointId, 10),
+		EndpointUrl: "/cashpoint/" + cashpointIdStr,
 		HandlerUrl:  url,
 	}
 
@@ -785,11 +825,10 @@ func TestCashpointCreate(t *testing.T) {
 	checkHttpCode(t, response.Code, http.StatusOK)
 
 	// try to get deleted cashpoint
-	url, handlerGet := handlerCashpoint(tnt)
 	request = TestRequest{
 		RequestType: "GET",
-		EndpointUrl: "/cashpoint/" + strconv.FormatUint(cashpointId, 10),
-		HandlerUrl:  url,
+		EndpointUrl: "/cashpoint/" + cashpointIdStr,
+		HandlerUrl:  urlGet,
 	}
 
 	response, err = readResponse(testRequest(request, handlerGet))
@@ -824,7 +863,7 @@ func TestCashpointCreate(t *testing.T) {
 func TestCashpointCreateWrongCoordinates(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -910,7 +949,7 @@ func TestCashpointCreateWrongCoordinates(t *testing.T) {
 			} else {
 				t.Fatalf(`ALERT! Looks like cashpoint created with id '%d'.
 					  Please, refill database with fresh testing data again by running 'build_db_tnt.sh' script
-					  or delete cashpoint and following data manually.`)
+					  or delete cashpoint and following data manually.`, cashpointId)
 			}
 		}
 	}
@@ -919,7 +958,7 @@ func TestCashpointCreateWrongCoordinates(t *testing.T) {
 func TestCashpointCreateMissingRequredFields(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -1004,7 +1043,7 @@ func TestCashpointCreateMissingRequredFields(t *testing.T) {
 			} else {
 				t.Fatalf(`ALERT! Looks like cashpoint created with id '%d'.
 					  Please, refill database with fresh testing data again by running 'build_db_tnt.sh' script
-					  or delete cashpoint and following data manually.`)
+					  or delete cashpoint and following data manually.`, cashpointId)
 			}
 		}
 	}
@@ -1013,7 +1052,7 @@ func TestCashpointCreateMissingRequredFields(t *testing.T) {
 func TestCashpointCreateApproveHack(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
-		t.Errorf("Connection to tarantool failed: %v", err)
+		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
 	defer tnt.Close()
 
@@ -1024,6 +1063,83 @@ func TestCashpointCreateApproveHack(t *testing.T) {
 	}
 	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
 
-	// 	t.Errorf("Not implemented yet!")
-	// TODO: approved hack test
+	longitude := 38.2371
+	latitude := 56.4631
+
+	// check quad tree branches for coordinate before and after test
+	quadTreeBranch, err := getQuadTreeBranch(t, tnt, longitude, latitude)
+	if err != nil {
+		t.Errorf("Failed to cache quad tree branch: %v", err)
+	}
+	defer checkQuadTreeBranch(t, func() ([]byte, error) { return getQuadTreeBranch(t, tnt, longitude, latitude) }, quadTreeBranch)
+
+	// creating real cashpoint with missing required fields
+	cp := CashpointShort{
+		Longitude:      longitude,
+		Latitude:       latitude,
+		Type:           "atm",
+		BankId:         322, // Sberbank
+		TownId:         4,   // Moscow
+		Address:        "",
+		AddressComment: "",
+		//MetroName: "",
+		FreeAccess:     true,
+		MainOffice:     false,
+		WithoutWeekend: true,
+		//RoundTheClock: false, // WARNING: here is missing field
+		WorksAsShop: false,
+		Schedule:    "",
+		Tel:         "",
+		Additional:  "",
+		Rub:         true,
+		Usd:         false,
+		Eur:         false,
+		CashIn:      true,
+	}
+
+	reqData := CashpointCreateRequest{
+		UserId: 0, // TODO: check against real user
+		Data:   cp,
+	}
+	reqJson, _ := json.Marshal(reqData)
+
+	var tmpJson map[string]interface{}
+	err = json.Unmarshal(reqJson, &tmpJson)
+	if err != nil {
+		t.Errorf("Failed unmarshal tmp CashpointCreateRequest: %v", err)
+	}
+
+	// repack with unexpected field approved
+	data := tmpJson["data"].(map[string]interface{})
+	data["approved"] = true
+	reqJson, _ = json.Marshal(tmpJson)
+
+	url, handlerCreate := handlerCashpointCreate(tnt)
+	request := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: "/cashpoint",
+		HandlerUrl:  url,
+		Data:        string(reqJson),
+	}
+
+	response, err := readResponse(testRequest(request, handlerCreate))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	// expecting validation failure
+	if !checkHttpCode(t, response.Code, http.StatusInternalServerError) {
+		// cashpoint created for some reason
+		if response.Code == http.StatusOK {
+			var cashpointId uint64 = 0
+			err = json.Unmarshal(response.Data, &cashpointId)
+			if err != nil {
+				t.Fatalf(`ALERT! Looks like cashpoint created but its id was not returned.
+					  Please, refill database with fresh testing data again by running 'build_db_tnt.sh' script.`)
+			} else {
+				t.Fatalf(`ALERT! Looks like cashpoint created with id '%d'.
+					  Please, refill database with fresh testing data again by running 'build_db_tnt.sh' script
+					  or delete cashpoint and following data manually.`, cashpointId)
+			}
+		}
+	}
 }
