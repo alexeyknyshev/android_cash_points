@@ -111,7 +111,7 @@ func handlerBanksBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
 			return
 		}
 
-		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBankBatch", map[string]string{
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerBanksBatch", map[string]string{
 			"requestId": strconv.FormatInt(requestId, 10),
 		})
 

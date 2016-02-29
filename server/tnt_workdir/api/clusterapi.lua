@@ -215,13 +215,17 @@ function _getNearbyTownClusters(req, countLimit)
     end
 
     if req.filter.bank_id and #req.filter.bank_id > 0 then
+        -- drop size cached value
+        for i = 1, #result do
+            result[i].size = 0
+        end
         for _, bankId in ipairs(req.filter.bank_id) do
             for i = 1, #result do
                 -- select by composite key: (town_id, bank_id)
                 local t = box.space.cashpoints.index[2]:select{ result[i].id, bankId }
 
                 -- count of matching cashpoints for this town
-                result[i].size = countMatching(t)
+                result[i].size = result[i].size + countMatching(t)
             end
         end
     elseif next(req.filter) then-- no filter.bank_id but others filters
