@@ -65,19 +65,18 @@ function _getNearbyQuadClusters(req)
                 id = clusterId,
                 longitude = tuple[CLUSTER_COORD][1],
                 latitude = tuple[CLUSTER_COORD][2],
-                size = tuple[CLUSTER_SIZE],
+                --size = tuple[CLUSTER_SIZE],
             }
 
-            local lastCpId = nil
+            local matchingIdList = {}
             if next(req.filter) ~= nil then
-                cluster.size = 0
+                --cluster.size = 0
                 cluster.longitude = 0.0
                 cluster.latitude = 0.0
 
                 --print(json.encode(tuple[CLUSTER_MEMBERS]))
 
                 for _, cpId in pairs(tuple[CLUSTER_MEMBERS]) do
-                    lastCpId = nil
                     local cpTupleList = box.space.cashpoints.index[0]:select{ cpId }
                     if #cpTupleList > 0 then
                         local cpTuple = cpTupleList[1]
@@ -89,23 +88,28 @@ function _getNearbyQuadClusters(req)
                             end
                         end
                         if matching then
-                            lastCpId = cpId
-                            cluster.size = cluster.size + 1
+                            matchingIdList[#matchingIdList + 1] = cpId
+                            --cluster.size = cluster.size + 1
                             cluster.longitude = cluster.longitude + cpTuple[CP_COORD][1]
                             cluster.latitude = cluster.latitude + cpTuple[CP_COORD][2]
                         end
                     end
                 end
 
-                if cluster.size > 0 then
-                    cluster.longitude = cluster.longitude / cluster.size
-                    cluster.latitude = cluster.latitude / cluster.size
+                if #matchingIdList > 0 then
+                    cluster.longitude = cluster.longitude / #matchingIdList
+                    cluster.latitude = cluster.latitude / #matchingIdList
+                end
+            else
+                for _, cpId in pairs(tuple[CLUSTER_MEMBERS]) do
+                    matchingIdList[#matchingIdList + 1] = cpId
                 end
             end
 
+            cluster.size = #matchingIdList
             if cluster.size > 0 then
-                if cluster.size == 1 and lastCpId then
-                    result[#result + 1] = _getCashpointById(lastCpId)
+                if cluster.size == 1 then
+                    result[#result + 1] = _getCashpointById(matchingIdList[1])
                 else
                     result[#result + 1] = cluster
                 end
