@@ -13,6 +13,10 @@ before_script:
   - cmake . && make
 
 script:
+  - cd $HOME/gopath/src/github.com/alexeyknyshev/android_cash_points/server
+  - export GOPATH=$PWD
+  - go get github.com/alexeyknyshev/cpsrv
+  - go build github.com/alexeyknyshev/cpsrv
   - go test github.com/alexeyknyshev/cpsrv
 
 #before_install:
