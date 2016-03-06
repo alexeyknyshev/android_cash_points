@@ -5,7 +5,7 @@ go:
 
 dist: trusty
 
-before_script:
+before_install:
   - wget http://tarantool.org/dist/1.6/tarantool-1.6.8.545.tar.gz -O /tmp/tarantool.tar.gz
   - cd /tmp
   - tar -xvf tarantool.tar.gz
