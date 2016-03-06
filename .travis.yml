@@ -3,3 +3,9 @@ language: go
 go:
   - 1.5
 
+before_install:
+  - curl http://download.tarantool.org/tarantool/1.6/gpgkey | sudo apt-key add -
+  - sudo echo "deb http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" > /etc/apt/sources.list.d/tarantool_1_6.list
+  - sudo echo "deb-src http://download.tarantool.org/tarantool/1.6/ubuntu/ $(lsb_release -c -s) main" >> /etc/apt/sources.list.d/tarantool_1_6.list
+  - sudo apt-get update
+  - sudo sudo apt-get -y install tarantool
