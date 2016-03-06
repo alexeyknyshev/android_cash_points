@@ -4,17 +4,13 @@ go:
   - 1.5
 
 dist: trusty
-sudo: required
 
-addons:
-  apt:
-    sources:
-    - tarantool
-
-addons:
-  apt:
-    packages:
-    - tarantool
+before_script:
+  - wget http://tarantool.org/dist/1.6/tarantool-1.6.8.545.tar.gz -O /tmp/tarantool.tar.gz
+  - cd /tmp
+  - tar -xvf tarantool.tar.gz
+  - cd /tmp/tarantool-1.6.8.545 
+  - cmake . && make
 
 #before_install:
 #  - curl http://download.tarantool.org/tarantool/1.6/gpgkey | sudo apt-key add -
