@@ -9,7 +9,7 @@ before_script:
   - wget http://tarantool.org/dist/1.6/tarantool-1.6.8.545.tar.gz -O /tmp/tarantool.tar.gz
   - cd /tmp
   - tar -xvf tarantool.tar.gz
-  - cd /tmp/tarantool-1.6.8.545 
+  - cd /tmp/tarantool-1.6.8.545 && export PATH=$PATH:$PWD/src
   - cmake . && make
 
 script:
@@ -18,6 +18,7 @@ script:
   - go get github.com/alexeyknyshev/gojsondiff
   - go get github.com/alexeyknyshev/cpsrv
   - go build github.com/alexeyknyshev/cpsrv
+  - cd tnt_workdir && tarantool init.lua
   - go test github.com/alexeyknyshev/cpsrv
 
 #before_install:
