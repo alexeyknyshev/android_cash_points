@@ -15,10 +15,11 @@ before_script:
 script:
   - cd $HOME/gopath/src/github.com/alexeyknyshev/android_cash_points/server
   - export GOPATH=$PWD
+  - cd tnt_workdir && tarantool init.lua &
+  - cd $GOPATH
   - go get github.com/alexeyknyshev/gojsondiff
   - go get github.com/alexeyknyshev/cpsrv
   - go build github.com/alexeyknyshev/cpsrv
-  - cd tnt_workdir && tarantool init.lua &
   - echo "box.schema.user.passwd('admin', 'admin')" | nc localhost 3302
   - go test github.com/alexeyknyshev/cpsrv
 
