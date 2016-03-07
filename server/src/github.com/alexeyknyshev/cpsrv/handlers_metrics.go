@@ -23,7 +23,7 @@ func handlerSpaceMetrics(tnt *tarantool.Connection) (string, EndpointCallback) {
 		resp, err := tnt.Call("getSpaceMetrics", []interface{}{})
 		if err != nil {
 			log.Printf("%s => cannot get space metrics: %v\n", context, err)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
@@ -32,7 +32,7 @@ func handlerSpaceMetrics(tnt *tarantool.Connection) (string, EndpointCallback) {
 			writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert space metrics reply\n", context)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}
 }
