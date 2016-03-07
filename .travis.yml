@@ -18,6 +18,7 @@ script:
   - go get github.com/alexeyknyshev/gojsondiff
   - go get github.com/alexeyknyshev/cpsrv
   - go build github.com/alexeyknyshev/cpsrv
+  - echo "box.schema.user.passwd('admin', 'admin')" | nc localhost 3302
   - cd tnt_workdir && tarantool init.lua &
   - go test github.com/alexeyknyshev/cpsrv
 
