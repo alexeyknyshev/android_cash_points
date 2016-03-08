@@ -134,12 +134,12 @@ func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
 	requestId, err := getRequestUserId(r)
 	if err != nil {
 		log.Printf("%s prepareResponse %v\n", getRequestContexString(r), err)
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusBadRequest)
 		return false, 0
 	}
 	if requestId == 0 {
 		log.Printf("%s prepareResponse unexpected requestId: %d\n", getRequestContexString(r), requestId)
-		w.WriteHeader(401)
+		w.WriteHeader(http.StatusBadRequest)
 		return false, 0
 	}
 
