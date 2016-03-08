@@ -298,6 +298,47 @@ func handlerCashpointDelete(tnt *tarantool.Connection) (string, EndpointCallback
 	}
 }
 
+func handlerCashpointPatches(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/cashpoint/{id:[0-9]+}/patches", func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		params := mux.Vars(r)
+		cashPointIdStr := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointPatches", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+			"cashPointId": cashPointIdStr,
+		})
+
+		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
+		if err != nil {
+			go logRequest(w, r, requestId, "")
+			writeHeader(w, r, requestId, http.StatusBadRequest)
+			return
+		}
+
+		go logRequest(w, r, requestId, "")
+
+		resp, err := tnt.Call("getCashpointPatches", []interface{}{ cashPointId })
+		if err != nil {
+			log.Printf("%s => cannot get cashpoint patches for id: %v => %s\n", context, err, cashPointIdStr)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			return
+		}
+
+		data := resp.Data[0].([]interface{})[0]
+		if jsonStr, ok := data.(string); ok {
+			writeResponse(w, r, requestId, jsonStr)
+		} else {
+			log.Printf("%s => cannot convert cashpoint patches reply to json str: %s\n", context, jsonStr)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
+		}
+	}
+}
+
 func handlerCoordToQuadKey(tnt *tarantool.Connection) (string, EndpointCallback) {
 	return "/quadkey", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
