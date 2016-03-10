@@ -106,8 +106,10 @@ export GOPATH="$SCRIPT_DIR"
 
 cd "$SCRIPT_DIR/tnt_workdir"
 tarantool init.lua &
+TARANTOOL_PID="$!"
 cd "$SCRIPT_DIR"
 
 sleep 5
 
 go test github.com/alexeyknyshev/cpsrv
+[ -e "/proc/$TARANTOOL_PID" ] && kill $TARANTOOL_PID
