@@ -10,11 +10,13 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	//"bytes"
 	//"sort"
 	"time"
 	//"io"
+	"unicode"
 )
 
 func boolToInt(val bool) uint {
@@ -106,6 +108,24 @@ type TaskResult struct {
 	Longitude float32
 	Latitude  float32
 	QuadKey   string
+}
+
+func StringClear(r rune) rune {
+	if r == '\n' {
+		return ','
+	}
+	if unicode.IsPrint(r) {
+		return r
+	}
+	return -1
+}
+
+func (cp *CashPoint) Postprocess() {
+	cp.Address = strings.Map(StringClear, cp.Address)
+	cp.AddressComment = strings.Map(StringClear, cp.AddressComment)
+	cp.Schedule = strings.Map(StringClear, cp.Schedule)
+	cp.Tel = strings.Map(StringClear, cp.Tel)
+	cp.Additional = strings.Map(StringClear, cp.Additional)
 }
 
 func newTask(zoom uint32, topLat, botLat, leftLon, rightLon float32, quadKey string) *Task {
@@ -637,6 +657,8 @@ func migrateCashpoints(cpDb *sql.DB, tnt *tarantool.Connection) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		cp.Postprocess()
 
 		if cp.Id > lastCashpointId {
 			lastCashpointId = cp.Id
