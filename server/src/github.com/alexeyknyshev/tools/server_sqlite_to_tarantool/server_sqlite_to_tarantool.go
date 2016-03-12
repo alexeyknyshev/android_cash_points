@@ -3,7 +3,8 @@ package main
 import (
 	"database/sql"
 	"errors"
-	//"encoding/json"
+	"encoding/json"
+	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/tarantool/go-tarantool"
 	"log"
@@ -93,6 +94,311 @@ type ClusterData struct {
 	Size      uint32  `json:"size"`
 }
 
+// ================= Schedule =================
+
+type ScheduleBreak struct {
+	From int `json:"f"`
+	To   int `json:"t"`
+}
+
+type ScheduleDay struct {
+	Day   int `json:"-"`
+	From  int `json:"f"`
+	To    int `json:"t"`
+	Breaks *[]ScheduleBreak `json:"b,omitempty"`
+}
+
+type Schedule struct {
+	Mon *ScheduleDay `json:"mon,omitempty"`
+	Tue *ScheduleDay `json:"tue,omitempty"`
+	Wed *ScheduleDay `json:"wed,omitempty"`
+	Thu *ScheduleDay `json:"thu,omitempty"`
+	Fri *ScheduleDay `json:"fri,omitempty"`
+	Sat *ScheduleDay `json:"sat,omitempty"`
+	Sun *ScheduleDay `json:"sun,omitempty"`
+	Breaks *[]ScheduleBreak `json:"b,omitempty"`
+}
+
+func (s *Schedule) SetCommonTime(from, to int) {
+	if s.Mon != nil {
+		s.Mon.From = from
+		s.Mon.To = to
+	}
+	if s.Tue != nil {
+		s.Tue.From = from
+		s.Tue.To = to
+	}
+	if s.Wed != nil {
+		s.Wed.From = from
+		s.Wed.To = to
+	}
+	if s.Thu != nil {
+		s.Thu.From = from
+		s.Thu.To = to
+	}
+	if s.Fri != nil {
+		s.Fri.From = from
+		s.Fri.To = to
+	}
+	if s.Sat != nil {
+		s.Sat.From = from
+		s.Sat.To = to
+	}
+	if s.Sun != nil {
+		s.Sun.From = from
+		s.Sun.To = to
+	}
+
+// 	b := &ScheduleBreak{
+// 		From: from,
+// 		To:   to,
+// 	}
+// 	s.Breaks = append(b)
+}
+
+func (s *Schedule) Clear() {
+	s.Mon = nil
+	s.Tue = nil
+	s.Wed = nil
+	s.Thu = nil
+	s.Fri = nil
+	s.Sat = nil
+	s.Sun = nil
+
+	s.Breaks = nil
+}
+
+func (s *Schedule) Merge(o *Schedule) {
+// 	sj, _ := json.Marshal(s)
+// 	oj, _ := json.Marshal(o)
+// 	log.Printf("merging %s with %s", string(sj), string(oj))
+
+	if s.Mon == nil { s.Mon = o.Mon }
+	if s.Tue == nil { s.Tue = o.Tue }
+	if s.Wed == nil { s.Wed = o.Wed }
+	if s.Thu == nil { s.Thu = o.Thu }
+	if s.Fri == nil { s.Fri = o.Fri }
+	if s.Sat == nil { s.Sat = o.Sat }
+	if s.Sun == nil { s.Sun = o.Sun }
+
+	if o.Breaks != nil {
+		if s.Breaks != nil {
+			*s.Breaks = append(*s.Breaks, *o.Breaks...)
+		} else {
+			s.Breaks = o.Breaks
+		}
+	}
+}
+
+func (s *Schedule) AppendDayRange(dayRange []int) {
+	for _, d := range dayRange {
+		switch (d) {
+			case 0: if s.Mon == nil { s.Mon = new(ScheduleDay) }
+			case 1: if s.Tue == nil { s.Tue = new(ScheduleDay) }
+			case 2: if s.Wed == nil { s.Wed = new(ScheduleDay) }
+			case 3: if s.Thu == nil { s.Thu = new(ScheduleDay) }
+			case 4: if s.Fri == nil { s.Fri = new(ScheduleDay) }
+			case 5: if s.Sat == nil { s.Sat = new(ScheduleDay) }
+			case 6: if s.Sun == nil { s.Sun = new(ScheduleDay) }
+		}
+	}
+}
+
+var Days = [...]string{  "пн.", "вт.", "ср.", "чт.", "пт.", "сб.", "вс." }
+
+const KT_INVALID = -1
+const KT_BREAK = 0
+const KT_DAY_RANGE = 1
+const KT_DAY_SINGLE = 2
+
+func keyType(s string) int {
+	if (s == "перерыв") {
+		return KT_BREAK // break
+	} else if strings.IndexAny(s, "-—") != -1 {
+		return KT_DAY_RANGE // day range
+	} else {
+		for _, d := range Days {
+			if s == d {
+				return KT_DAY_SINGLE
+			}
+		}
+		return KT_INVALID // single day
+	}
+}
+
+func parseDay(s string) int {
+	for i, d := range Days {
+		if d == s {
+			return i
+		}
+	}
+	return -1
+}
+
+func ParseDayRange(s string) ([]int, error) {
+	result := make([]int, 0)
+	s = strings.TrimRight(s, ":")
+	s = strings.Replace(s, "—", "-", -1)
+	s = strings.Replace(s, "–", "-", -1)
+	parts := strings.Split(s, ",")
+	for _, p := range parts {
+		dayRange := strings.Split(p, "-")
+		if len(dayRange) == 2 {
+			rangeStart := parseDay(dayRange[0])
+			rangeEnd := parseDay(dayRange[1])
+
+			if rangeStart == -1 {
+				return result, fmt.Errorf("invalid day range start: %s => %s", p, dayRange[0])
+			} else if rangeEnd == -1 {
+				return result, fmt.Errorf("invalid day range end: %s => %s", p, dayRange[1])
+			} else if rangeStart >= rangeEnd {
+				return result, fmt.Errorf("invalid day range, start gt end: %s", p)
+			} else {
+				for i := rangeStart; i <= rangeEnd; i++ {
+					result = append(result, i)
+				}
+			}
+		} else {
+			day := parseDay(p)
+			if day != -1 {
+				result = append(result, day)
+			} else {
+				return result, fmt.Errorf("unknown day range format: %s", p)
+			}
+		}
+	}
+	return result, nil
+}
+
+func ParseTime(s string) (min int, ok bool) {
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		log.Printf("wrong time format: %s", s)
+		min = 0; ok = false
+		return
+	}
+
+	h, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Printf("wrong time format: %s", s)
+		min = 0; ok = false
+		return
+	}
+
+	min, err = strconv.Atoi(parts[1])
+	if err != nil {
+		log.Printf("wrong time format: %s", s)
+		min = 0; ok = false
+		return
+	}
+
+	min = h * 60 + min
+	ok = true
+	return
+}
+
+// Splits strings like: 09:00—15:30. Return range in minutes from 00:00
+func SplitTime(s string) (from int, to int, ok bool) {
+	if (s == "круглосуточно") {
+		from = 0; to = 1439; ok = true
+		return
+	}
+
+	s = strings.Replace(s, "—", "-", -1)
+	s = strings.Replace(s, "–", "-", -1)
+	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		log.Printf("wrong parts count in time range: %s", s)
+		from = 0; to = 0; ok = false
+		return
+	}
+
+	from, ok = ParseTime(parts[0])
+	if !ok {
+		from = 0; to = 0
+		return
+	}
+
+	to, ok = ParseTime(parts[1])
+	if !ok {
+		from = 0; to = 0
+		return
+	}
+
+	ok = true
+	return
+}
+
+func ParseSchedule(schedule string) (Schedule, error) {
+	var result Schedule
+	if schedule == "" {
+		return result, nil
+	}
+
+	strings.Replace(schedule, "<br/>", "\n", -1)
+
+	parseKey := func(key string) (Schedule, error) {
+		var result Schedule
+		fields := strings.Split(key, ",")
+
+		kType := -1
+		for _, f := range fields {
+// 			log.Printf("parsing dayRange part %s", f)
+			kType = keyType(f)
+// 			log.Printf("detected key type: %d", kType)
+
+			if kType == KT_INVALID {
+				continue
+			} else if kType == KT_BREAK {
+				// TODO: support parsing breaks
+			} else if kType == KT_DAY_RANGE || kType == KT_DAY_SINGLE {
+				dayRange, err := ParseDayRange(f)
+// 				log.Printf("dayRange: %v", dayRange)
+				if err != nil {
+					return result, err
+				}
+				result.AppendDayRange(dayRange)
+			}
+		}
+
+		return result, nil
+	}
+
+	lineList := strings.Split(schedule, "\n")
+	for _, line := range lineList {
+		fields := strings.Fields(line)
+// 		fJson, _ := json.Marshal(fields)
+// 		log.Printf("fields: %s", string(fJson))
+		var tmpSchedule Schedule
+		var err error
+		for _, f := range fields {
+			if strings.LastIndex(f, ":") == len(f) - 1 { // key
+				f = f[:len(f) - 1]
+// 				log.Printf("parsing key: %s", f)
+				tmpSchedule, err = parseKey(f)
+				if err != nil {
+					return result, fmt.Errorf("cannot parse key: %s => %v", f, err)
+				}
+			} else { // value
+				from, to, ok := SplitTime(f)
+				if ok {
+					tmpSchedule.SetCommonTime(from, to)
+					j, _ := json.Marshal(tmpSchedule)
+					log.Printf("%s", string(j))
+					result.Merge(&tmpSchedule)
+					tmpSchedule.Clear()
+				} else {
+					return result, fmt.Errorf("cannot split time: %s", f)
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// ================= Schedule =================
+
 type Task struct {
 	Zoom     uint32
 	TopLat   float32
@@ -123,7 +429,16 @@ func StringClear(r rune) rune {
 func (cp *CashPoint) Postprocess() {
 	cp.Address = strings.Map(StringClear, cp.Address)
 	cp.AddressComment = strings.Map(StringClear, cp.AddressComment)
-	cp.Schedule = strings.Map(StringClear, cp.Schedule)
+	//cp.Schedule = strings.Map(StringClear, cp.Schedule)
+	schedule, err := ParseSchedule(cp.Schedule)
+	if err != nil {
+		log.Printf("Cannot parse schedule for cashpoint with id: %d", cp.Id)
+		return
+	}
+	scheduleJson, _ := json.Marshal(schedule)
+// 	log.Printf("%s", string(scheduleJson))
+	cp.Schedule = string(scheduleJson)
+
 	cp.Tel = strings.Map(StringClear, cp.Tel)
 	cp.Additional = strings.Map(StringClear, cp.Additional)
 }
