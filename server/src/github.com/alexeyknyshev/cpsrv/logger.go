@@ -24,12 +24,17 @@ func (logger TestLogger) getChan() chan string {
 	return logger.ch
 }
 
-func (logger TestLogger) logWriter() {
+func (logger TestLogger) goRoutineLogWriter() {
 	log.Println(<-logger.getChan())
 }
 
+func (logger TestLogger) logWriter(logStr string) {
+	go logger.goRoutineLogWriter()
+	logger.ch <- logStr
+}
+
 func (logger TestLogger) logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
-	go logger.logWriter()
+	go logger.goRoutineLogWriter()
 	endpointStr := r.URL.Path
 	if requestBody != "" {
 		endpointStr = endpointStr + " =>"
@@ -38,13 +43,12 @@ func (logger TestLogger) logRequest(w http.ResponseWriter, r *http.Request, requ
 		endpointStr = endpointStr + body
 	}
 	logStr := getRequestContexString(r) + " Request: " + r.Method + " " + endpointStr
-	//log.Printf("%s Request: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	logger.ch <- logStr
 	return nil
 }
 
 func (logger TestLogger) logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) error {
-	go logger.logWriter()
+	go logger.goRoutineLogWriter()
 	endpointStr := r.URL.Path
 	if responseBody != "" {
 		endpointStr = endpointStr + " =>"
@@ -54,7 +58,6 @@ func (logger TestLogger) logResponse(w http.ResponseWriter, r *http.Request, req
 	}
 	logStr := getRequestContexString(r) + " Response: " + r.Method + " " + endpointStr
 	logger.ch <- logStr
-	//log.Printf("%s: Response: %s %s", getRequestContexString(r), r.Method, endpointStr)
 	return nil
 }
 
@@ -62,16 +65,15 @@ func (logger TestLogger) prepareResponse(w http.ResponseWriter, r *http.Request)
 	requestId, err := getRequestUserId(r)
 	if err != nil {
 		logStr := getRequestContexString(r) + " prepareResponse " + err.Error()
-		logger.ch <- logStr
-		//log.Printf("%s prepareResponse %v\n", getRequestContexString(r), err)
+		logger.logWriter(logStr)
 		w.WriteHeader(http.StatusBadRequest)
 		return false, 0
 	}
+
 	if requestId == 0 {
 		strReqId := strconv.FormatInt(requestId, 10)
 		logStr := getRequestContexString(r) + " prepareResponse unexpected requestId: " + strReqId
-		logger.ch <- logStr
-		//log.Printf("%s prepareResponse unexpected requestId: %d\n", getRequestContexString(r), requestId)
+		logger.logWriter(logStr)
 		w.WriteHeader(http.StatusBadRequest)
 		return false, 0
 	}

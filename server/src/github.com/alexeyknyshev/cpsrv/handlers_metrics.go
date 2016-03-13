@@ -1,7 +1,6 @@
 package main
 
 import (
-	//"github.com/tarantool/go-tarantool"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 // TODO: access control
 func handlerSpaceMetrics(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/metrics/space", func(w http.ResponseWriter, r *http.Request) {
-		//fmt.Println("Inside testing func handlerSpaceMetrics:")
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
 		ok, requestId := logger.prepareResponse(w, r)

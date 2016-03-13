@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"github.com/gorilla/mux"
-	//"github.com/tarantool/go-tarantool"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -70,7 +69,6 @@ type BankIco struct {
 
 func handlerBankIco(handlerContext HandlerContext, conf ServerConfig) (string, EndpointCallback) {
 	return "/bank/{id:[0-9]+}/ico", func(w http.ResponseWriter, r *http.Request) {
-		//tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
 		ok, requestId := logger.prepareResponse(w, r)
 		if ok == false {
