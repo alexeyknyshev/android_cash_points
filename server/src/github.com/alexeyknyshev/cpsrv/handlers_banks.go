@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/gorilla/mux"
-	"github.com/tarantool/go-tarantool"
+	//"github.com/tarantool/go-tarantool"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,13 +12,15 @@ import (
 	"strconv"
 )
 
-func handlerBank(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerBank(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/bank/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		tnt := handlerContext.tnt()
+		logger := handlerContext.logger()
+		ok, requestId := logger.prepareResponse(w, r)
 		if ok == false {
 			return
 		}
-		go logRequest(w, r, requestId, "")
+		logger.logRequest(w, r, requestId, "")
 
 		params := mux.Vars(r)
 		bankIdStr := params["id"]
@@ -30,33 +32,33 @@ func handlerBank(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		bankId, err := strconv.ParseUint(bankIdStr, 10, 64)
 		if err != nil {
-			writeHeader(w, r, requestId, http.StatusBadRequest)
+			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
 		resp, err := tnt.Call("getBankById", []interface{}{bankId})
 		if err != nil {
 			log.Printf("%s => cannot get bank %d by id: %v\n", context, bankId, err)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
 		if len(resp.Data) == 0 {
 			log.Printf("%s => no such bank with id: %d\n", context, bankId)
-			writeHeader(w, r, requestId, http.StatusNotFound)
+			logger.writeHeader(w, r, requestId, http.StatusNotFound)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
 			if jsonStr != "" {
-				writeResponse(w, r, requestId, jsonStr)
+				logger.writeResponse(w, r, requestId, jsonStr)
 			} else {
-				writeHeader(w, r, requestId, http.StatusNotFound)
+				logger.writeHeader(w, r, requestId, http.StatusNotFound)
 			}
 		} else {
 			log.Printf("%s => cannot convert bank reply for id: %d\n", context, bankId)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
@@ -66,9 +68,11 @@ type BankIco struct {
 	IcoData string `json:"ico_data"`
 }
 
-func handlerBankIco(conf ServerConfig) (string, EndpointCallback) {
+func handlerBankIco(handlerContext HandlerContext, conf ServerConfig) (string, EndpointCallback) {
 	return "/bank/{id:[0-9]+}/ico", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		//tnt := handlerContext.tnt()
+		logger := handlerContext.logger()
+		ok, requestId := logger.prepareResponse(w, r)
 		if ok == false {
 			return
 		}
@@ -84,14 +88,14 @@ func handlerBankIco(conf ServerConfig) (string, EndpointCallback) {
 		icoFilePath := path.Join(conf.BanksIcoDir, bankIdStr+".svg")
 
 		if _, err := os.Stat(icoFilePath); os.IsNotExist(err) {
-			writeHeader(w, r, requestId, http.StatusNotFound)
+			logger.writeHeader(w, r, requestId, http.StatusNotFound)
 			return
 		}
 
 		data, err := ioutil.ReadFile(icoFilePath)
 		if err != nil {
 			log.Printf("%s => cannot read file: %s", context, icoFilePath)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
@@ -100,13 +104,15 @@ func handlerBankIco(conf ServerConfig) (string, EndpointCallback) {
 
 		ico := &BankIco{BankId: bankId, IcoData: string(data)}
 		jsonByteArr, _ := json.Marshal(ico)
-		writeResponse(w, r, requestId, string(jsonByteArr))
+		logger.writeResponse(w, r, requestId, string(jsonByteArr))
 	}
 }
 
-func handlerBanksBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerBanksBatch(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/banks", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		tnt := handlerContext.tnt()
+		logger := handlerContext.logger()
+		ok, requestId := logger.prepareResponse(w, r)
 		if ok == false {
 			return
 		}
@@ -117,33 +123,35 @@ func handlerBanksBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			go logRequest(w, r, requestId, "")
-			writeHeader(w, r, requestId, http.StatusBadRequest)
+			logger.logRequest(w, r, requestId, "")
+			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
 			return
 		}
 
-		go logRequest(w, r, requestId, jsonStr)
+		logger.logRequest(w, r, requestId, jsonStr)
 
 		resp, err := tnt.Call("getBanksBatch", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot get banks batch: %v => %s\n", context, err, jsonStr)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			logger.writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert banks batch reply to json str: %s\n", context, jsonStr)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
 
-func handlerBanksList(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerBanksList(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/banks", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		tnt := handlerContext.tnt()
+		logger := handlerContext.logger()
+		ok, requestId := logger.prepareResponse(w, r)
 		if ok == false {
 			return
 		}
@@ -152,21 +160,21 @@ func handlerBanksList(tnt *tarantool.Connection) (string, EndpointCallback) {
 			"requestId": strconv.FormatInt(requestId, 10),
 		})
 
-		go logRequest(w, r, requestId, "")
+		logger.logRequest(w, r, requestId, "")
 
 		resp, err := tnt.Call("getBanksList", []interface{}{})
 		if err != nil {
 			log.Printf("%s => cannot get banks list: %v\n", context, err)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			logger.writeResponse(w, r, requestId, jsonStr)
 		} else {
 			log.Printf("%s => cannot convert banks list reply to json str\n", context, jsonStr)
-			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
 		}
 	}
 }
