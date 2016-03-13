@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/gorilla/mux"
-	//"github.com/tarantool/go-tarantool"
 	"log"
 	"net/http"
 	"strconv"

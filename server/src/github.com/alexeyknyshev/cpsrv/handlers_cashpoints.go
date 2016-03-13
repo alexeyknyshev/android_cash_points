@@ -311,6 +311,49 @@ func handlerCashpointDelete(handlerContext HandlerContext) (string, EndpointCall
 	}
 }
 
+func handlerCashpointPatches(handlerContext HandlerContext) (string, EndpointCallback) {
+	return "/cashpoint/{id:[0-9]+}/patches", func(w http.ResponseWriter, r *http.Request) {
+		tnt := handlerContext.tnt()
+		logger := handlerContext.logger()
+		ok, requestId := logger.prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		params := mux.Vars(r)
+		cashPointIdStr := params["id"]
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointPatches", map[string]string{
+			"requestId":   strconv.FormatInt(requestId, 10),
+			"cashPointId": cashPointIdStr,
+		})
+
+		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
+		if err != nil {
+			logger.logRequest(w, r, requestId, "")
+			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			return
+		}
+
+		logger.logRequest(w, r, requestId, "")
+
+		resp, err := tnt.Call("getCashpointPatches", []interface{}{cashPointId})
+		if err != nil {
+			log.Printf("%s => cannot get cashpoint patches for id: %v => %s\n", context, err, cashPointIdStr)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			return
+		}
+
+		data := resp.Data[0].([]interface{})[0]
+		if jsonStr, ok := data.(string); ok {
+			logger.writeResponse(w, r, requestId, jsonStr)
+		} else {
+			log.Printf("%s => cannot convert cashpoint patches reply to json str: %s\n", context, jsonStr)
+			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+		}
+	}
+}
+
 func handlerCoordToQuadKey(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/quadkey", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()

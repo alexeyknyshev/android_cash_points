@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
                              "address_comment text, metro_name text, main_office integer, "
                              "without_weekend integer, round_the_clock integer, "
                              "works_as_shop integer, rub integer, usd integer, "
-                             "eur integer, cash_in integer, timestamp integer)");
+                             "eur integer, cash_in integer, timestamp integer, schedule text)");
     db.commit();
 
     qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
 //                                   "192.168.1.126"
                                    "localhost"
 //                                   "52.89.4.111"
+//                                   "5.23.98.144"
                                    , 8080);
 
     HostsModel *hostsModel = new HostsModel(api, &settings, api);
@@ -134,6 +135,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine *engine = new QQmlApplicationEngine;
 
     engine->addImportPath("qrc:/ui");
+    engine->addImportPath("qrc:/");
     engine->addImageProvider(QLatin1String("ico"), icoImageProvider);
     engine->addImageProvider(QLatin1String("empty"), emptyImageProvider);
     engine->rootContext()->setContextProperty("bankListModel", bankListModel);
@@ -157,6 +159,9 @@ int main(int argc, char *argv[])
 
     AppStateProxy *proxy = new AppStateProxy(&app);
     QObject::connect(proxy, SIGNAL(appStateChanged(int)), appWindow, SIGNAL(appStateChanged(int)));
+    QObject::connect(proxy, SIGNAL(serverDataLoaded(bool,QString)), appWindow, SIGNAL(serverDataReceived(bool,QString)));
+    QObject::connect(bankListModel, SIGNAL(updateProgress(int,int)), appWindow, SIGNAL(banksUpdateProgress(int,int)));
+    QObject::connect(townListModel, SIGNAL(updateProgress(int,int)), appWindow, SIGNAL(townsUpdateProgress(int,int)));
 
     /// update bank and town list after successfull ping
     QMetaObject::Connection connection = QObject::connect(api, &ServerApi::pong,
@@ -164,12 +169,18 @@ int main(int argc, char *argv[])
         static int attempts = 0;
         attempts++;
         if (ok) {
-            qDebug() << "Connected to server";
             QObject::disconnect(connection);
+            qDebug() << "Connected to server";
+
+            QObject::connect(bankListModel, &BankListSqlModel::serverDataReceived,
+                             proxy, &AppStateProxy::onBanksDataLoaded);
+            QObject::connect(townListModel, &TownListSqlModel::serverDataReceived,
+                             proxy, &AppStateProxy::onTownsDataLoaded);
             bankListModel->updateFromServer();
             townListModel->updateFromServer();
         } else {
             if (attempts > 3) {
+                proxy->onConnectionFailed();
                 return;
             }
             api->ping();

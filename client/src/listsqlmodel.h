@@ -29,6 +29,8 @@ signals:
     void filterRequest(QString filter);
     void requestError(QString error);
 
+    void updateProgress(int done, int total);
+
 public slots:
     void setFilter(QString filter);
 
@@ -61,6 +63,21 @@ protected:
     void emitRequestError(const QString &err)
     { emit requestError(err); }
 
+    void emitUpdateProgress()
+    { emit updateProgress(mUploadedCount, mExpectedUploadCount); }
+
+    void setUploadedCount(int count)
+    { mUploadedCount = count; }
+
+    int getUploadedCount() const
+    { return mUploadedCount; }
+
+    void setExpectedUploadCount(int count)
+    { mExpectedUploadCount = count; }
+
+    int getExpectedUploadCount() const
+    { return mExpectedUploadCount; }
+
     /// reimplemented qt methods
     QVariant data(const QModelIndex &item, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -82,6 +99,9 @@ private:
     QSettings *mSettings;
 
     const QString mDBConnectionName;
+
+    int mExpectedUploadCount;
+    int mUploadedCount;
 };
 
 #endif // LISTSQLMODEL_H

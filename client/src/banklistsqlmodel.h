@@ -5,6 +5,8 @@
 
 #include "listsqlmodel.h"
 
+class Bank;
+
 class BankListSqlModel : public ListSqlModel
 {
     Q_OBJECT
@@ -64,6 +66,7 @@ protected:
 
 
 private slots:
+    void restoreBanksData();
     void updateBanksIds(quint32 leftAttempts);
     void updateBanksData(quint32 leftAttempts);
     void updateBankIco(quint32 leftAttempts, quint32 bankId);
@@ -79,6 +82,12 @@ private:
     { emit updateBankIcoRequest(leftAttempts, bankId); }
     void emitBankIcoUpdated(quint32 bankId)
     { emit bankIcoUpdated(bankId); }
+
+    void saveInCache();
+    void restoreFromCache(QList<int> &bankIdList);
+
+    void writeBankToDB(const Bank &bank);
+    bool writeBankPartnersToDB(quint32 id, const QList<int> &partners);
 
     QList<int> mBanksToProcess;
 

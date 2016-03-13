@@ -1,7 +1,7 @@
 #include "listsqlmodel.h"
 
 #define DEFAULT_ATTEMPTS_COUNT 3
-#define DEFAULT_BATCH_SIZE 128
+#define DEFAULT_BATCH_SIZE 256
 
 ListSqlModel::ListSqlModel(const QString &connectionName,
                            ServerApi *api,
@@ -10,7 +10,9 @@ ListSqlModel::ListSqlModel(const QString &connectionName,
     : mApi(api),
       mImageProvider(imageProvider),
       mSettings(settings),
-      mDBConnectionName(connectionName)
+      mDBConnectionName(connectionName),
+      mExpectedUploadCount(0),
+      mUploadedCount(0)
 {
     Q_ASSERT_X(api, "ListSqlModel(const QString &, ServerApi *, IcoImageProvider *, QSettings *)", "null ServerApi ptr");
     Q_ASSERT_X(imageProvider, "ListSqlModel(const QString &, ServerApi *, IcoImageProvider *, QSettings *)", "null IcoImageProvider ptr");
