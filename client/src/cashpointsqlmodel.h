@@ -26,6 +26,7 @@ public:
         AddressCommentRole,
         MetroNameRole,
         MainOfficeRole,
+        ScheduleRole,
         WithoutWeekendRole,
         RoundTheClockRole,
         WorksAsShopRole,
@@ -59,6 +60,7 @@ public:
     QJsonObject getCachedCashpointData(quint32 id);
     QMap<quint32, int> getCachedCashpoints() const;
 
+    Q_INVOKABLE QString getCashpointById(quint32 id);
     Q_INVOKABLE QString getLastGeoPos() const;
 
 public slots:

@@ -30,6 +30,7 @@ struct CashPoint : public RpcType<CashPoint>
     QString address;
     QString addressComment;
     QString metroName;
+    QString schedule;
     bool mainOffice;
     bool withoutWeekend;
     bool roundTheClock;
@@ -69,6 +70,7 @@ struct CashPoint : public RpcType<CashPoint>
         result.addressComment = obj["address_comment"].toString();
         result.metroName      = obj["metro_name"].toString();
         result.mainOffice     = obj["main_office"].toBool();
+        result.schedule       = obj["schedule"].toString();
         result.withoutWeekend = obj["without_weekend"].toBool();
         result.roundTheClock  = obj["round_the_clock"].toBool();
         result.worksAsShop    = obj["works_as_shop"].toBool();
@@ -92,6 +94,7 @@ struct CashPoint : public RpcType<CashPoint>
         item->setData(addressComment, CashPointSqlModel::AddressCommentRole);
         item->setData(metroName,      CashPointSqlModel::MetroNameRole);
         item->setData(mainOffice,     CashPointSqlModel::MainOfficeRole);
+        item->setData(schedule,       CashPointSqlModel::ScheduleRole);
         item->setData(withoutWeekend, CashPointSqlModel::WithoutWeekendRole);
         item->setData(roundTheClock,  CashPointSqlModel::RoundTheClockRole);
         item->setData(worksAsShop,    CashPointSqlModel::WorksAsShopRole);
@@ -166,6 +169,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
     setRoleName(AddressCommentRole, "cp_address_comment");
     setRoleName(MetroNameRole,      "cp_metro_name");
     setRoleName(MainOfficeRole,     "cp_main_office");
+    setRoleName(ScheduleRole,       "cp_schedule");
     setRoleName(WithoutWeekendRole, "cp_without_weekend");
     setRoleName(RoundTheClockRole,  "cp_round_the_clock");
     setRoleName(WorksAsShopRole,    "cp_works_as_shop");
@@ -188,13 +192,13 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                               "cord_lon, cord_lat, address, "
                               "address_comment, metro_name, main_office, "
                               "without_weekend, round_the_clock, "
-                              "works_as_shop, rub, usd, eur, cash_in, timestamp) "
+                              "works_as_shop, rub, usd, eur, cash_in, timestamp, schedule) "
                               "VALUES "
                               "(:id, :type, :bank_id, :town_id, "
                               ":cord_lon, :cord_lat, :address, "
                               ":address_comment, :metro_name, :main_office, "
                               ":without_weekend, :round_the_clock, "
-                              ":works_as_shop, :rub, :usd, :eur, :cash_in, :timestamp)"))
+                              ":works_as_shop, :rub, :usd, :eur, :cash_in, :timestamp, :schedule)"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
                    << mQueryUpdate.lastError().databaseText();
@@ -204,7 +208,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                                  "cord_lon, cord_lat, address, "
                                  "address_comment, metro_name, main_office, "
                                  "without_weekend, round_the_clock, "
-                                 "works_as_shop, rub, usd, eur, cash_in, timestamp "
+                                 "works_as_shop, rub, usd, eur, cash_in, timestamp, schedule "
                                  "FROM cp WHERE id = :id"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
@@ -262,6 +266,7 @@ void CashPointSqlModel::addCashPoint(const QJsonObject &obj)
         mQueryUpdate.bindValue(":eur", cp.eur);
         mQueryUpdate.bindValue(":cash_in", cp.cashIn);
         mQueryUpdate.bindValue(":timestamp", cp.timestamp);
+        mQueryUpdate.bindValue(":schedule", cp.schedule);
 
         if (!mQueryUpdate.exec()) {
             qWarning() << "addCashPoints: failed to update 'cp' table";
@@ -300,6 +305,7 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         const bool eur =               mQueryCashpoint.value(15).toBool();
         const bool cashIn =            mQueryCashpoint.value(16).toBool();
         const int timestamp =          mQueryCashpoint.value(17).toInt();
+        const QString schedule =       mQueryCashpoint.value(18).toString();
 
         QJsonObject o;
         o["id"] = id;
@@ -320,9 +326,15 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         o["eur"] = eur;
         o["cash_in"] = cashIn;
         o["timestamp"] = timestamp;
+        o["schedule"] = schedule;
         return o;
     }
     return QJsonObject();
+}
+
+QString CashPointSqlModel::getCashpointById(quint32 id)
+{
+    return QString::fromUtf8(QJsonDocument(getCachedCashpointData(id)).toJson());
 }
 
 QMap<quint32, int> CashPointSqlModel::getCachedCashpoints() const
