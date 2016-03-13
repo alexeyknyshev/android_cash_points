@@ -16,6 +16,7 @@
         <file>ui/MapPlaceMark.qml</file>
         <file>ui/MapInfoView.qml</file>
         <file>ui/CashpointView.qml</file>
+        <file alias="app_ico.png">ui/app_ico.png</file>
     </qresource>
     <qresource prefix="/icon">
         <file alias="atm.svg">ico/other/atm_gray.svg</file>

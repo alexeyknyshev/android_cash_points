@@ -8,6 +8,7 @@ import QtQml 2.2
 import "viewloadercreator.js" as ViewLoaderCreator
 
 ApplicationWindow {
+    id: appWindow
     title: qsTr("Cash Points")
     width: 480
     height: 800
@@ -23,6 +24,102 @@ ApplicationWindow {
         } else {
             console.warn("pong :(")
         }
+    }
+
+    property bool banksReceived: false
+    property bool townsReceived: false
+
+    property var banksProgress: {
+        "done": 0,
+        "total": 0,
+    }
+
+    property var townsProgress: {
+        "done": 0,
+        "total": 0,
+    }
+
+    signal serverDataReceived(bool ok, string data)
+    onServerDataReceived: {
+        var text = ""
+        if (ok) {
+            console.log("received " + data + " server data")
+            if (data === "towns") {
+                townsReceived = true
+            } else if (data === "banks") {
+                banksReceived = true
+            }
+
+            if (banksReceived && townsReceived) {
+                flipable.flipped = true
+            }
+
+            /*if (data === "towns") {
+                townsReceived = true
+                if (!banksReceived) {
+                    text = qsTr("Загружаем банки")
+                } else {
+                    text = qsTr("Почти готово")
+                }
+            } else if (data === "banks") {
+                banksReceived = true
+                if (!townsReceived) {
+                    text = qsTr("Загружаем города")
+                } else {
+                    text = qsTr("Почти готово")
+                }
+            } else {
+                text = qsTr("Почти готово")
+            }*/
+
+            //progress.setTextInfo(text)
+
+//            if (banksReceived) {
+//                    flipable.flipped = true
+//            }
+        } else {
+            text = qsTr("Ошибка подключения к серверу")
+            if (data) {
+                text += ":\n" + data
+            }
+            progress.setTextError(text)
+            settingButton.opacity = 1.0
+            console.log("cannot receive server data")
+        }
+    }
+
+    signal banksUpdateProgress(int done, int total)
+    onBanksUpdateProgress: {
+        banksProgress.done = done
+        banksProgress.total = total
+        updateProgress()
+        console.log("banks update progress: " + done.toString() + "/" + total.toString())
+    }
+
+    signal townsUpdateProgress(int done, int total)
+    onTownsUpdateProgress: {
+        townsProgress.done = done
+        townsProgress.total = total
+        updateProgress()
+        console.log("towns update progress: " + done.toString() + "/" + total.toString())
+    }
+
+    function updateProgress() {
+        var text = ""
+        if (banksProgress.done > 0) {
+            var bpercent = banksProgress.done / banksProgress.total
+            text += "Банки: " + Math.round(bpercent.toString() * 100) + "%\n"
+        }
+        if (townsProgress.done > 0) {
+            var tpercent = townsProgress.done / townsProgress.total
+            text += "Города: " + Math.round(tpercent.toString() * 100) + "%\n"
+        }
+        if (text.length > 0) {
+            text = qsTr("Загрузка\n") + text
+        } else {
+            text = qsTr("Подготовка")
+        }
+        progress.setTextInfo(text)
     }
 
     function saveLastGeoPos() {
@@ -46,11 +143,20 @@ ApplicationWindow {
     property date lastExitAttempt: new Date()
     property int backExitThreathold: 500
 
+    property var actionCallback
+
     property var actions: []
 
     function handleAction(action, blockSaving) {
         if (!action) {
             return true
+        }
+
+        if (actionCallback) {
+            var ok = actionCallback(action)
+            if (!ok) {
+                return true
+            }
         }
 
         if (action.type === "undo") {
@@ -156,6 +262,16 @@ ApplicationWindow {
             enabled: !parent.flipped
             anchors.fill: parent
 
+            Image {
+                id: logo
+                x: parent.width * 0.2
+                y: parent.height * 0.25
+                width: parent.width * 0.6
+                fillMode: Image.PreserveAspectFit
+                source: "qrc:/app_ico.png"
+            }
+
+/*
             Label {
                 id: logo
                 anchors.centerIn: parent
@@ -234,23 +350,79 @@ ApplicationWindow {
                     }
                 ]
             }
-
-            BusyIndicator {
+*/
+            Label {
                 id: progress
                 //anchors.centerIn: parent
                 anchors.top: logo.bottom
+                anchors.topMargin: Math.min(parent.height, parent.width) * 0.02
                 anchors.horizontalCenter: logo.horizontalCenter
+                text: qsTr("Загружаем банки и города")
+                font.bold: true
+                font.pixelSize: 24
+                color: "gray"
+
 //                value: 0.8
+
+//                property int dotCount: 0
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 1000
+                    }
+                }
+
+                function setTextInfo(newText) {
+                    color = "gray"
+                    if (!progressTimer.running) {
+                        progressTimer.start()
+                    }
+                    text = newText
+                }
+
+                function setTextError(newText) {
+                    color = "red"
+                    if (progressTimer.running) {
+                        progressTimer.stop()
+                    }
+                    text = newText
+                }
+
+                Timer {
+                    id: progressTimer
+                    interval: 1500
+                    running: true
+                    repeat: true
+                    onTriggered: {
+                        progress.opacity = progress.opacity == 1.0 ? 0.1 : 1.0
+                    }
+                }
             }
 
-//            ProgressBar
-//            {
-//                id: progress
-//                //anchors.centerIn: parent
-//                anchors.top: logo.bottom
-//                anchors.horizontalCenter: logo.horizontalCenter
-//                value: 0.8
-//            }
+            Image {
+                id: settingButton
+                anchors.top: progress.bottom
+                anchors.topMargin: parent.height * 0.02
+                anchors.horizontalCenter: logo.horizontalCenter
+                width: Math.min(parent.width, parent.height) * 0.1
+                height: width
+                source: "../icon/settings.svg"
+                smooth: true
+                opacity: 0.0
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 500
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        console.log("openning settings")
+                    }
+                }
+            }
         }
         back:
         MapView {
@@ -262,6 +434,10 @@ ApplicationWindow {
 
             onAction: {
                 handleAction(action)
+            }
+
+            onParentChanged: {
+                appWindow.actionCallback = getActionCallback()
             }
 
             LeftMenu {

@@ -39,14 +39,45 @@ Item {
         }
     }
 
+    function getActionCallback() {
+        return function(action) {
+            if (action.type === "undo" && infoView.state !== "hidden") {
+                infoView.hide()
+                return false
+            }
+            return true
+        }
+    }
+
     function cashpointTypePrintable(type) {
         if (type === "atm") {
             return qsTr("Банкомат")
-        } else if (type === "office") {
+        } else if (type === "office" || type === "branch") {
             return qsTr("Офис")
         } else if (type === "cash") {
             return qsTr("Касса")
         }
+        return ""
+    }
+
+    function currencyTypePrintable(cp) {
+        var text = ""
+        if (cp.rub) {
+            text += qsTr("рубли")
+        }
+        if (cp.eur) {
+            if (text.length > 0) {
+                text += ", "
+            }
+            text += qsTr("доллары")
+        }
+        if (cp.usd) {
+            if (text.length > 0) {
+                text += ", "
+            }
+            text += qsTr("евро")
+        }
+        return text
     }
 
     function getVisiableAreaRadius() {
@@ -179,8 +210,14 @@ Item {
                 property var pointAddress: model.cp_address
 
                 sourceItem: Item {
-                        width: item.width
-                        height: item.height
+                        property real cpSizeLen: model.cp_size.toString().length
+                        property real multiplier: model.cp_type === "cluster" ? (cpSizeLen > 3 ? 1.0 + (cpSizeLen - 3) * 0.25 : 1.0) : 1.0
+                        width: item.width * (multiplier > 1.0 ? multiplier : 1.0)
+                        height: item.height * (multiplier > 1.0 ? multiplier : 1.0)
+
+                        onMultiplierChanged: {
+                            console.log(multiplier)
+                        }
 
                         opacity: topView.active ? 1.0 : 0.0
                         visible: opacity > 0.0
@@ -274,7 +311,8 @@ Item {
             }
 
             if (searchLineEdit.searchCandidate) {
-                json.filter = searchLineEdit.searchCandidate.filter
+                console.log("searchCandidate: " + JSON.stringify(searchLineEdit.searchCandidate))
+                json.filter = searchLineEdit.searchCandidate.filter ? searchLineEdit.searchCandidate.filter : {}
             } else {
                 var filterJson = searchEngine.getMineBanksFilter()
                 json.filter = JSON.parse(filterJson)
@@ -320,7 +358,8 @@ Item {
                                     "latitude": mapItems[i].coordinate.latitude,
                                     "bank": mapItems[i].pointBankId,
                                     "name": mapItems[i].pointName,
-                                    "address": mapItems[i].pointAddress
+                                    "address": mapItems[i].pointAddress,
+                                    "radiusSqr": itemHalfH * itemHalfH + itemHalfW * itemHalfW
                                 })
                 }
             }
@@ -381,7 +420,7 @@ Item {
                 "do": function(act) {
                     map._moveToCoord(act.coord, Math.max(map.zoomLevel, cashpointZoom))
                     map._addCashpoint(act.coord)
-                    infoTabView.page = 0
+                    //infoTabView.page = 0
                     infoView.show()
                     return true
                 },
@@ -575,8 +614,9 @@ Item {
                 onClicked: {
                     topView.clicked()
 
-                    if (!topView.active)
+                    if (!topView.active) {
                         return
+                    }
 
                     if (parent.zooming)
                     {
@@ -589,8 +629,34 @@ Item {
                     } else {
                         holdDialog.hide()
                     }
-                }
 
+                    var items = map.mapItemsAtScenePos(mouseX, mouseY)
+                    items.sort(function(a, b) {
+                        return a.dist - b.dist
+                    })
+
+                    //for (var i = 0; i < items.length; i++) {
+                    //    console.log(JSON.stringify(items[i]))
+                    //}
+
+                    if (items.length > 0) {
+                        var data = items[0]
+
+                        console.log(JSON.stringify(data))
+
+                        if (data.type === "cluster" && data.dist < data.radiusSqr) {
+                            var minSideLen = Math.min(map.width, map.height)
+                            var minSideLenSqr = minSideLen * minSideLen
+                            if (map.getPanDistanceSqr() < minSideLenSqr * 0.01) {
+                                map.moveToCoord({
+                                                    "longitude": data.longitude,
+                                                    "latitude": data.latitude,
+                                                },
+                                                map.zoomLevel + 1)
+                            }
+                        }
+                    }
+                }
                 onDoubleClicked: {
                     if (!topView.active) {
                         return
@@ -652,31 +718,42 @@ Item {
                         //}
 
                         if (items.length > 0) {
-                            console.log(JSON.stringify(items[0]))
+                            var data = items[0]
+                            console.log(JSON.stringify(data))
 
-                            var type = items[0].type
-                            if (type !== "cluster") {
-                                infoView.show()
-
-                                var text = cashpointTypePrintable(type)
-                                if (text) {
-                                    text += " "
-                                } else {
-                                    text = ""
-                                }
-
-                                if (items[0].bank) {
-                                    var bankJsonData = bankListModel.getBankData(items[0].bank)
-                                    if (bankJsonData !== "") {
-                                        var bank = JSON.parse(bankJsonData)
-                                        text += bank.name
+                            if (data.type !== "cluster") {
+                                var act = {
+                                    //"prevPage": infoTabView.page,
+                                    "prevData": infoView.data,
+                                    "data": data,
+                                    "type": "showInfo",
+                                    "do": function(act) {
+                                        infoView.setInfoData(act.data)
+                                        infoView.show()
+                                        //infoTabView.page = 1
+                                        return true
+                                    },
+                                    "undo": function(act) {
+                                        infoView.setInfoData(act.prevData)
+                                        if (act.prevPage) {
+                                            //infoTabView.page = act.prevPage
+                                        }
+                                        infoView.hide()
+                                        return true
                                     }
                                 }
 
-                                infoTabView.page = 1
+                                action(act)
+
+//                                if (items[0].bank) {
+//                                    var bankJsonData = bankListModel.getBankData(items[0].bank)
+//                                    if (bankJsonData !== "") {
+//                                        var bank = JSON.parse(bankJsonData)
+//                                        text += bank.name
+//                                    }
+//                                }
+
 //                                addToMapText.text = text
-                                cashpointInfo.text = text
-                                cashpointAddress.text = items[0].address
                             }
                         }
                     }
@@ -950,6 +1027,7 @@ Item {
 
             property var searchCandidate: null
             function setSearchCandidate(candidate) {
+                console.log("searchCandidate: " + JSON.stringify(candidate))
                 searchCandidate = candidate
 //                if (candidate.filter) {
 //                    searchEngine.filterPatch = JSON.stringify(candidate.filter)
@@ -982,6 +1060,7 @@ Item {
                         setSearchCandidate(candidate)
                     }
                 }
+                focus = false
             }
 
             function setFirstLetterUpper(upper)
@@ -1098,7 +1177,8 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    searchLineEdit.setSearchCandidate(null)
+                    // remove search candidate
+                    searchLineEdit.setSearchCandidate()
                 }
 
                 onHoveredChanged: {
@@ -1211,123 +1291,116 @@ Item {
         }
     }
 
-    MapInfoView {
-        z: parent.z + 2
+    Rectangle {
         id: infoView
         width: parent.width
-        height: parent.height * 0.2
         y: parent.height
+        height: previewHeight
 
-        onParentChanged: {
-            shownY = parent.height - height
+        states: [
+            State {
+                name: "hidden"
+            },
+            State {
+                name: "fullscreen"
+            }
+        ]
+
+        ParallelAnimation {
+            id: infoViewAnim
+            property real targetY: 0
+            property real targetHeight: 0
+            running: false
+            NumberAnimation {
+                easing: Easing.InOutCubic
+                duration: 200
+                target: infoView
+                property: "y"
+                to: infoViewAnim.targetY
+            }
+            NumberAnimation {
+                easing: Easing.InOutCubic
+                duration: 200
+                target: infoView
+                property: "height"
+                to: infoViewAnim.targetHeight
+            }
         }
 
-        /*onParentChanged: {
-            console.log("MapInfoView")
-            y = parent.height
-            hide()
-        }*/
+        property real previewHeight: parent.height * 0.2
 
-        MouseArea {
+        function setInfoData(d) {
+            var text = cashpointTypePrintable(d.type)
+            var bankJsonData = bankListModel.getBankData(d.bank)
+            if (bankJsonData) {
+                var bank = JSON.parse(bankJsonData)
+                text += " " + bank.name
+            }
+
+            pointInfo.text = text
+
+            var cashpointJsonData = cashpointModel.getCashpointById(d.id)
+            console.log(cashpointJsonData)
+            if (cashpointJsonData) {
+                var cp = JSON.parse(cashpointJsonData)
+                pointSchedule.text = cp.schedule
+            }
+
+            pointCurrencyType.text = currencyTypePrintable(cp)
+        }
+
+        function show() {
+            infoViewAnim.targetY = parent.height - previewHeight
+            infoViewAnim.targetHeight = previewHeight
+            infoViewAnim.start()
+            state = ""
+        }
+
+        function showFullscreen() {
+            infoViewAnim.targetY = 0.0
+            infoViewAnim.targetHeight = topView.height
+            infoViewAnim.start()
+            state = "fullscreen"
+        }
+
+        function hide() {
+            infoViewAnim.targetY = topView.height
+            infoViewAnim.targetHeight = previewHeight
+            infoViewAnim.start()
+            state = "hidden"
+        }
+
+        Column {
             anchors.fill: parent
 
-            id: infoTabView
-            property int page: 0
+            Label {
+                id: pointInfo
+            }
 
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: infoView.parent.height - infoView.shownY
+            Label {
+                id: pointSchedule
+            }
 
-
-                Rectangle {
-//                    anchors.margins: Math.min(parent.parent.width, parent.parent.height) * 0.05
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.margins: parent.height * 0.05
-                    width: height
-
-                    visible: infoTabView.page == 0
-
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            console.log("TEST")
-                            if (map.mark) {
-                                if (!map.mark.visible) {
-                                    map.mark.visible = true
-                                    map._moveToCoord(map.mark.coordinate, Math.max(cashpointZoom, map.zoomLevel))                                 }
-                                } else {
-                                    console.warn("Marker has not created. Application can missbehave")
-                                    map.addCashpoint(map.center)
-                                }
-                                infoView.showFullscreen()
-                            }
-
-                        Rectangle {
-                            anchors.fill: parent
-
-                            Image {
-                                sourceSize: Qt.size(width, height)
-                                source: "image://ico/place_add_plus.svg"
-                                anchors.top: parent.top
-                                anchors.bottom: addToMapText.top
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                width: height
-                            }
-
-                            Text {
-                                id: addToMapText
-                                text: qsTr("Добавить на карту")
-                                font.pixelSize: searchLineEdit.font.pixelSize
-                                anchors.bottom: parent.bottom
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                wrapMode: Text.WordWrap
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                        }
-                    }
+            Row {
+                Label {
+                    text: qsTr("Валюта:")
                 }
 
-                Rectangle {
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.margins: parent.height * 0.05
-                    width: height
-
-                    visible: infoTabView.page == 1
-
-                    Column {
-                        Text {
-                            onParentChanged: {
-                                console.log("HEEERE")
-                            }
-
-                            id: cashpointInfo
-                            text: "info"
-                        }
-                        Text {
-                            id: cashpointAddress
-                            text: "address"
-                        }
-                    }
+                Label {
+                    id: pointCurrencyType
                 }
             }
         }
     }
 
-    RectangularGlow {
-        visible: infoView.state == "shown"
-        z: infoView.z - 1
-        anchors.fill: infoView
-        glowRadius: searchLineEditContainer.height / 5
-        spread: 0.3
-        color: "#11000055"
-        cornerRadius: glowRadius
-    }
+//    RectangularGlow {
+//        visible: infoView.state == "shown"
+//        z: infoView.z - 1
+//        anchors.fill: infoView
+//        glowRadius: searchLineEditContainer.height / 5
+//        spread: 0.3
+//        color: "#11000055"
+//        cornerRadius: glowRadius
+//    }
 }
 

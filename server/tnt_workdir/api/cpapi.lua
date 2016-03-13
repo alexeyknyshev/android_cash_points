@@ -152,7 +152,7 @@ local function isCashpointPatchTable(cp)
 end
 
 -- return id of created / updated cashpoint if success, 0 otherwise
-function cashpointCommit(reqJson)
+function cashpointCommit(reqJson, userId)
     local func = "cashpointCommit"
     local timestamp = fiber.time64()
 
@@ -247,7 +247,7 @@ function cashpointCommit(reqJson)
 
         --box.space.towns:update(cp.town_id, {{ '+', COL_TOWN_CP_COUNT, 1 }})
         local patch = { id = cp.id }
-        local patchTuple = box.space.cashpoints_patches:auto_increment{ cp.id, json.encode(patch), timestamp } -- patch is unique (due to unique cp.id)
+        local patchTuple = box.space.cashpoints_patches:auto_increment{ cp.id, userId, json.encode(patch), timestamp } -- patch is unique (due to unique cp.id)
         print(func .. ": created patch for cashpoint: " .. tostring(patchTuple[1]))
         return cp.id
     end
@@ -316,7 +316,7 @@ function cashpointProposePatch(reqJson)
         end
 
         box.begin()
-        local id = cashpointCommit(json.encode(cp))
+        local id = cashpointCommit(json.encode(cp), userId)
         if id > 0 then
             box.commit()
         else
@@ -429,7 +429,7 @@ function cashpointVotePatch(reqJson)
     box.begin()
     box.space.cashpoints_patches_votes:auto_increment{ vote.patch_id, vote.user_id, vote.score }
     if isCashpointPatchApproved(vote.patch_id) then
-        if cashpointCommit(patchTuple[COL_CP_PATCH_DATA]) == 0 then
+        if cashpointCommit(patchTuple[COL_CP_PATCH_DATA], vote.user_id) == 0 then
             box.rollback()
             box.error{ code = 400, reason = "cannot commit approved cashpoint patch" }
             return false

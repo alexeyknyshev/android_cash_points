@@ -7,20 +7,23 @@ dist: trusty
 
 before_script:
   - wget http://tarantool.org/dist/1.6/tarantool-1.6.8.545.tar.gz -O /tmp/tarantool.tar.gz
+  - wget https://github.com/alexeyknyshev/android_cash_points/releases/download/ci/test_data.tar.gz -O /tmp/test_data.tar.gz
   - cd /tmp
   - tar -xvf tarantool.tar.gz
+  - tar -xvf test_data.tar.gz
   - cd /tmp/tarantool-1.6.8.545 && export PATH=$PATH:$PWD/src
   - cmake . && make
 
 script:
   - cd $HOME/gopath/src/github.com/alexeyknyshev/android_cash_points/server
   - export GOPATH=$PWD
+  - cp /tmp/00000000000000000000.snap /tmp/00000000000000000000.xlog tnt_workdir
   - cd tnt_workdir && tarantool init.lua &
   - cd $GOPATH
   - go get github.com/alexeyknyshev/gojsondiff
   - go get github.com/alexeyknyshev/cpsrv
   - go build github.com/alexeyknyshev/cpsrv
-  - echo "box.schema.user.passwd('admin', 'admin')" | nc localhost 3302
+  #- echo "box.schema.user.passwd('admin', 'admin')" | nc localhost 3302
   - go test github.com/alexeyknyshev/cpsrv
 
 #before_install:

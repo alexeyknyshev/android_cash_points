@@ -13,7 +13,13 @@ public:
     AppStateProxy(QGuiApplication *app);
 
 signals:
+    void serverDataLoaded(bool ok, QString dataType);
     void appStateChanged(int state);
+
+public slots:
+    void onConnectionFailed();
+    void onTownsDataLoaded();
+    void onBanksDataLoaded();
 
 private slots:
     void onAppStateChanged(Qt::ApplicationState state);

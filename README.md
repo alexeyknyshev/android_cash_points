@@ -1,4 +1,4 @@
-# Android Cash Points
+# Android Cash Points [![Build Status](https://travis-ci.org/alexeyknyshev/android_cash_points.svg?branch=master)](https://travis-ci.org/alexeyknyshev/android_cash_points)
 Android app for nearby Cash Point lookup
 
 ![Main menu](https://github.com/alexeyknyshev/android_cash_points/blob/master/misc/preview/main_menu.png)

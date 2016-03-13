@@ -268,6 +268,7 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
         mTownsToProcess = getTownsIdList(json);
         //qDebug() << "got towns id list:" << mTownsToProcess.size();
 
+        setUploadedCount(0);
         emitTownIdsUpdated();
     });
 }
@@ -275,8 +276,11 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
 void TownListSqlModel::restoreTownsData()
 {
     restoreFromCache(mTownsToProcess);
+    setExpectedUploadCount(mTownsToProcess.size());
     if (!mTownsToProcess.isEmpty()) { // fetch left towns from server
         emitUpdateTownData(getAttemptsCount());
+    } else { // all towns restored from cache
+        emitServerDataReceived();
     }
 }
 
@@ -291,6 +295,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
     const quint32 townsToProcess = qMin(getRequestBatchSize(), (quint32)mTownsToProcess.size());
     if (townsToProcess == 0) {
         saveInCache();
+        emitServerDataReceived();
         return;
     }
 
@@ -350,6 +355,8 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
             writeTownToDB(town);
         }
 
+        setUploadedCount(getUploadedCount() + townList.size());
+        emitUpdateProgress();
         emitUpdateTownData(getAttemptsCount());
     });
 }

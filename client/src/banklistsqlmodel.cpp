@@ -3,6 +3,8 @@
 
 #include <QtSql/QSqlRecord>
 #include <QtSql/QSqlError>
+#include <QtCore/QStandardPaths>
+#include <QtCore/QDir>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonArray>
 #include <QtCore/QFile>
@@ -22,7 +24,7 @@ struct Bank : public RpcType<Bank>
     quint32 licence;
     quint32 rating;
     quint32 mine;
-    QList<quint32> partners;
+    QList<int> partners;
 
     Bank()
         : licence(0),
@@ -52,6 +54,28 @@ struct Bank : public RpcType<Bank>
         }
 
         return result;
+    }
+
+    QJsonObject toJsonObject() const
+    {
+        QJsonObject json;
+
+        QJsonArray partnersArray;
+        for (quint32 p : partners) {
+            partnersArray.append(qint64(p));
+        }
+
+        json["id"] = QJsonValue(qint64(id));
+        json["name"] = name;
+        json["name_tr"] = nameTr;
+        json["name_tr_alt"] = nameTrAlt;
+        json["town"] = town;
+        json["tel"] = tel;
+        json["licence"] = qint64(licence);
+        json["rating"] = qint64(rating);
+        json["partners"] = partnersArray;
+
+        return json;
     }
 
     void fillItem(QStandardItem *item) const override
@@ -149,7 +173,7 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
             this, SLOT(updateBanksIds(quint32)), Qt::QueuedConnection);
 
     connect(this, SIGNAL(bankIdsUpdated(quint32)),
-            this, SIGNAL(updateBanksDataRequest(quint32)), Qt::QueuedConnection);
+            this, SLOT(restoreBanksData()), Qt::QueuedConnection);
 
     connect(this, SIGNAL(updateBanksDataRequest(quint32)),
             this, SLOT(updateBanksData(quint32)), Qt::QueuedConnection);
@@ -392,16 +416,13 @@ void BankListSqlModel::updateBanksIds(quint32 leftAttempts)
         }
 
         mBanksToProcess = getBanksIdList(json);
+        setUploadedCount(0);
         emitBankIdsUpdated(getAttemptsCount());
     });
 }
 
 void BankListSqlModel::updateBanksData(quint32 leftAttempts)
 {
-    if (mBanksToProcess.empty()) {
-        return;
-    }
-
     if (leftAttempts == 0) {
         qDebug() << "updateBanksData: no retry attempt left";
         emitRequestError(trUtf8("Could not connect to server after serval attempts"));
@@ -410,6 +431,8 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
 
     const quint32 banksToProcess = qMin(getRequestBatchSize(), (quint32)mBanksToProcess.size());
     if (banksToProcess == 0) {
+        saveInCache();
+        emitServerDataReceived();
         return;
     }
 
@@ -492,18 +515,16 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
                 qWarning() << "updateBanksData: " << mQueryUpdateBanks.lastError().databaseText();
             }
 
-            for (quint32 partnerId : bank.partners) {
-                mQuerySetPartners.bindValue(0, bank.id);
-                mQuerySetPartners.bindValue(1, partnerId);
-                if (!mQuerySetPartners.exec()) {
-                    qWarning() << "updateBanksData: failed to update 'partners' table";
-                    qWarning() << "updateBanksData: " << mQueryGetPartners.lastError().databaseText();
-                }
+            if (!writeBankPartnersToDB(bank.id, bank.partners)) {
+                qWarning() << "updateBanksData: failed to update 'partners' table";
+                qWarning() << "updateBanksData: " << mQueryGetPartners.lastError().databaseText();
             }
 
             emitUpdateBankIco(getAttemptsCount(), bank.id);
         }
 
+        setUploadedCount(getUploadedCount() + bankList.size());
+        emitUpdateProgress();
         emitUpdateBanksData(getAttemptsCount());
     });
 }
@@ -574,4 +595,183 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
 
         emitBankIcoUpdated(bankId);
     });
+}
+
+static QJsonDocument getBankListJson(const QList<Bank> &list)
+{
+    QJsonArray array;
+    for (const Bank &bank : list) {
+        array.append(QJsonValue(bank.toJsonObject()));
+    }
+    return QJsonDocument(array);
+}
+
+void BankListSqlModel::saveInCache()
+{
+    QSqlQuery query(QSqlDatabase::database(getDBConnectionName()));
+    if (!query.exec("SELECT id, name, licence, name_tr, rating, name_tr_alt, town, tel, mine FROM banks"))
+    {
+        qWarning() << "Failed to save bank data cache due to sql error:" << query.lastError().databaseText();
+        return;
+    }
+
+    QList<Bank> bankList;
+    while (query.next()) {
+        const int id = query.value(0).toInt();
+        if (id > 0) {
+            Bank bank;
+
+            bank.id = id;
+            bank.name = query.value(1).toString();
+            bank.licence = query.value(2).toInt();
+            bank.nameTr = query.value(3).toString();
+            bank.rating = query.value(4).toInt();
+            bank.nameTrAlt = query.value(5).toString();
+            bank.town = query.value(6).toString();
+            bank.tel = query.value(7).toString();
+
+            bank.partners = getPartnerBanks(id);
+
+            bankList.append(bank);
+        }
+    }
+
+    QJsonDocument json = getBankListJson(bankList);
+
+    QByteArray rawJson = json.toJson();
+    QByteArray compressedJson = qCompress(rawJson);
+
+    qDebug() << "Raw Bank data:" << rawJson.size();
+    qDebug() << "Compressed data:" << compressedJson.size();
+
+    const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    const QString bdataPath = QDir(appDataPath).absoluteFilePath("bdata");
+    QFile dataFile(bdataPath);
+    if (!dataFile.open(QIODevice::WriteOnly)) {
+        qWarning("Cannot open tdata file for writing!");
+        return;
+    }
+
+    dataFile.write(compressedJson);
+}
+
+void BankListSqlModel::restoreBanksData()
+{
+    //restoreFromCache(mBanksToProcess);
+    setExpectedUploadCount(mBanksToProcess.size());
+    if (!mBanksToProcess.isEmpty()) { // fetch left banks from server
+        emitUpdateBanksData(getAttemptsCount());
+    } else { // all towns restored from cache
+        emitServerDataReceived();
+    }
+}
+
+void BankListSqlModel::restoreFromCache(QList<int> &bankIdList)
+{
+    const QString bdataPath = QStandardPaths::locate(QStandardPaths::AppDataLocation, "bdata");
+    if (bdataPath.isEmpty()) {
+        return;
+    }
+
+    QFile dataFile(bdataPath);
+    if (!dataFile.open(QIODevice::ReadOnly)) {
+        qWarning("Cannot open bdata file for reading!");
+        return;
+    }
+
+    QFileInfo finfo(dataFile);
+    const QDateTime lastModified = finfo.lastModified();
+    const qint64 daySecs = 3600 * 24;
+
+    qDebug() << "last bdata modified time:" << lastModified;
+
+    // cache is outdated
+    if (qAbs(lastModified.secsTo(QDateTime::currentDateTime())) > daySecs) {
+        return;
+    }
+
+    QByteArray compressedJson = dataFile.readAll();
+    dataFile.close();
+
+    QByteArray rawJson = qUncompress(compressedJson);
+
+    QJsonParseError err;
+    const QJsonDocument json = QJsonDocument::fromJson(rawJson, &err);
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "Cannot decode bdata json!" << err.errorString();
+
+        QFile rmFile(bdataPath);
+        rmFile.open(QIODevice::Truncate);
+        return;
+    }
+
+    //qDebug() << "Raw data has been read:" << rawJson;
+
+    if (!json.isArray()) {
+        qWarning() << "Json array expected in bdata file!";
+
+        QFile rmFile(bdataPath);
+        rmFile.open(QIODevice::Truncate);
+        return;
+    }
+
+    QList<Bank> bankList = getBankList(json);
+    qDebug() << "Restored banks from cache:" << bankList.size();
+
+    for (auto it = bankList.begin(); it != bankList.end(); it++) {
+        bool removed = bankIdList.removeOne((int)it->id);
+        if (!removed) { // no such bank in server db
+            it = bankList.erase(it);
+        } else { // bank exists in server db
+            emitUpdateBankIco(getAttemptsCount(), it->id);
+            writeBankToDB(*it);
+        }
+    }
+
+//    QSqlQuery query(QSqlDatabase::database(getDBConnectionName()));
+//    if (!query.exec("SELECT COUNT(*) FROM banks")) {
+//        qDebug() << query.lastError().databaseText();
+//    }
+//    if (query.next()) {
+//        qDebug() << "Banks count: " << query.value(0).toInt();
+//    } else {
+//        qDebug() << "Cannot fetch banks count!";
+//    }
+}
+
+void BankListSqlModel::writeBankToDB(const Bank &bank)
+{
+    mQueryUpdateBanks.bindValue(0, bank.id);
+    mQueryUpdateBanks.bindValue(1, bank.name);
+    mQueryUpdateBanks.bindValue(2, bank.licence);
+    mQueryUpdateBanks.bindValue(3, bank.nameTr);
+    mQueryUpdateBanks.bindValue(4, bank.rating);
+    mQueryUpdateBanks.bindValue(5, bank.nameTrAlt);
+    mQueryUpdateBanks.bindValue(6, bank.town);
+    mQueryUpdateBanks.bindValue(7, bank.tel);
+    mQueryUpdateBanks.bindValue(8, bank.mine);
+
+    if (!mQueryUpdateBanks.exec()) {
+        qWarning() << "writeBankToDB: failed to update 'banks' table";
+        qWarning() << "writeBankToDB: " << mQueryUpdateBanks.lastError().databaseText();
+        return;
+    }
+
+    if (!writeBankPartnersToDB(bank.id, bank.partners)) {
+        qWarning() << "writeBankToDB: failed to update 'partners' table";
+        qWarning() << "writeBankToDB: " << mQuerySetPartners.lastError().databaseText();
+    }
+}
+
+bool BankListSqlModel::writeBankPartnersToDB(quint32 id, const QList<int> &partners)
+{
+    bool ok = true;
+    for (int partnerId : partners) {
+        mQuerySetPartners.bindValue(0, id);
+        mQuerySetPartners.bindValue(1, partnerId);
+        if (!mQuerySetPartners.exec()) {
+            ok = false;
+        }
+    }
+    return ok;
 }
