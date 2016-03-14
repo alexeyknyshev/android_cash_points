@@ -116,7 +116,7 @@ type EndpointCallback func(w http.ResponseWriter, r *http.Request)
 func handlerPing(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/ping", func(w http.ResponseWriter, r *http.Request) {
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -124,7 +124,7 @@ func handlerPing(handlerContext HandlerContext) (string, EndpointCallback) {
 		logger.logRequest(w, r, requestId, "")
 		msg := &Message{Text: "pong"}
 		jsonByteArr, _ := json.Marshal(msg)
-		logger.writeResponse(w, r, requestId, string(jsonByteArr))
+		writeResponse(w, r, requestId, string(jsonByteArr), logger)
 	}
 }
 

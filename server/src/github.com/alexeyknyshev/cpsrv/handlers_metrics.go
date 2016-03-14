@@ -11,7 +11,7 @@ func handlerSpaceMetrics(handlerContext HandlerContext) (string, EndpointCallbac
 	return "/metrics/space", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -23,16 +23,16 @@ func handlerSpaceMetrics(handlerContext HandlerContext) (string, EndpointCallbac
 		resp, err := tnt.Call("getSpaceMetrics", []interface{}{})
 		if err != nil {
 			log.Printf("%s => cannot get space metrics: %v\n", context, err)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert space metrics reply\n", context)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }

@@ -15,15 +15,15 @@ type Logger interface {
 	getChan() chan string
 	logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error
 	logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) error
-	prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64)
-	writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string)
-	writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int)
+	// prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64)
+	// writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string)
+	// writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int)
+	logWriter(logStr string)
 }
 
 func (logger TestLogger) getChan() chan string {
 	return logger.ch
 }
-
 func (logger TestLogger) goRoutineLogWriter() {
 	log.Println(<-logger.getChan())
 }
@@ -61,7 +61,7 @@ func (logger TestLogger) logResponse(w http.ResponseWriter, r *http.Request, req
 	return nil
 }
 
-func (logger TestLogger) prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
+func prepareResponse(w http.ResponseWriter, r *http.Request, logger Logger) (bool, int64) {
 	requestId, err := getRequestUserId(r)
 	if err != nil {
 		logStr := getRequestContexString(r) + " prepareResponse " + err.Error()
@@ -83,12 +83,12 @@ func (logger TestLogger) prepareResponse(w http.ResponseWriter, r *http.Request)
 	return true, requestId
 }
 
-func (logger TestLogger) writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string, logger Logger) {
 	io.WriteString(w, responseBody)
 	logger.logResponse(w, r, requestId, responseBody)
 }
 
-func (logger TestLogger) writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int) {
+func writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int, logger Logger) {
 	w.WriteHeader(code)
 	logger.logResponse(w, r, requestId, "code "+strconv.FormatInt(int64(code), 10))
 }

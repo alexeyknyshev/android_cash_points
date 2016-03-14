@@ -17,7 +17,7 @@ func handlerCashpoint(handlerContext HandlerContext) (string, EndpointCallback) 
 	return "/cashpoint/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -33,33 +33,33 @@ func handlerCashpoint(handlerContext HandlerContext) (string, EndpointCallback) 
 
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 		log.Println("tarantool Call")
 		resp, err := tnt.Call("getCashpointById", []interface{}{cashPointId})
 		if err != nil {
 			log.Printf("%s => cannot get cashpoint %d by id: %v\n", context, cashPointId, err)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		if len(resp.Data) == 0 {
 			log.Printf("%s => no such cashpoint with id: %d\n", context, cashPointId)
-			logger.writeHeader(w, r, requestId, http.StatusNotFound)
+			writeHeader(w, r, requestId, http.StatusNotFound, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
 			if jsonStr != "" {
-				logger.writeResponse(w, r, requestId, jsonStr)
+				writeResponse(w, r, requestId, jsonStr, logger)
 			} else {
-				logger.writeHeader(w, r, requestId, http.StatusNotFound)
+				writeHeader(w, r, requestId, http.StatusNotFound, logger)
 			}
 		} else {
 			log.Printf("%s => cannot convert cashpoint reply for id: %d\n", context, cashPointId)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -68,7 +68,7 @@ func handlerCashpointsBatch(handlerContext HandlerContext) (string, EndpointCall
 	return "/cashpoints", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -79,7 +79,7 @@ func handlerCashpointsBatch(handlerContext HandlerContext) (string, EndpointCall
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -88,16 +88,16 @@ func handlerCashpointsBatch(handlerContext HandlerContext) (string, EndpointCall
 		resp, err := tnt.Call("getCashpointsBatch", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot get cashpoints batch: %v => %s\n", context, err, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert cashpoints batch reply to json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -106,7 +106,7 @@ func handlerNearbyCashPoints(handlerContext HandlerContext) (string, EndpointCal
 	return "/nearby/cashpoints", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -118,7 +118,7 @@ func handlerNearbyCashPoints(handlerContext HandlerContext) (string, EndpointCal
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
 			logger.logRequest(w, r, requestId, "")
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -127,16 +127,16 @@ func handlerNearbyCashPoints(handlerContext HandlerContext) (string, EndpointCal
 		resp, err := tnt.Call("getNearbyCashpoints", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot get neraby cashpoints: %v => %s\n", context, err, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert nearby cashpoints batch reply to json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -145,7 +145,7 @@ func handlerNearbyClusters(handlerContext HandlerContext) (string, EndpointCallb
 	return "/nearby/clusters", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -157,7 +157,7 @@ func handlerNearbyClusters(handlerContext HandlerContext) (string, EndpointCallb
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
 			logger.logRequest(w, r, requestId, "")
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -166,16 +166,16 @@ func handlerNearbyClusters(handlerContext HandlerContext) (string, EndpointCallb
 		resp, err := tnt.Call("getNearbyClusters", []interface{}{jsonStr, MAX_CLUSTER_COUNT})
 		if err != nil {
 			log.Printf("%s => cannot get nearby clusters: %v => %s\n", context, err, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert nearby clusters batch reply to json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -184,7 +184,7 @@ func handlerQuadTreeBranch(handlerContext HandlerContext) (string, EndpointCallb
 	return "/quadtree/branch/{quadKey:[0-3]+}", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -200,23 +200,23 @@ func handlerQuadTreeBranch(handlerContext HandlerContext) (string, EndpointCallb
 
 		quadKeyStrLen := len(quadKeyStr)
 		if quadKeyStrLen > MAX_QUADKEY_LENGTH || quadKeyStrLen < MIN_QUADKEY_LENGTH {
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
 		resp, err := tnt.Call("getQuadTreeBranch", []interface{}{quadKeyStr})
 		if err != nil {
 			log.Printf("%s => cannot get quad tree branch: %v => %s\n", context, err, quadKeyStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert quad tree branch reply to json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -225,7 +225,7 @@ func handlerCashpointCreate(handlerContext HandlerContext) (string, EndpointCall
 	return "/cashpoint", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -236,7 +236,7 @@ func handlerCashpointCreate(handlerContext HandlerContext) (string, EndpointCall
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -245,7 +245,7 @@ func handlerCashpointCreate(handlerContext HandlerContext) (string, EndpointCall
 		resp, err := tnt.Call("cashpointProposePatch", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot propose patch: %v => %s\n", context, err, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
@@ -253,13 +253,13 @@ func handlerCashpointCreate(handlerContext HandlerContext) (string, EndpointCall
 		if cashpointId, ok := data.(uint64); ok {
 			if cashpointId != 0 {
 				jsonData, _ := json.Marshal(cashpointId)
-				logger.writeResponse(w, r, requestId, string(jsonData))
+				writeResponse(w, r, requestId, string(jsonData), logger)
 			} else {
-				logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+				writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			}
 		} else {
 			log.Printf("%s => cannot convert response to uint64 for request json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -268,7 +268,7 @@ func handlerCashpointDelete(handlerContext HandlerContext) (string, EndpointCall
 	return "/cashpoint/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -284,7 +284,7 @@ func handlerCashpointDelete(handlerContext HandlerContext) (string, EndpointCall
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
 			logger.logRequest(w, r, requestId, "")
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -293,20 +293,20 @@ func handlerCashpointDelete(handlerContext HandlerContext) (string, EndpointCall
 		resp, err := tnt.Call("deleteCashpointById", []interface{}{cashPointId})
 		if err != nil {
 			log.Printf("%s => cannot delete cashpoint by id: %v => %s\n", context, err, cashPointIdStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if done, ok := data.(bool); ok {
 			if done {
-				logger.writeHeader(w, r, requestId, http.StatusOK)
+				writeHeader(w, r, requestId, http.StatusOK, logger)
 			} else {
-				logger.writeHeader(w, r, requestId, http.StatusNotFound)
+				writeHeader(w, r, requestId, http.StatusNotFound, logger)
 			}
 		} else {
 			log.Printf("%s => cannot convert response to bool for request cashpoint id: %s\n", context, cashPointIdStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -315,7 +315,7 @@ func handlerCashpointPatches(handlerContext HandlerContext) (string, EndpointCal
 	return "/cashpoint/{id:[0-9]+}/patches", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -331,7 +331,7 @@ func handlerCashpointPatches(handlerContext HandlerContext) (string, EndpointCal
 		cashPointId, err := strconv.ParseUint(cashPointIdStr, 10, 64)
 		if err != nil {
 			logger.logRequest(w, r, requestId, "")
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -340,16 +340,16 @@ func handlerCashpointPatches(handlerContext HandlerContext) (string, EndpointCal
 		resp, err := tnt.Call("getCashpointPatches", []interface{}{cashPointId})
 		if err != nil {
 			log.Printf("%s => cannot get cashpoint patches for id: %v => %s\n", context, err, cashPointIdStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			logger.writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert cashpoint patches reply to json str: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
@@ -358,7 +358,7 @@ func handlerCoordToQuadKey(handlerContext HandlerContext) (string, EndpointCallb
 	return "/quadkey", func(w http.ResponseWriter, r *http.Request) {
 		tnt := handlerContext.tnt()
 		logger := handlerContext.logger()
-		ok, requestId := logger.prepareResponse(w, r)
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -369,7 +369,7 @@ func handlerCoordToQuadKey(handlerContext HandlerContext) (string, EndpointCallb
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
@@ -378,20 +378,20 @@ func handlerCoordToQuadKey(handlerContext HandlerContext) (string, EndpointCallb
 		resp, err := tnt.Call("getQuadKeyFromCoord", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot convert coord to quadkey: %v => %s\n", context, err, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStrResp, ok := data.(string); ok {
 			if jsonStrResp != "" {
-				logger.writeResponse(w, r, requestId, jsonStrResp)
+				writeResponse(w, r, requestId, jsonStrResp, logger)
 			} else {
-				logger.writeHeader(w, r, requestId, http.StatusBadRequest)
+				writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			}
 		} else {
 			log.Printf("%s => cannot convert response for quadkey from coord: %s\n", context, jsonStr)
-			logger.writeHeader(w, r, requestId, http.StatusInternalServerError)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
