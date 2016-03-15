@@ -36,7 +36,6 @@ func handlerCashpoint(handlerContext HandlerContext) (string, EndpointCallback) 
 			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
-		log.Println("tarantool Call")
 		resp, err := tnt.Call("getCashpointById", []interface{}{cashPointId})
 		if err != nil {
 			log.Printf("%s => cannot get cashpoint %d by id: %v\n", context, cashPointId, err)

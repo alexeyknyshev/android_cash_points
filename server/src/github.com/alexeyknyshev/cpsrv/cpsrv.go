@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/gorilla/mux"
 	"github.com/tarantool/go-tarantool"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -40,12 +41,13 @@ type Message struct {
 
 type HandlerContextStruct struct {
 	Tnt *tarantool.Connection
-	Logger
+	Log *TestLogger
 }
 
 type HandlerContext interface {
 	tnt() *tarantool.Connection
 	logger() Logger
+	close()
 }
 
 func (handler HandlerContextStruct) tnt() *tarantool.Connection {
@@ -53,13 +55,64 @@ func (handler HandlerContextStruct) tnt() *tarantool.Connection {
 }
 
 func (handler HandlerContextStruct) logger() Logger {
-	return handler.Logger
+	return handler.Log
 }
 
-func makeHandlerContext(tnt *tarantool.Connection) HandlerContext {
-	logger := &TestLogger{make(chan string)}
-	handlerContext := &HandlerContextStruct{tnt, logger}
+func (handler HandlerContextStruct) close() {
+	handler.Tnt.Close()
+}
+
+func makeHandlerContext(serverConfig *ServerConfig) *HandlerContextStruct {
+	opts := tarantool.Opts{
+		Reconnect:     1 * time.Second,
+		MaxReconnects: 3,
+		User:          serverConfig.TntUser,
+		Pass:          serverConfig.TntPass,
+	}
+	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	logger := new(TestLogger)
+	logger.ch = make(chan string)
+	handlerContext := new(HandlerContextStruct)
+	handlerContext.Tnt = tnt
+	handlerContext.Log = logger
+
 	return handlerContext
+}
+
+func prepareResponse(w http.ResponseWriter, r *http.Request, logger Logger) (bool, int64) {
+	requestId, err := getRequestUserId(r)
+	if err != nil {
+		logStr := getRequestContexString(r) + " prepareResponse " + err.Error()
+		logger.logWriter(logStr)
+		w.WriteHeader(http.StatusBadRequest)
+		return false, 0
+	}
+
+	if requestId == 0 {
+		strReqId := strconv.FormatInt(requestId, 10)
+		logStr := getRequestContexString(r) + " prepareResponse unexpected requestId: " + strReqId
+		logger.logWriter(logStr)
+		w.WriteHeader(http.StatusBadRequest)
+		return false, 0
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Id", strconv.FormatInt(requestId, 10))
+	return true, requestId
+}
+
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string, logger Logger) {
+	io.WriteString(w, responseBody)
+	logger.logResponse(w, r, requestId, responseBody)
+}
+
+func writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int, logger Logger) {
+	w.WriteHeader(code)
+	logger.logResponse(w, r, requestId, "code "+strconv.FormatInt(int64(code), 10))
 }
 
 func checkConvertionUint(val uint32, err error, context string) uint32 {
@@ -158,19 +211,8 @@ func main() {
 		log.Printf("WARNING: Server started is TESTING mode! Make sure it is not prod server.")
 	}
 
-	opts := tarantool.Opts{
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 3,
-		User:          serverConfig.TntUser,
-		Pass:          serverConfig.TntPass,
-	}
-	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer tnt.Close()
-
-	handlerContext := makeHandlerContext(tnt)
+	handlerContext := makeHandlerContext(&serverConfig)
+	defer handlerContext.close()
 
 	router := mux.NewRouter()
 	router.HandleFunc(handlerPing(handlerContext)).Methods("GET")

@@ -428,8 +428,7 @@ func TestCashpoint(t *testing.T) {
 		Approved: true,
 	}
 	expectedJson, _ := json.Marshal(cp)
-	fmt.Println(expectedJson)
-	//checkJsonResponse(t, response.Data, expectedJson)
+	checkJsonResponse(t, response.Data, expectedJson)
 }
 
 // ======================================================================
@@ -756,7 +755,6 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		HandlerUrl:  url,
 		Data:        string(reqJson),
 	}
-	fmt.Println("//*** READ RESPONSE FROM HANDLERCREATE ***//") //DELETE
 	response, err = readResponse(testRequest(request, handlerCreate))
 	if err != nil {
 		t.Errorf("%v", err)
