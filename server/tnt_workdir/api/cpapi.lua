@@ -69,6 +69,30 @@ function getCashpointsBatch(reqJson)
     return json.encode(setmetatable(result, { __serialize = "seq" }))
 end
 
+function getCashpointsStateBatch(reqJson)
+    local func = "getCashpointsStateBatch"
+    local req = json.decode(reqJson)
+    if not req or not req.cashpoints then
+        box.error(malformedRequest("malformed request json", func))
+        return nil
+    end
+
+    local result = {}
+    for _, cpId in ipairs(req.cashpoints) do
+        result[#result + 1] = { id = cpId }
+    end
+
+    --[[
+      result element:
+      {
+         id: %id%
+         working: true / false -- based on schedule
+      }
+    ]]--
+
+    return json.encode(setmetatable(result, { __serialize = "seq" }))
+end
+
 function getNearbyCashpoints(reqJson)
     local func = "getNearbyCashpoints"
     local req = json.decode(reqJson)

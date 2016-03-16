@@ -48,6 +48,7 @@ local function _cashpointTupleToTable(t)
     else
         approved = true
     end
+    local schedule = json.decode(t[COL_CP_SCHEDULE]) or {}
     local cp = {
         id = t[COL_CP_ID],
         longitude = t[COL_CP_COORD][1],
@@ -63,7 +64,7 @@ local function _cashpointTupleToTable(t)
         without_weekend = t[COL_CP_WITHOUT_WEEKEND],
         round_the_clock = t[COL_CP_ROUND_THE_CLOCK],
         works_as_shop = t[COL_CP_WORKS_AS_SHOP],
-        schedule = t[COL_CP_SCHEDULE],
+        schedule = schedule,
         tel = t[COL_CP_TEL],
         additional = t[COL_CP_ADDITIONAL],
         rub = t[COL_CP_RUB],
