@@ -62,7 +62,7 @@ func (handler HandlerContextStruct) close() {
 	handler.Tnt.Close()
 }
 
-func makeHandlerContext(serverConfig *ServerConfig) *HandlerContextStruct {
+func makeHandlerContext(serverConfig *ServerConfig) (*HandlerContextStruct, error) {
 	opts := tarantool.Opts{
 		Reconnect:     1 * time.Second,
 		MaxReconnects: 3,
@@ -71,16 +71,15 @@ func makeHandlerContext(serverConfig *ServerConfig) *HandlerContextStruct {
 	}
 	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-
 	logger := new(TestLogger)
 	logger.ch = make(chan string)
 	handlerContext := new(HandlerContextStruct)
 	handlerContext.Tnt = tnt
 	handlerContext.Log = logger
 
-	return handlerContext
+	return handlerContext, err
 }
 
 func prepareResponse(w http.ResponseWriter, r *http.Request, logger Logger) (bool, int64) {
@@ -211,7 +210,10 @@ func main() {
 		log.Printf("WARNING: Server started is TESTING mode! Make sure it is not prod server.")
 	}
 
-	handlerContext := makeHandlerContext(&serverConfig)
+	handlerContext, err := makeHandlerContext(&serverConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer handlerContext.close()
 
 	router := mux.NewRouter()
