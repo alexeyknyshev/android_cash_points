@@ -221,6 +221,7 @@ func main() {
 	router.HandleFunc(handlerCashpoint(handlerContext)).Methods("GET")
 	router.HandleFunc(handlerCashpointCreate(handlerContext)).Methods("POST")
 	router.HandleFunc(handlerCashpointsBatch(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerCashpointPatches(handlerContext)).Methods("GET")
 	router.HandleFunc(handlerTown(handlerContext)).Methods("GET")
 	router.HandleFunc(handlerTownsBatch(handlerContext)).Methods("POST")
 	router.HandleFunc(handlerTownsList(handlerContext)).Methods("GET")

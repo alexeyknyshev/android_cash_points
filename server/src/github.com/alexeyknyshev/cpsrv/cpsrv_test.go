@@ -8,7 +8,7 @@ import (
 	"github.com/alexeyknyshev/gojsondiff"
 	"github.com/alexeyknyshev/gojsondiff/formatter"
 	"github.com/gorilla/mux"
-	"github.com/tarantool/go-tarantool"
+	//"github.com/tarantool/go-tarantool"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -27,6 +27,14 @@ type TestRequest struct {
 type TestResponse struct {
 	Code int
 	Data []byte
+}
+
+func getServerConfig() *ServerConfig {
+	servConf := new(ServerConfig)
+	servConf.TntUrl = "localhost:3301"
+	servConf.TntUser = "admin"
+	servConf.TntPass = "admin"
+	return servConf
 }
 
 func readResponse(w *httptest.ResponseRecorder) (TestResponse, error) {
@@ -83,15 +91,6 @@ func diff(expected, received []byte, conf *gojsondiff.CompareConfig) (string, er
 	return diffString, nil
 }
 
-func tarantoolConnect() (*tarantool.Connection, error) {
-	tntUrl := "localhost:3301"
-	tntOpts := tarantool.Opts{
-		User: "admin",
-		Pass: "admin",
-	}
-	return tarantool.Connect(tntUrl, tntOpts)
-}
-
 func testRequest(request TestRequest, handler EndpointCallback) *httptest.ResponseRecorder {
 	var req *http.Request = nil
 
@@ -137,8 +136,7 @@ func checkJsonResponse(t *testing.T, got, expected []byte) bool {
 
 // ======================================================================
 
-func getSpaceMetrics(tnt *tarantool.Connection) ([]byte, error) {
-	hCtx := makeHandlerContext(tnt)
+func getSpaceMetrics(hCtx HandlerContext) ([]byte, error) {
 	url, handler := handlerSpaceMetrics(hCtx)
 	request := TestRequest{RequestType: "GET", EndpointUrl: url}
 	response, err := readResponse(testRequest(request, handler))
@@ -163,14 +161,13 @@ func checkSpaceMetrics(t *testing.T, getMetrics SpaceMetricsGetter, expected []b
 
 // ======================================================================
 
-func getQuadTreeBranch(t *testing.T, tnt *tarantool.Connection, longitude, latitude float64) ([]byte, error) {
+func getQuadTreeBranch(t *testing.T, hCtx HandlerContext, longitude, latitude float64) ([]byte, error) {
 	// get quadkey for coorditate
 	quadKeyReq := QuadKeyRequest{
 		Longitude: longitude,
 		Latitude:  latitude,
 	}
 	quadkeyReqJson, _ := json.Marshal(quadKeyReq)
-	hCtx := makeHandlerContext(tnt)
 	url, handlerQuadKey := handlerCoordToQuadKey(hCtx)
 	request := TestRequest{
 		RequestType: "POST",
@@ -251,19 +248,18 @@ func checkQuadTreeBranch(t *testing.T, getBranch QuadTreeBranchGetter, expected 
 // ======================================================================
 
 func TestPing(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	url, handler := handlerPing(hCtx)
 	request := TestRequest{RequestType: "GET", EndpointUrl: url}
@@ -295,20 +291,18 @@ type Town struct {
 }
 
 func TestTown(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	url, handler := handlerTown(hCtx)
 	request := TestRequest{RequestType: "GET", EndpointUrl: "/town/4", HandlerUrl: url}
@@ -368,20 +362,19 @@ type CashpointFull struct {
 }
 
 func TestCashpoint(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
+	defer hCtx.close()
 
-	hCtx := makeHandlerContext(tnt)
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	url, handler := handlerCashpoint(hCtx)
 	var id uint32 = 7138832
@@ -444,20 +437,19 @@ type QuadKeyResponse struct {
 }
 
 func TestQuadKeyFromCoord(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	url, handler := handlerCoordToQuadKey(hCtx)
 
@@ -577,19 +569,18 @@ func (c ClusterArray) Compare(other ClusterArray) (bool, string) {
 }
 
 func TestQuadTreeBranch(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	url, handler := handlerQuadTreeBranch(hCtx)
 	request := TestRequest{
@@ -651,19 +642,18 @@ type CashpointCreateRequest struct {
 
 func TestCashpointCreateSuccessful(t *testing.T) {
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	longitude := 37.6247
 	latitude := 55.7591
@@ -862,19 +852,18 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 }
 
 func TestCashpointCreateWrongCoordinates(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	longitude := 203.456
 	latitude := 55.7591
@@ -958,28 +947,28 @@ func TestCashpointCreateWrongCoordinates(t *testing.T) {
 }
 
 func TestCashpointCreateMissingRequredFields(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
+
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	longitude := 38.2371
 	latitude := 56.4631
 
 	// check quad tree branches for coordinate before and after test
-	quadTreeBranch, err := getQuadTreeBranch(t, tnt, longitude, latitude)
+	quadTreeBranch, err := getQuadTreeBranch(t, hCtx, longitude, latitude)
 	if err != nil {
 		t.Errorf("Failed to cache quad tree branch: %v", err)
 	}
-	defer checkQuadTreeBranch(t, func() ([]byte, error) { return getQuadTreeBranch(t, tnt, longitude, latitude) }, quadTreeBranch)
+	defer checkQuadTreeBranch(t, func() ([]byte, error) { return getQuadTreeBranch(t, hCtx, longitude, latitude) }, quadTreeBranch)
 
 	// creating real cashpoint with missing required fields
 	cp := CashpointShort{
@@ -1052,28 +1041,28 @@ func TestCashpointCreateMissingRequredFields(t *testing.T) {
 }
 
 func TestCashpointCreateApproveHack(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
+
 	// check metrics before and after test
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	longitude := 38.2371
 	latitude := 56.4631
 
 	// check quad tree branches for coordinate before and after test
-	quadTreeBranch, err := getQuadTreeBranch(t, tnt, longitude, latitude)
+	quadTreeBranch, err := getQuadTreeBranch(t, hCtx, longitude, latitude)
 	if err != nil {
 		t.Errorf("Failed to cache quad tree branch: %v", err)
 	}
-	defer checkQuadTreeBranch(t, func() ([]byte, error) { return getQuadTreeBranch(t, tnt, longitude, latitude) }, quadTreeBranch)
+	defer checkQuadTreeBranch(t, func() ([]byte, error) { return getQuadTreeBranch(t, hCtx, longitude, latitude) }, quadTreeBranch)
 
 	// creating real cashpoint with missing required fields
 	cp := CashpointShort{
@@ -1162,18 +1151,17 @@ type NearByRequest struct {
 }
 
 func TestFilterBankIdCount(t *testing.T) {
-	tnt, err := tarantoolConnect()
+	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
-	defer tnt.Close()
-	hCtx := makeHandlerContext(tnt)
+	defer hCtx.close()
 
-	metrics, err := getSpaceMetrics(tnt)
+	metrics, err := getSpaceMetrics(hCtx)
 	if err != nil {
 		t.Errorf("Failed to get space metric on start: %v", err)
 	}
-	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
 	reqNearBy := NearByRequest{
 		BottomRight: Coordinate{
