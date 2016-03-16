@@ -111,5 +111,10 @@ cd "$SCRIPT_DIR"
 
 sleep 5
 
-go test github.com/alexeyknyshev/cpsrv
+if [ $# -ge 1 ]; then
+	go test github.com/alexeyknyshev/cpsrv -test.run $1
+else
+	go test github.com/alexeyknyshev/cpsrv
+fi
+
 [ -e "/proc/$TARANTOOL_PID" ] && kill $TARANTOOL_PID
