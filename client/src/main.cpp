@@ -84,9 +84,9 @@ int main(int argc, char *argv[])
     qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
     ServerApi *api = new ServerApi(
 //                                   "192.168.1.126"
-                                   "localhost"
+//                                   "localhost"
 //                                   "52.89.4.111"
-//                                   "5.23.98.144"
+                                   "5.23.98.144"
                                    , 8080);
 
     HostsModel *hostsModel = new HostsModel(api, &settings, api);
@@ -102,7 +102,9 @@ int main(int argc, char *argv[])
         ":/icon/place_add.svg",
         ":/icon/place_add_plus.svg",
         ":/icon/add.svg",
-        ":/icon/cluster.svg"
+        ":/icon/cluster.svg",
+        ":/icon/round_the_clock.svg",
+        ":/icon/limited_access.svg"
     };
 
     IcoImageProvider *icoImageProvider = new IcoImageProvider;

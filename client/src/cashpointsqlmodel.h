@@ -30,6 +30,7 @@ public:
         WithoutWeekendRole,
         RoundTheClockRole,
         WorksAsShopRole,
+        FreeAccess,
         RubRole,
         UsdRole,
         EurRole,

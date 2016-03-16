@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   id="svg3201"
+   sodipodi:docname="ericlemerdy-man.svg"
+   viewBox="0 0 640 640"
+   sodipodi:version="0.32"
+   version="1.0"
+   inkscape:output_extension="org.inkscape.output.svg.inkscape"
+   inkscape:version="0.48.4 r9939"
+   width="100%"
+   height="100%">
+  <defs
+     id="defs8" />
+  <sodipodi:namedview
+     id="base"
+     bordercolor="#666666"
+     inkscape:pageshadow="2"
+     inkscape:window-y="24"
+     pagecolor="#ffffff"
+     inkscape:window-height="1056"
+     inkscape:zoom="0.7"
+     inkscape:window-x="65"
+     showgrid="false"
+     borderopacity="1.0"
+     inkscape:current-layer="layer1"
+     inkscape:cx="-94.492295"
+     inkscape:cy="151.50375"
+     inkscape:window-width="1855"
+     inkscape:pageopacity="0.0"
+     inkscape:document-units="px"
+     inkscape:window-maximized="1" />
+  <g
+     id="layer1"
+     inkscape:label="Calque 1"
+     inkscape:groupmode="layer"
+     transform="translate(-225.32,-169.7)">
+    <path
+       sodipodi:type="arc"
+       style="opacity:0.9;fill:#ffffff;fill-opacity:1;stroke:none"
+       id="path3755"
+       sodipodi:cx="103.03556"
+       sodipodi:cy="90.477013"
+       sodipodi:rx="39.39595"
+       sodipodi:ry="46.467018"
+       d="M 142.43151,90.477013 A 39.39595,46.467018 0 0 1 79.150316,127.42973"
+       transform="translate(225.32,169.7)"
+       sodipodi:open="true"
+       sodipodi:start="0"
+       sodipodi:end="2.2221793" />
+    <path
+       sodipodi:type="arc"
+       style="opacity:1;fill:none;fill-opacity:1;stroke:none;stroke-width:13.40000305;stroke-miterlimit:4;stroke-dasharray:none;marker-start:none"
+       id="path3765"
+       sodipodi:cx="551.54327"
+       sodipodi:cy="558.17767"
+       sodipodi:rx="299.00513"
+       sodipodi:ry="299.00513"
+       d="m 850.5484,558.17767 a 299.00513,299.00513 0 1 1 -598.01025,0 299.00513,299.00513 0 1 1 598.01025,0 z"
+       transform="translate(-11.055696,-53.543713)" />
+    <path
+       sodipodi:type="arc"
+       style="fill:#ffffff;stroke:#c00000;stroke-width:25;stroke-linecap:square;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;stroke-dashoffset:0;fill-opacity:1"
+       id="path3955"
+       sodipodi:cx="378.80722"
+       sodipodi:cy="326.85272"
+       sodipodi:rx="304.05591"
+       sodipodi:ry="304.05591"
+       d="m 682.86313,326.85272 a 304.05591,304.05591 0 1 1 -608.111818,0 304.05591,304.05591 0 1 1 608.111818,0 z"
+       transform="translate(166.51278,162.84728)" />
+    <path
+       id="path3724"
+       sodipodi:nodetypes="ccccccccccccccccccccccsssc"
+       style="fill:#000000;stroke:#000000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"
+       d="m 614.09,589.2 0,165.28 -61.5,0 0,-184.53 -14.5,0 0,184.53 -61.5,0 0,-165.28 0,-175.78 -16.07,0 0,151.06 -41.5,0 0,-152.28 c 0,-24.93 20.57,-52.28 45.5,-52.28 l 161.6,0 c 25.4,0 45.5,28.88 45.5,54.28 l 0,150.28 -41.5,0 0,-151.06 -16.03,0 z m -68.6,-364.28 c -36.84,0 -66.75,29.9 -66.75,66.75 0,36.85 29.91,66.75 66.75,66.75 36.85,0 66.75,-29.9 66.75,-66.75 0,-36.85 -29.9,-66.75 -66.75,-66.75 z"
+       inkscape:connector-curvature="0" />
+    <rect
+       style="fill:#c00000;fill-opacity:1;stroke:none"
+       id="rect3959"
+       width="607.83331"
+       height="24.453066"
+       x="427.953"
+       y="-51.55582"
+       ry="0"
+       transform="matrix(0.70710678,0.70710678,-0.70710678,0.70710678,0,0)" />
+  </g>
+  <metadata
+     id="metadata6">
+    <rdf:RDF>
+      <cc:Work>
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <cc:license
+           rdf:resource="http://creativecommons.org/licenses/publicdomain/" />
+        <dc:publisher>
+          <cc:Agent
+             rdf:about="http://openclipart.org/">
+            <dc:title>Openclipart</dc:title>
+          </cc:Agent>
+        </dc:publisher>
+        <dc:title></dc:title>
+        <dc:date>2009-02-18T21:15:04</dc:date>
+        <dc:description>A symbolic silhouette like those  you can find on toilet doors.</dc:description>
+        <dc:source>https://openclipart.org/detail/21625/man-by-ericlemerdy</dc:source>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>ericlemerdy</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>man</rdf:li>
+            <rdf:li>silhouette</rdf:li>
+            <rdf:li>symbolic</rdf:li>
+            <rdf:li>toilet</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+      </cc:Work>
+      <cc:License
+         rdf:about="http://creativecommons.org/licenses/publicdomain/">
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#Reproduction" />
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#Distribution" />
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#DerivativeWorks" />
+      </cc:License>
+    </rdf:RDF>
+  </metadata>
+</svg>

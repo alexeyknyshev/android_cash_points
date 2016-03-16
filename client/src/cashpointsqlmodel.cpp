@@ -35,6 +35,7 @@ struct CashPoint : public RpcType<CashPoint>
     bool withoutWeekend;
     bool roundTheClock;
     bool worksAsShop;
+    bool freeAccess;
     bool rub;
     bool usd;
     bool eur;
@@ -50,6 +51,7 @@ struct CashPoint : public RpcType<CashPoint>
           withoutWeekend(false),
           roundTheClock(false),
           worksAsShop(false),
+          freeAccess(false),
           rub(false),
           usd(false),
           eur(false),
@@ -74,6 +76,7 @@ struct CashPoint : public RpcType<CashPoint>
         result.withoutWeekend = obj["without_weekend"].toBool();
         result.roundTheClock  = obj["round_the_clock"].toBool();
         result.worksAsShop    = obj["works_as_shop"].toBool();
+        result.freeAccess     = obj["free_access"].toBool();
         result.rub            = obj["rub"].toBool();
         result.usd            = obj["usd"].toBool();
         result.eur            = obj["eur"].toBool();
@@ -98,6 +101,7 @@ struct CashPoint : public RpcType<CashPoint>
         item->setData(withoutWeekend, CashPointSqlModel::WithoutWeekendRole);
         item->setData(roundTheClock,  CashPointSqlModel::RoundTheClockRole);
         item->setData(worksAsShop,    CashPointSqlModel::WorksAsShopRole);
+        item->setData(freeAccess,     CashPointSqlModel::FreeAccess);
         item->setData(rub,            CashPointSqlModel::RubRole);
         item->setData(usd,            CashPointSqlModel::UsdRole);
         item->setData(eur,            CashPointSqlModel::EurRole);
@@ -173,6 +177,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
     setRoleName(WithoutWeekendRole, "cp_without_weekend");
     setRoleName(RoundTheClockRole,  "cp_round_the_clock");
     setRoleName(WorksAsShopRole,    "cp_works_as_shop");
+    setRoleName(FreeAccess,         "cp_free_access");
     setRoleName(RubRole,            "cp_rub");
     setRoleName(UsdRole,            "cp_usd");
     setRoleName(EurRole,            "cp_eur");
