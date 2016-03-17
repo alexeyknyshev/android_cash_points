@@ -44,6 +44,7 @@ local PATCH_APPROVE_VOTES = 5
 
 local MAX_CASHPOINTS_BATCH_SIZE = 1024
 local MAX_COORD_DELTA = 0.01
+local CP_MAX_BANK_ID_FILTER = 16
 
 local INT32_MAX = 2147483647
 
@@ -105,6 +106,11 @@ function getNearbyCashpoints(reqJson)
 
     req.filter = req.filter or {}
 
+    if #req.filter.bank_id > CP_MAX_BANK_ID_FILTER then
+        box.error(malformedRequest("Resive " .. #req.filter.bank_id .. " bank_id filter. But max filter amount " .. CP_MAX_BANK_ID_FILTER))
+        return nil
+    end
+
     local t = box.space.cashpoints.index[1]:select({ req.topLeft.longitude, req.topLeft.latitude,
                                                      req.bottomRight.longitude, req.bottomRight.latitude },
                                                    { iterator = "le" })
@@ -119,6 +125,8 @@ function getNearbyCashpoints(reqJson)
         box.error(malformedRequest(tooBigRegion .. ": latitude", func))
         return nil
     end
+
+
 
     local filtersList = {
         matchingBankFilter,

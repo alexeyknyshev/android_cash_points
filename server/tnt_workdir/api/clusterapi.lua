@@ -16,6 +16,8 @@ local TOWN_CASHPOINTS_COUNT = 9
 local CLUSTER_ZOOM_MIN = 10
 local CLUSTER_ZOOM_MAX = 16
 
+local CLUSTER_MAX_BANK_ID_FILTER = 16
+
 function getNearbyClusters(reqJson, countLimit)
     local fund = "getNearbyClusters"
     local req = json.decode(reqJson)
@@ -27,6 +29,11 @@ function getNearbyClusters(reqJson, countLimit)
     end
 
     req.filter = req.filter or {}
+
+    if #req.filter.bank_id > CLUSTER_MAX_BANK_ID_FILTER then
+        box.error(malformedRequest("Resive " .. #req.filter.bank_id .. " bank_id filter. But max filter amount " .. CLUSTER_MAX_BANK_ID_FILTER))
+        return nil
+    end
 
     if not req.zoom then
         box.error{ code = 400, reason = func .. ": missing required argument => req.zoom"}
