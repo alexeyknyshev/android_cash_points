@@ -339,28 +339,51 @@ func TestTown(t *testing.T) {
 
 // ======================================================================
 
+type ScheduleBreak struct {
+	From int `json:"f"`
+	To   int `json:"t"`
+}
+
+type ScheduleDay struct {
+	Day   int `json:"-"`
+	From  int `json:"f"`
+	To    int `json:"t"`
+	Breaks *[]ScheduleBreak `json:"b,omitempty"`
+}
+
+type Schedule struct {
+	Mon *ScheduleDay `json:"mon,omitempty"`
+	Tue *ScheduleDay `json:"tue,omitempty"`
+	Wed *ScheduleDay `json:"wed,omitempty"`
+	Thu *ScheduleDay `json:"thu,omitempty"`
+	Fri *ScheduleDay `json:"fri,omitempty"`
+	Sat *ScheduleDay `json:"sat,omitempty"`
+	Sun *ScheduleDay `json:"sun,omitempty"`
+	Breaks *[]ScheduleBreak `json:"b,omitempty"`
+}
+
 type CashpointShort struct {
-	Id             uint32  `json:"id,omitempty"`
-	Longitude      float64 `json:"longitude"`
-	Latitude       float64 `json:"latitude"`
-	Type           string  `json:"type"`
-	BankId         uint32  `json:"bank_id"`
-	TownId         uint32  `json:"town_id"`
-	Address        string  `json:"address"`
-	AddressComment string  `json:"address_comment"`
-	MetroName      string  `json:"metro_name"`
-	FreeAccess     bool    `json:"free_access"`
-	MainOffice     bool    `json:"main_office"`
-	WithoutWeekend bool    `json:"without_weekend"`
-	RoundTheClock  bool    `json:"round_the_clock"`
-	WorksAsShop    bool    `json:"works_as_shop"`
-	Schedule       string  `json:"schedule"`
-	Tel            string  `json:"tel"`
-	Additional     string  `json:"additional"`
-	Rub            bool    `json:"rub"`
-	Usd            bool    `json:"usd"`
-	Eur            bool    `json:"eur"`
-	CashIn         bool    `json:"cash_in"`
+	Id             uint32   `json:"id,omitempty"`
+	Longitude      float64  `json:"longitude"`
+	Latitude       float64  `json:"latitude"`
+	Type           string   `json:"type"`
+	BankId         uint32   `json:"bank_id"`
+	TownId         uint32   `json:"town_id"`
+	Address        string   `json:"address"`
+	AddressComment string   `json:"address_comment"`
+	MetroName      string   `json:"metro_name"`
+	FreeAccess     bool     `json:"free_access"`
+	MainOffice     bool     `json:"main_office"`
+	WithoutWeekend bool     `json:"without_weekend"`
+	RoundTheClock  bool     `json:"round_the_clock"`
+	WorksAsShop    bool     `json:"works_as_shop"`
+	Schedule       Schedule `json:"schedule"`
+	Tel            string   `json:"tel"`
+	Additional     string   `json:"additional"`
+	Rub            bool     `json:"rub"`
+	Usd            bool     `json:"usd"`
+	Eur            bool     `json:"eur"`
+	CashIn         bool     `json:"cash_in"`
 }
 
 type CashpointFull struct {
@@ -370,7 +393,7 @@ type CashpointFull struct {
 	Approved bool `json:"approved"`
 }
 
-func TestCashpoint(t *testing.T) {
+func TestCashpointGet(t *testing.T) {
 	tnt, err := tarantoolConnect()
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
@@ -413,7 +436,7 @@ func TestCashpoint(t *testing.T) {
 		WithoutWeekend: false,
 		RoundTheClock:  false,
 		WorksAsShop:    true,
-		Schedule:       "",
+		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
 		Rub:            true,
@@ -648,6 +671,22 @@ type CashpointCreateRequest struct {
 	Data   CashpointShort `json:"data"`
 }
 
+type Coordinate struct {
+	Longitude float64 `json:"longitude"`
+	Latitude  float64 `json:"latitude"`
+}
+
+type Filter struct {
+	BankIdList *[]uint32 `json:"bank_id"`
+	Approved   *bool     `json:"approved,omitempty"`
+}
+
+type CashpointNearbyRequest struct {
+	TopLeft     Coordinate `json:"topLeft"`
+	BottomRight Coordinate `json:"bottomRight"`
+	Filter      Filter     `json:"filter"`
+}
+
 func TestCashpointCreateSuccessful(t *testing.T) {
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
 	tnt, err := tarantoolConnect()
@@ -731,7 +770,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		WithoutWeekend: true,
 		RoundTheClock:  false,
 		WorksAsShop:    false,
-		Schedule:       "",
+		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
 		Rub:            true,
@@ -809,6 +848,37 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 	// TODO: check cluster data
 
 	// TODO: check nearby cashpoints
+	url, handlerNearby := handlerNearbyCashPoints(tnt)
+	nearbyRequest := CashpointNearbyRequest{
+		TopLeft: Coordinate{
+			Longitude: longitude - 0.001,
+			Latitude: latitude - 0.001,
+		},
+		BottomRight: Coordinate{
+			Longitude: longitude + 0.001,
+			Latitude: latitude + 0.001,
+		},
+		Filter: Filter{
+			Approved: new(bool),
+		},
+	}
+	reqJson, _ = json.Marshal(nearbyRequest)
+
+	request = TestRequest{
+		RequestType: "POST",
+		EndpointUrl: url,
+		HandlerUrl:  url,
+		Data: string(reqJson),
+	}
+
+	response, err = readResponse(testRequest(request, handlerNearby))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	expectedJson, _ = json.Marshal([]uint64{ cashpointId })
+	checkJsonResponse(t, response.Data, expectedJson)
 
 	// now delete created cashpoint
 	url, handlerDelete := handlerCashpointDelete(tnt)
@@ -911,7 +981,7 @@ func TestCashpointCreateWrongCoordinates(t *testing.T) {
 		WithoutWeekend: true,
 		RoundTheClock:  false,
 		WorksAsShop:    false,
-		Schedule:       "",
+		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
 		Rub:            true,
@@ -994,7 +1064,7 @@ func TestCashpointCreateMissingRequredFields(t *testing.T) {
 		WithoutWeekend: true,
 		// 		RoundTheClock: false, // WARNING: here is missing field
 		WorksAsShop: false,
-		Schedule:    "",
+		Schedule:    Schedule{},
 		Tel:         "",
 		Additional:  "",
 		Rub:         true,
@@ -1088,7 +1158,7 @@ func TestCashpointCreateApproveHack(t *testing.T) {
 		WithoutWeekend: true,
 		//RoundTheClock: false, // WARNING: here is missing field
 		WorksAsShop: false,
-		Schedule:    "",
+		Schedule:    Schedule{},
 		Tel:         "",
 		Additional:  "",
 		Rub:         true,
@@ -1141,5 +1211,139 @@ func TestCashpointCreateApproveHack(t *testing.T) {
 					  or delete cashpoint and following data manually.`, cashpointId)
 			}
 		}
+	}
+}
+
+// =====================================================
+
+func TestCashpointEdit(t *testing.T) {
+	tnt, err := tarantoolConnect()
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+	defer tnt.Close()
+
+	// check metrics before and after test
+	metrics, err := getSpaceMetrics(tnt)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(tnt) }, metrics)
+
+	var cpId uint32 = 7243171
+
+	cpPatch := make(map[string]interface{})
+	cpPatch["id"] = cpId
+	cpPatch["type"] = "atm"
+
+	cpReqPayload := make(map[string]interface{})
+	cpReqPayload["user_id"] = 0 // TODO: user_id passing
+	cpReqPayload["data"] = cpPatch
+
+	req, _ := json.Marshal(cpReqPayload)
+	url, handlerEdit := handlerCashpointCreate(tnt)
+	requestEdit := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: url,
+		Data:        string(req),
+	}
+
+	response, err := readResponse(testRequest(requestEdit, handlerEdit))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+
+	checkHttpCode(t, response.Code, http.StatusOK)
+	// TODO: check cp id in response
+	//checkJsonResponse
+
+	url, handlerGet := handlerCashpoint(tnt)
+	request := TestRequest{
+		RequestType: "GET",
+		EndpointUrl: "/cashpoint/" + strconv.FormatUint(uint64(cpId), 10),
+		HandlerUrl:  url,
+	}
+
+	response, err = readResponse(testRequest(request, handlerGet))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	sDay := &ScheduleDay{
+		From: 540,  // 09:00
+		To:   1260, // 21:00
+	}
+	cp := CashpointShort{
+		Id: cpId,
+		Longitude: 48.049293518066,
+		Latitude: 46.369739532471,
+		Type: "office", // must not be changed (patch has not approved yet)
+		BankId: 194275,
+		TownId: 290,
+		Address:        "г. Астрахань, ул.Савушкина, д.23в",
+		AddressComment: "",
+		MetroName:      "",
+		FreeAccess:     true,
+		MainOffice:     false,
+		WithoutWeekend: false,
+		RoundTheClock:  false,
+		WorksAsShop:    false,
+// 		Schedule:       "пн.—пт.: 09:00—21:00,сб.: 10:00—17:00",
+		Schedule:       Schedule{
+			Mon: sDay,
+			Tue: sDay,
+			Wed: sDay,
+			Thu: sDay,
+			Fri: sDay,
+			Sat: &ScheduleDay{
+				From: 600,  // 10:00
+				To:   1020, // 17:00
+			},
+		},
+		Tel:            "",
+		Additional:     "",
+		Rub:            true,
+		Usd:            false,
+		Eur:            false,
+		CashIn:         false,
+	}
+	cpFull := CashpointFull{
+		CashpointShort: cp,
+		Version:        0,
+		Approved:       true,
+	}
+
+	expectedJson, _ := json.Marshal(cpFull)
+
+	checkJsonResponse(t, response.Data, expectedJson)
+
+	url, handlerPatches := handlerCashpointPatches(tnt)
+	request = TestRequest{
+		RequestType: "GET",
+		EndpointUrl: "/cashpoint/" + strconv.FormatUint(uint64(cpId), 10) + "/patches",
+		HandlerUrl:  url,
+	}
+
+	response, err = readResponse(testRequest(request, handlerPatches))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	checkJsonResponse(t, response.Data, []byte(`{"1":{"type":"atm"}}`))
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	// resend same patch
+	response, err = readResponse(testRequest(requestEdit, handlerEdit))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+
+	checkHttpCode(t, response.Code, http.StatusInternalServerError)
+
+	_, err = tnt.Eval("box.space.cashpoints_patches:delete{1}", []interface{}{})
+	if err != nil {
+		t.Errorf("Cannot delete patch with id '1': %v", err)
 	}
 }
