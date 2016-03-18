@@ -63,6 +63,42 @@ func handlerCashpoint(tnt *tarantool.Connection) (string, EndpointCallback) {
 	}
 }
 
+func handlerCashpointsStateBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+	return "/cashpoint/state", func(w http.ResponseWriter, r *http.Request) {
+		ok, requestId := prepareResponse(w, r)
+		if ok == false {
+			return
+		}
+
+		context := getRequestContexString(r) + " " + getHandlerContextString("handlerCashpointsStateBatch", map[string]string{
+			"requestId": strconv.FormatInt(requestId, 10),
+		})
+
+		jsonStr, err := getRequestJsonStr(r, context)
+		if err != nil {
+			writeHeader(w, r, requestId, http.StatusBadRequest)
+			return
+		}
+
+		go logRequest(w, r, requestId, jsonStr)
+
+		resp, err := tnt.Call("getCashpointsStateBatch", []interface{}{ jsonStr })
+		if err != nil {
+			log.Printf("%s => cannot get cashpoints state batch: %v => %s\n", context, err, jsonStr)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
+			return
+		}
+
+		data := resp.Data[0].([]interface{})[0]
+		if jsonStr, ok := data.(string); ok {
+			writeResponse(w, r, requestId, jsonStr)
+		} else {
+			log.Printf("%s => cannot convert cashpoints state batch reply to json str: %s\n", context, jsonStr)
+			writeHeader(w, r, requestId, http.StatusInternalServerError)
+		}
+	}
+}
+
 func handlerCashpointsBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
 	return "/cashpoints", func(w http.ResponseWriter, r *http.Request) {
 		ok, requestId := prepareResponse(w, r)
