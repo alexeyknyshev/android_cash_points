@@ -321,8 +321,7 @@ function cashpointProposePatch(reqJson)
             return 0
         end
 
-        local updated = false
-        updatedCp, updated = updateOldCp(oldCp, cp)
+        local updatedCp, updated = updateOldCp(oldCp, cp)
         if not updated then
             return 0
         end
