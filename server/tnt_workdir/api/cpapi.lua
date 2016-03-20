@@ -134,6 +134,7 @@ function getNearbyCashpoints(reqJson)
         matchingRubFilter,
         matchingUsdFilter,
         matchingEurFilter,
+        matchingTimeFilter,
         matchingRoundTheClock,
         matchingWithoutWeekend,
         matchingFreeAccess,

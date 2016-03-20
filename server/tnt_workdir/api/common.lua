@@ -1,3 +1,4 @@
+json = require('json')
 local COL_CP_ID = 1
 local COL_CP_COORD = 2
 local COL_CP_TYPE = 3
@@ -512,6 +513,60 @@ function matchingEurFilter(tuple, filter)
         return tuple[COL_CP_EUR] == filter.eur
     end
     return true
+end
+
+function deltaInside(from, to, delta, curTime)
+    if (from>to) then
+        to = to + 60*24
+    end
+    if ((from-curTime) <= 0) and ((to-delta-curTime) >= 0) then
+            return true
+    end
+    return false
+end
+
+function getPrevDaySch(schedule, nameCurDay)
+    local daysName = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+    local invertDaysTable = {}
+    for i, name in ipairs(daysName) do
+        invertDaysTable[name] = i 
+    end
+    local prevDayNum = invertDaysTable[nameCurDay] - 1
+    prevDayNum = prevDayNum ~= 0 and prevDayNum or 7
+    return schedule[daysName[prevDayNum]]
+
+end
+
+function matchingTimeFilter(tuple, filter)
+    local ok, schedule = pcall(json.decode, tuple[COL_CP_SCHEDULE])
+    if not ok then
+        return true
+    end
+    local next = next
+    if next(schedule) == nil then 
+        return true
+    end
+    local UTCPlus3 = 3
+    local nameCurDay = os.date("%a", filter.schedule.time)
+    nameCurDay = nameCurDay:lower()
+    local curDayTimeInMin = math.floor(((filter.schedule.time + UTCPlus3*60*60) % (60*60*24))/60)
+    local curDaySch = schedule[nameCurDay]
+    local delta = filter.schedule.delta / 60
+
+    if curDaySch == nil then 
+        return false
+    end
+
+    if (curDayTimeInMin < curDaySch.f) then
+        prevDaySch = getPrevDaySch(schedule, nameCurDay)
+        if (prevDaySch.f>prevDaySch.t) then
+            return deltaInside(0, prevDaySch.t, delta, curDayTimeInMin)
+        else
+            return false
+        end
+    end
+
+    return deltaInside(curDaySch.f, curDaySch.t, delta, curDayTimeInMin)
 end
 
 function matchingRoundTheClock(tuple, filter)
