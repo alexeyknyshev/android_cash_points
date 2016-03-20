@@ -106,7 +106,7 @@ function getNearbyCashpoints(reqJson)
 
     req.filter = req.filter or {}
 
-    if #req.filter.bank_id > CP_MAX_BANK_ID_FILTER then
+    if #(req.filter.bank_id or {}) > CP_MAX_BANK_ID_FILTER then
         box.error(malformedRequest("Resive " .. #req.filter.bank_id .. " bank_id filter. But max filter amount " .. CP_MAX_BANK_ID_FILTER))
         return nil
     end
@@ -251,7 +251,7 @@ function cashpointCommit(reqJson, userId)
         print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
-            print(func .. ": validation failed")
+            print(func .. ": validation failed => " .. err)
             box.error(err)
             return 0
         end
@@ -343,7 +343,7 @@ function cashpointProposePatch(reqJson)
         print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
-            print(func .. ": validation failed")
+            print(func .. ": validation failed => " .. err)
             return 0
         end
 

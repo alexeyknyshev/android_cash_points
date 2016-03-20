@@ -48,7 +48,10 @@ local function _cashpointTupleToTable(t)
     else
         approved = true
     end
-    local schedule = json.decode(t[COL_CP_SCHEDULE]) or {}
+    local ok, schedule = pcall(json.decode, t[COL_CP_SCHEDULE])
+    if not ok then
+        schedule = setmetatable({}, { __serialize = "map" })
+    end
     local cp = {
         id = t[COL_CP_ID],
         longitude = t[COL_CP_COORD][1],
@@ -617,7 +620,7 @@ local function validateCashpointFields(cp, checkRequired, func)
         without_weekend = { type = 'boolean', required = true },
         round_the_clock = { type = 'boolean', required = true },
         works_as_shop = { type = 'boolean', required = true },
-        schedule = { type = 'string', required = false },
+        schedule = { type = 'table', required = true },
         tel = { type = 'string', required = false },
         additional = { type = 'string', required = false },
         rub = { type = 'boolean', required = true },
@@ -681,7 +684,7 @@ function validateCashpoint(cp, checkRequired, func)
         end
     end
 
-    if checkRequired or (cp.longitude and cp.latitude) then
+    if cp.longitude and cp.latitude then
         if not isValidCoordinate(cp.longitude, cp.latitude) then
             return malformedRequest("invalid cashpoint coordinate (" .. tostring(cp.longitude) .. ", " .. tostring(cp.latitude) .. ")", func)
         end
