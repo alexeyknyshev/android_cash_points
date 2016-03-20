@@ -2,19 +2,19 @@ package main
 
 import (
 	"github.com/gorilla/mux"
-	"github.com/tarantool/go-tarantool"
 	"log"
 	"net/http"
 	"strconv"
 )
 
-func handlerTown(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerTown(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/town/{id:[0-9]+}", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		logger := handlerContext.Logger()
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
-		go logRequest(w, r, requestId, "")
+		logger.logRequest(w, r, requestId, "")
 
 		params := mux.Vars(r)
 		townIdStr := params["id"]
@@ -26,40 +26,41 @@ func handlerTown(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		townId, err := strconv.ParseUint(townIdStr, 10, 64)
 		if err != nil {
-			w.WriteHeader(400)
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
-		resp, err := tnt.Call("getTownById", []interface{}{ townId })
+		resp, err := handlerContext.Tnt().Call("getTownById", []interface{}{townId})
 		if err != nil {
 			log.Printf("%s => cannot get town %d by id: %v\n", context, townId, err)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
-		if (len(resp.Data) == 0) {
+		if len(resp.Data) == 0 {
 			log.Printf("%s => no such town with id: %d\n", context, townId)
-			w.WriteHeader(404)
+			writeHeader(w, r, requestId, http.StatusNotFound, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
 			if jsonStr != "" {
-				writeResponse(w, r, requestId, jsonStr)
+				writeResponse(w, r, requestId, jsonStr, logger)
 			} else {
-				w.WriteHeader(404)
+				writeHeader(w, r, requestId, http.StatusNotFound, logger)
 			}
 		} else {
 			log.Printf("%s => cannot convert town reply for id: %d\n", context, townId)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
 
-func handlerTownsBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerTownsBatch(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/towns", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		logger := handlerContext.Logger()
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -70,33 +71,34 @@ func handlerTownsBatch(tnt *tarantool.Connection) (string, EndpointCallback) {
 
 		jsonStr, err := getRequestJsonStr(r, context)
 		if err != nil {
-			go logRequest(w, r, requestId, "")
-			w.WriteHeader(400)
+			logger.logRequest(w, r, requestId, "")
+			writeHeader(w, r, requestId, http.StatusBadRequest, logger)
 			return
 		}
 
-		go logRequest(w, r, requestId, jsonStr)
+		logger.logRequest(w, r, requestId, jsonStr)
 
-		resp, err := tnt.Call("getTownsBatch", []interface{}{ jsonStr })
+		resp, err := handlerContext.Tnt().Call("getTownsBatch", []interface{}{jsonStr})
 		if err != nil {
 			log.Printf("%s => cannot get towns batch: %v => %s\n", context, err, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert towns batch reply to json str: %s\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }
 
-func handlerTownsList(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerTownsList(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/towns", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		logger := handlerContext.Logger()
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
@@ -105,21 +107,21 @@ func handlerTownsList(tnt *tarantool.Connection) (string, EndpointCallback) {
 			"requestId": strconv.FormatInt(requestId, 10),
 		})
 
-		go logRequest(w, r, requestId, "")
+		logger.logRequest(w, r, requestId, "")
 
-		resp, err := tnt.Call("getTownsList", []interface{}{})
+		resp, err := handlerContext.Tnt().Call("getTownsList", []interface{}{})
 		if err != nil {
 			log.Printf("%s => cannot get towns list: %v\n", context, err)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 			return
 		}
 
 		data := resp.Data[0].([]interface{})[0]
 		if jsonStr, ok := data.(string); ok {
-			writeResponse(w, r, requestId, jsonStr)
+			writeResponse(w, r, requestId, jsonStr, logger)
 		} else {
 			log.Printf("%s => cannot convert towns list reply to json str\n", context, jsonStr)
-			w.WriteHeader(500)
+			writeHeader(w, r, requestId, http.StatusInternalServerError, logger)
 		}
 	}
 }

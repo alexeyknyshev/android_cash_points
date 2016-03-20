@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/tarantool/go-tarantool"
 	"io"
@@ -39,54 +40,89 @@ type Message struct {
 	Text string `json:"text"`
 }
 
+type HandlerContextStruct struct {
+	TntConnection *tarantool.Connection
+	TestLogger    *TestLogger
+}
+
+type HandlerContext interface {
+	Tnt() *tarantool.Connection
+	Logger() Logger
+	Close()
+}
+
+func (handler HandlerContextStruct) Tnt() *tarantool.Connection {
+	return handler.TntConnection
+}
+
+func (handler HandlerContextStruct) Logger() Logger {
+	return handler.TestLogger
+}
+
+func (handler HandlerContextStruct) Close() {
+	handler.TntConnection.Close()
+}
+
+func makeHandlerContext(serverConfig *ServerConfig) (*HandlerContextStruct, error) {
+	opts := tarantool.Opts{
+		Reconnect:     1 * time.Second,
+		MaxReconnects: 3,
+		User:          serverConfig.TntUser,
+		Pass:          serverConfig.TntPass,
+	}
+	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot connect to tarantool: %v", err)
+	}
+
+	handlerContext := &HandlerContextStruct{
+		TntConnection: tnt,
+		TestLogger: &TestLogger{
+			ch: make(chan string),
+		},
+	}
+
+	return handlerContext, nil
+}
+
+func prepareResponse(w http.ResponseWriter, r *http.Request, logger Logger) (bool, int64) {
+	requestId, err := getRequestUserId(r)
+	if err != nil {
+		logStr := getRequestContexString(r) + " prepareResponse " + err.Error()
+		logger.logWriter(logStr)
+		w.WriteHeader(http.StatusBadRequest)
+		return false, 0
+	}
+
+	if requestId == 0 {
+		strReqId := strconv.FormatInt(requestId, 10)
+		logStr := getRequestContexString(r) + " prepareResponse unexpected requestId: " + strReqId
+		logger.logWriter(logStr)
+		w.WriteHeader(http.StatusBadRequest)
+		return false, 0
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Id", strconv.FormatInt(requestId, 10))
+	return true, requestId
+}
+
+func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string, logger Logger) {
+	io.WriteString(w, responseBody)
+	logger.logResponse(w, r, requestId, responseBody)
+}
+
+func writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int, logger Logger) {
+	w.WriteHeader(code)
+	logger.logResponse(w, r, requestId, "code "+strconv.FormatInt(int64(code), 10))
+}
+
 func checkConvertionUint(val uint32, err error, context string) uint32 {
 	if err != nil {
 		log.Printf("%s: uint conversion err => %v\n", context, err)
 		return 0
 	}
 	return val
-}
-
-func logRequest(w http.ResponseWriter, r *http.Request, requestId int64, requestBody string) error {
-	endpointStr := r.URL.Path
-	if requestBody != "" {
-		endpointStr = endpointStr + " =>"
-		body := ""
-
-		//if isTestingModeEnabled(redisCli) {
-		//	prettyJson, err := jsonPrettify(requestBody)
-		//	if err == nil {
-		//		body = "\n" + prettyJson
-		//	} else {
-		//		body = " " + requestBody
-		//	}
-		//}
-		body = " " + requestBody
-		endpointStr = endpointStr + body
-	}
-	log.Printf("%s Request: %s %s", getRequestContexString(r), r.Method, endpointStr)
-	return nil
-}
-
-func logResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) error {
-	endpointStr := r.URL.Path
-	if responseBody != "" {
-		endpointStr = endpointStr + " =>"
-		body := ""
-
-		//if isTestingModeEnabled(redisCli) {
-		//	prettyJson, err := jsonPrettify(responseBody)
-		//	if err == nil {
-		//		body = "\n" + prettyJson
-		//	} else {
-		//		body = " " + responseBody
-		//	}
-		//
-		body = " " + responseBody
-		endpointStr = endpointStr + body
-	}
-	log.Printf("%s: Response: %s %s", getRequestContexString(r), r.Method, endpointStr)
-	return nil
 }
 
 func getRequestContexString(r *http.Request) string {
@@ -130,47 +166,20 @@ func getRequestJsonStr(r *http.Request, context string) (string, error) {
 	return string(jsonStr), nil
 }
 
-func prepareResponse(w http.ResponseWriter, r *http.Request) (bool, int64) {
-	requestId, err := getRequestUserId(r)
-	if err != nil {
-		log.Printf("%s prepareResponse %v\n", getRequestContexString(r), err)
-		w.WriteHeader(http.StatusBadRequest)
-		return false, 0
-	}
-	if requestId == 0 {
-		log.Printf("%s prepareResponse unexpected requestId: %d\n", getRequestContexString(r), requestId)
-		w.WriteHeader(http.StatusBadRequest)
-		return false, 0
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Id", strconv.FormatInt(requestId, 10))
-	return true, requestId
-}
-
-func writeResponse(w http.ResponseWriter, r *http.Request, requestId int64, responseBody string) {
-	io.WriteString(w, responseBody)
-	go logResponse(w, r, requestId, responseBody)
-}
-
-func writeHeader(w http.ResponseWriter, r *http.Request, requestId int64, code int) {
-	w.WriteHeader(code)
-	go logResponse(w, r, requestId, "code " + strconv.FormatInt(int64(code), 10))
-}
-
 type EndpointCallback func(w http.ResponseWriter, r *http.Request)
 
-func handlerPing(tnt *tarantool.Connection) (string, EndpointCallback) {
+func handlerPing(handlerContext HandlerContext) (string, EndpointCallback) {
 	return "/ping", func(w http.ResponseWriter, r *http.Request) {
-		ok, requestId := prepareResponse(w, r)
+		logger := handlerContext.Logger()
+		ok, requestId := prepareResponse(w, r, logger)
 		if ok == false {
 			return
 		}
 
-		go logRequest(w, r, requestId, "")
+		logger.logRequest(w, r, requestId, "")
 		msg := &Message{Text: "pong"}
 		jsonByteArr, _ := json.Marshal(msg)
-		writeResponse(w, r, requestId, string(jsonByteArr))
+		writeResponse(w, r, requestId, string(jsonByteArr), logger)
 	}
 }
 
@@ -204,39 +213,33 @@ func main() {
 		log.Printf("WARNING: Server started is TESTING mode! Make sure it is not prod server.")
 	}
 
-	opts := tarantool.Opts{
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 3,
-		User:          serverConfig.TntUser,
-		Pass:          serverConfig.TntPass,
-	}
-	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
+	handlerContext, err := makeHandlerContext(&serverConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer tnt.Close()
+	defer handlerContext.Close()
 
 	router := mux.NewRouter()
-	router.HandleFunc(handlerPing(tnt)).Methods("GET")
-	router.HandleFunc(handlerCashpoint(tnt)).Methods("GET")
-	router.HandleFunc(handlerCashpointCreate(tnt)).Methods("POST")
-	router.HandleFunc(handlerCashpointsBatch(tnt)).Methods("POST")
-	router.HandleFunc(handlerCashpointPatches(tnt)).Methods("GET")
-	router.HandleFunc(handlerTown(tnt)).Methods("GET")
-	router.HandleFunc(handlerTownsBatch(tnt)).Methods("POST")
-	router.HandleFunc(handlerTownsList(tnt)).Methods("GET")
-	router.HandleFunc(handlerBank(tnt)).Methods("GET")
-	router.HandleFunc(handlerBankIco(serverConfig)).Methods("GET")
-	router.HandleFunc(handlerBanksList(tnt)).Methods("GET")
-	router.HandleFunc(handlerBanksBatch(tnt)).Methods("POST")
-	router.HandleFunc(handlerNearbyCashPoints(tnt)).Methods("POST")
-	router.HandleFunc(handlerNearbyClusters(tnt)).Methods("POST")
+	router.HandleFunc(handlerPing(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerCashpoint(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerCashpointCreate(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerCashpointsBatch(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerCashpointPatches(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerTown(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerTownsBatch(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerTownsList(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerBank(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerBankIco(handlerContext, serverConfig)).Methods("GET")
+	router.HandleFunc(handlerBanksList(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerBanksBatch(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerNearbyCashPoints(handlerContext)).Methods("POST")
+	router.HandleFunc(handlerNearbyClusters(handlerContext)).Methods("POST")
 
 	if serverConfig.TestingMode {
-		router.HandleFunc(handlerCoordToQuadKey(tnt)).Methods("POST")
-		router.HandleFunc(handlerQuadTreeBranch(tnt)).Methods("GET")
-		router.HandleFunc(handlerCashpointDelete(tnt)).Methods("DELETE")
-		router.HandleFunc(handlerSpaceMetrics(tnt)).Methods("GET")
+		router.HandleFunc(handlerCoordToQuadKey(handlerContext)).Methods("POST")
+		router.HandleFunc(handlerQuadTreeBranch(handlerContext)).Methods("GET")
+		router.HandleFunc(handlerCashpointDelete(handlerContext)).Methods("DELETE")
+		router.HandleFunc(handlerSpaceMetrics(handlerContext)).Methods("GET")
 	}
 
 	port := strconv.FormatUint(serverConfig.Port, 10)
