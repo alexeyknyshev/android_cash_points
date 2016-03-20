@@ -251,7 +251,7 @@ function cashpointCommit(reqJson, userId)
         print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
-            print(func .. ": validation failed => " .. err)
+            print(func .. ": validation failed => " .. err.reason)
             box.error(err)
             return 0
         end
@@ -343,7 +343,7 @@ function cashpointProposePatch(reqJson)
         print(func .. ": creating new cashpoint")
         local err = validateCashpoint(cp, true, func)
         if err then
-            print(func .. ": validation failed => " .. err)
+            print(func .. ": validation failed => " .. err.reason)
             return 0
         end
 
