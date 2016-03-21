@@ -107,7 +107,7 @@ function getNearbyCashpoints(reqJson)
     req.filter = req.filter or {}
 
     if #(req.filter.bank_id or {}) > CP_MAX_BANK_ID_FILTER then
-        box.error(malformedRequest("Resive " .. #req.filter.bank_id .. " bank_id filter. But max filter amount " .. CP_MAX_BANK_ID_FILTER))
+        box.error(malformedRequest("Receive " .. #req.filter.bank_id .. " bank_id filter. But max filter amount " .. CP_MAX_BANK_ID_FILTER))
         return nil
     end
 
@@ -134,11 +134,11 @@ function getNearbyCashpoints(reqJson)
         matchingRubFilter,
         matchingUsdFilter,
         matchingEurFilter,
-        matchingTimeFilter,
         matchingRoundTheClock,
         matchingWithoutWeekend,
         matchingFreeAccess,
         matchingApproved,
+        matchingTimeFilter,
     }
 
     local result = {}

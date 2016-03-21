@@ -516,10 +516,10 @@ function matchingEurFilter(tuple, filter)
 end
 
 function deltaInside(from, to, delta, curTime)
-    if (from>to) then
-        to = to + 60*24
+    if from > to then
+        to = to + 60 * 24
     end
-    if ((from-curTime) <= 0) and ((to-delta-curTime) >= 0) then
+    if (from-curTime) <= 0 and (to-delta-curTime) >= 0 then
             return true
     end
     return false
@@ -534,7 +534,6 @@ function getPrevDaySch(schedule, nameCurDay)
     local prevDayNum = invertDaysTable[nameCurDay] - 1
     prevDayNum = prevDayNum ~= 0 and prevDayNum or 7
     return schedule[daysName[prevDayNum]]
-
 end
 
 function matchingTimeFilter(tuple, filter)
@@ -542,14 +541,13 @@ function matchingTimeFilter(tuple, filter)
     if not ok then
         return true
     end
-    local next = next
-    if next(schedule) == nil then 
+    if not next(schedule) then 
         return true
     end
     local UTCPlus3 = 3
     local nameCurDay = os.date("%a", filter.schedule.time)
     nameCurDay = nameCurDay:lower()
-    local curDayTimeInMin = math.floor(((filter.schedule.time + UTCPlus3*60*60) % (60*60*24))/60)
+    local curDayTimeInMin = math.floor(((filter.schedule.time + UTCPlus3 * 60 * 60) % (60 * 60 * 24)) / 60)
     local curDaySch = schedule[nameCurDay]
     local delta = filter.schedule.delta / 60
 
@@ -557,9 +555,9 @@ function matchingTimeFilter(tuple, filter)
         return false
     end
 
-    if (curDayTimeInMin < curDaySch.f) then
+    if curDayTimeInMin < curDaySch.f then
         prevDaySch = getPrevDaySch(schedule, nameCurDay)
-        if (prevDaySch.f>prevDaySch.t) then
+        if prevDaySch.f > prevDaySch.t then
             return deltaInside(0, prevDaySch.t, delta, curDayTimeInMin)
         else
             return false

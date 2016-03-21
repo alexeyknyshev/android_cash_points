@@ -1339,8 +1339,8 @@ type FilterSchedule struct {
 }
 
 type NearByRequestFilter struct {
-	BankId         []uint32 `json:"bank_id,omitempty"`
-	FilterSchedule `json:"schedule,omitempty"`
+	BankId  []uint32       `json:"bank_id,omitempty"`
+	FiltSch FilterSchedule `json:"schedule,omitempty"`
 }
 
 type NearByRequest struct {
@@ -1372,8 +1372,8 @@ func TestFilterBankIdCount(t *testing.T) {
 			Latitude:  13.01,
 		},
 		Filter: NearByRequestFilter{
-			BankId:         []uint32{322, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 357, 338, 339, 340},
-			FilterSchedule: FilterSchedule{},
+			BankId:  []uint32{322, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 357, 338, 339, 340},
+			FiltSch: FilterSchedule{},
 		},
 	}
 
@@ -1431,7 +1431,7 @@ func TestTimeFilter(t *testing.T) {
 			Latitude:  55.762994273656425,
 		},
 		Filter: NearByRequestFilter{
-			FilterSchedule: FilterSchedule{
+			FiltSch: FilterSchedule{
 				Time:  1458397500, // sat, 17:25 (UTC+3)
 				Delta: 1800,
 			},
@@ -1447,7 +1447,6 @@ func TestTimeFilter(t *testing.T) {
 		Data:        string(reqJson),
 	}
 
-	//response, err := readResponse(testRequest(request, handlerCreate))
 	response, err := readResponse(testRequest(request, handlerCreate))
 	if err != nil {
 		t.Errorf("%v", err)
