@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"testing"
 )
@@ -327,7 +328,7 @@ func TestTown(t *testing.T) {
 	checkJsonResponse(t, response.Data, expectedJson)
 }
 
-// ======================================================================
+// =====================================================================
 
 type ScheduleBreak struct {
 	From int `json:"f"`
@@ -335,20 +336,20 @@ type ScheduleBreak struct {
 }
 
 type ScheduleDay struct {
-	Day   int `json:"-"`
-	From  int `json:"f"`
-	To    int `json:"t"`
+	Day    int              `json:"-"`
+	From   int              `json:"f"`
+	To     int              `json:"t"`
 	Breaks *[]ScheduleBreak `json:"b,omitempty"`
 }
 
 type Schedule struct {
-	Mon *ScheduleDay `json:"mon,omitempty"`
-	Tue *ScheduleDay `json:"tue,omitempty"`
-	Wed *ScheduleDay `json:"wed,omitempty"`
-	Thu *ScheduleDay `json:"thu,omitempty"`
-	Fri *ScheduleDay `json:"fri,omitempty"`
-	Sat *ScheduleDay `json:"sat,omitempty"`
-	Sun *ScheduleDay `json:"sun,omitempty"`
+	Mon    *ScheduleDay     `json:"mon,omitempty"`
+	Tue    *ScheduleDay     `json:"tue,omitempty"`
+	Wed    *ScheduleDay     `json:"wed,omitempty"`
+	Thu    *ScheduleDay     `json:"thu,omitempty"`
+	Fri    *ScheduleDay     `json:"fri,omitempty"`
+	Sat    *ScheduleDay     `json:"sat,omitempty"`
+	Sun    *ScheduleDay     `json:"sun,omitempty"`
 	Breaks *[]ScheduleBreak `json:"b,omitempty"`
 }
 
@@ -841,11 +842,11 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 	nearbyRequest := CashpointNearbyRequest{
 		TopLeft: Coordinate{
 			Longitude: longitude - 0.001,
-			Latitude: latitude - 0.001,
+			Latitude:  latitude - 0.001,
 		},
 		BottomRight: Coordinate{
 			Longitude: longitude + 0.001,
-			Latitude: latitude + 0.001,
+			Latitude:  latitude + 0.001,
 		},
 		Filter: Filter{
 			Approved: new(bool),
@@ -857,7 +858,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		RequestType: "POST",
 		EndpointUrl: url,
 		HandlerUrl:  url,
-		Data: string(reqJson),
+		Data:        string(reqJson),
 	}
 
 	response, err = readResponse(testRequest(request, handlerNearby))
@@ -866,7 +867,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 	}
 	checkHttpCode(t, response.Code, http.StatusOK)
 
-	expectedJson, _ = json.Marshal([]uint64{ cashpointId })
+	expectedJson, _ = json.Marshal([]uint64{cashpointId})
 	checkJsonResponse(t, response.Data, expectedJson)
 
 	// now delete created cashpoint
@@ -1264,12 +1265,12 @@ func TestCashpointEdit(t *testing.T) {
 		To:   1260, // 21:00
 	}
 	cp := CashpointShort{
-		Id: cpId,
-		Longitude: 48.049293518066,
-		Latitude: 46.369739532471,
-		Type: "office", // must not be changed (patch has not approved yet)
-		BankId: 194275,
-		TownId: 290,
+		Id:             cpId,
+		Longitude:      48.049293518066,
+		Latitude:       46.369739532471,
+		Type:           "office", // must not be changed (patch has not approved yet)
+		BankId:         194275,
+		TownId:         290,
 		Address:        "г. Астрахань, ул.Савушкина, д.23в",
 		AddressComment: "",
 		MetroName:      "",
@@ -1278,8 +1279,8 @@ func TestCashpointEdit(t *testing.T) {
 		WithoutWeekend: false,
 		RoundTheClock:  false,
 		WorksAsShop:    false,
-// 		Schedule:       "пн.—пт.: 09:00—21:00,сб.: 10:00—17:00",
-		Schedule:       Schedule{
+		// 		Schedule:       "пн.—пт.: 09:00—21:00,сб.: 10:00—17:00",
+		Schedule: Schedule{
 			Mon: sDay,
 			Tue: sDay,
 			Wed: sDay,
@@ -1290,12 +1291,12 @@ func TestCashpointEdit(t *testing.T) {
 				To:   1020, // 17:00
 			},
 		},
-		Tel:            "",
-		Additional:     "",
-		Rub:            true,
-		Usd:            false,
-		Eur:            false,
-		CashIn:         false,
+		Tel:        "",
+		Additional: "",
+		Rub:        true,
+		Usd:        false,
+		Eur:        false,
+		CashIn:     false,
 	}
 	cpFull := CashpointFull{
 		CashpointShort: cp,
@@ -1333,8 +1334,14 @@ func TestCashpointEdit(t *testing.T) {
 	}
 }
 
+type FilterSchedule struct {
+	Time  uint64 `json:"time"`
+	Delta uint32 `json:"delta"`
+}
+
 type NearByRequestFilter struct {
-	BankId []uint32 `json:"bank_id"`
+	BankId  []uint32       `json:"bank_id,omitempty"`
+	FiltSch FilterSchedule `json:"schedule,omitempty"`
 }
 
 type NearByRequest struct {
@@ -1366,7 +1373,8 @@ func TestFilterBankIdCount(t *testing.T) {
 			Latitude:  13.01,
 		},
 		Filter: NearByRequestFilter{
-			BankId: []uint32{322, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 357, 338, 339, 340},
+			BankId:  []uint32{322, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 357, 338, 339, 340},
+			FiltSch: FilterSchedule{},
 		},
 	}
 
@@ -1399,4 +1407,81 @@ func TestFilterBankIdCount(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestTimeFilter(t *testing.T) {
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+
+	reqNearBy := NearByRequest{
+		BottomRight: Coordinate{
+			Longitude: 37.614022861099215,
+			Latitude:  55.758164990332041,
+		},
+		TopLeft: Coordinate{
+			Longitude: 37.608873019790622,
+			Latitude:  55.762994273656425,
+		},
+		Filter: NearByRequestFilter{
+			FiltSch: FilterSchedule{
+				Time:  1458397500, // sat, 17:25 (UTC+3)
+				Delta: 1800,
+			},
+		},
+	}
+
+	url, handlerCreate := handlerNearbyCashPoints(hCtx)
+
+	reqJson, _ := json.Marshal(reqNearBy)
+	request := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: url,
+		Data:        string(reqJson),
+	}
+
+	response, err := readResponse(testRequest(request, handlerCreate))
+	if err != nil {
+		t.Errorf("%v", err)
+		return
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	expectedResponse := []int{
+		384924, 316411, 316416, 324453, 3470560,
+		4437472, 4508915, 4406301, 5500542, 943485,
+		2376541, 2820889, 7125785, 7194801, 7194843,
+		7235343, 7913779, 8158920, 8158944, 605269,
+		6764619, 736685, 6484376, 7129653, 7688033,
+		8128184, 8232204, 1259403, 1272692}
+
+	var respDataArray []int
+	err = json.Unmarshal(response.Data, &respDataArray)
+	if err != nil {
+		t.Errorf("Failed unmarshal response.Data:%v", err)
+		return
+	}
+
+	sort.Ints(respDataArray)
+	sort.Ints(expectedResponse)
+	if len(expectedResponse) != len(respDataArray) {
+		t.Error("Received amount of cashpoints not equal expected")
+		return
+	}
+
+	for i, _ := range respDataArray {
+		if respDataArray[i] != expectedResponse[i] {
+			t.Error("Comparison failed")
+			return
+		}
+	}
+
 }
