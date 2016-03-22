@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strconv"
 	"testing"
 )
@@ -1450,23 +1451,37 @@ func TestTimeFilter(t *testing.T) {
 	response, err := readResponse(testRequest(request, handlerCreate))
 	if err != nil {
 		t.Errorf("%v", err)
+		return
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	expectedResponse := []int{
+		384924, 316411, 316416, 324453, 3470560,
+		4437472, 4508915, 4406301, 5500542, 943485,
+		2376541, 2820889, 7125785, 7194801, 7194843,
+		7235343, 7913779, 8158920, 8158944, 605269,
+		6764619, 736685, 6484376, 7129653, 7688033,
+		8128184, 8232204, 1259403, 1272692}
+
+	var respDataArray []int
+	err = json.Unmarshal(response.Data, &respDataArray)
+	if err != nil {
+		t.Errorf("Failed unmarshal response.Data:%v", err)
+		return
 	}
 
-	expectedResponse := []int{1272692, 1259403, 8128184,
-		8232204, 3470560, 316411, 316416, 943485, 2820889,
-		4437472, 4508915, 7125785, 7194801, 7194843, 7913779,
-		8158944, 605269, 4406301, 6484376, 5500542, 6764619,
-		2376541, 736685, 7688033, 7129653, 324453, 7235343,
-		384924, 8158920}
-	/*In real base
-	{384924, 316411, 316416,
-		324453, 3470560, 4437472, 4508915, 4406301,
-		5500542, 943485, 2376541, 2820889, 7125785, 7194801,
-		7194843, 7235343, 7913779, 8158920, 8158944,
-		605269, 6764619, 736685, 6484376, 7129653,
-		7688033, 8128184, 8232204, 1259403, 1272692}
-	*/
-	expectedJson, _ := json.Marshal(expectedResponse)
-	checkHttpCode(t, response.Code, http.StatusOK)
-	checkJsonResponse(t, response.Data, expectedJson)
+	sort.Ints(respDataArray)
+	sort.Ints(expectedResponse)
+	if len(expectedResponse) != len(respDataArray) {
+		t.Error("Received amount of cashpoints not equal expected")
+		return
+	}
+
+	for i, _ := range respDataArray {
+		if respDataArray[i] != expectedResponse[i] {
+			t.Error("Comparison failed")
+			return
+		}
+	}
+
 }
