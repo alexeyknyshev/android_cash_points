@@ -435,7 +435,7 @@ end
 -- vote struct:
 --    patch_id
 --    user_id
---    vote
+--    score
 function cashpointVotePatch(reqJson)
     local func = "cashpointVotePatch"
     local vote = json.decode(reqJson)
