@@ -63,7 +63,6 @@ HEADERS += \
     src/requests/cashpointcreate.h \
     src/requests/nearbyclusters.h \
     src/requests/nearbyclusterrequestfactory.h \
-    src/numberimageprovider.h \
     src/appstateproxy.h \
     src/hostsmodel.h
 
