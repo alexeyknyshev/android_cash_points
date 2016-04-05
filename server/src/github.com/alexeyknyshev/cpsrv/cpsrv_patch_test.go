@@ -71,13 +71,49 @@ func getPatchExampleNewCP() *PatchRequest {
 
 }
 
-func getPatchExampleExistCP() *PatchRequest {
+func getPatchExampleExistCP() (*PatchRequest, string) {
 	patchReq := PatchRequest{
 		Id:     58552,
 		BankId: 2764,
 	}
-	return &patchReq
+	exampleJson := "{\"schedule\":{},\"bank_id\":" + strconv.FormatUint(uint64(patchReq.BankId), 10) + "}"
+	return &patchReq, exampleJson
 
+}
+
+func searchLastPatch(t *testing.T, resJsonPatches []byte) uint32 {
+	var CPPatches map[string]interface{}
+	err := json.Unmarshal(resJsonPatches, &CPPatches)
+	if err != nil {
+		t.Errorf("Unmarshal err %v", err)
+	}
+	last_key := uint64(0)
+	//Search last patch number
+	for key := range CPPatches {
+		int_key, _ := strconv.ParseUint(key, 10, 64)
+		if int_key > last_key {
+			last_key = int_key
+		}
+	}
+	return uint32(last_key)
+}
+
+func comparePatches(t *testing.T, resPatch []interface{}, expectedPatch []interface{}) {
+	if len(resPatch) != len(expectedPatch) {
+		t.Error("response and expected patches have different field amount")
+		return
+	}
+
+	fields := []string{"patch id", "cashpoint id", "user_id", "data", "timestamp"}
+	for i, vol := range expectedPatch {
+		if i == 3 { //PATCH_DATA
+			checkJsonResponse(t, []byte(vol.(string)), []byte(resPatch[i].(string)))
+		} else if i != 4 { //don't check timestamp
+			if resPatch[i].(uint64) != vol.(uint64) {
+				t.Error("comparePatches: fields", fields[i], "don't match")
+			}
+		}
+	}
 }
 
 func TestPatchCreateNewCP(t *testing.T) {
@@ -95,7 +131,7 @@ func TestPatchCreateNewCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Json Marshal error %v", err)
 	}
-	fmt.Print("Request:\n", string(requestJson), "\n")
+	fmt.Println("Request:\n", string(requestJson), "\n")
 
 	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
@@ -111,20 +147,31 @@ func TestPatchCreateNewCP(t *testing.T) {
 
 	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
 	if err != nil {
-		t.Errorf("Failed to create patch: %v", err)
+		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
 	}
 	CpId := TaranResp.Data[0].([]interface{})[0]
 
-	fmt.Print("\nCreate new patch, CpId = ", CpId)
+	fmt.Println("\nCreate new patch, CpId = ", CpId)
 
 	resp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
 	if err != nil {
-		t.Errorf("Failed call tarantool getCashpointPatches func %v", err)
+		t.Errorf("Tnt getCashpointPatches call err: %v", err)
 	}
-	fmt.Print("\nCheck new patch, CpId :\n ", resp)
 
+	//Json response parse and compare
+	byteResp := []byte(resp.Data[0].([]interface{})[0].(string))
+
+	lastPatch := searchLastPatch(t, byteResp)
+	resp, err = hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
+	resPatch := resp.Data[0].([]interface{})
+	expPatchData := "{\"id\":" + strconv.FormatInt(int64(CpId.(uint64)), 10) + "}"
+	expectedPatch := []interface{}{uint64(lastPatch), CpId.(uint64), uint64(request.UserId), expPatchData, uint64(0)}
+	comparePatches(t, resPatch, expectedPatch)
+	fmt.Println("Delete patch ", lastPatch)
 	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
-
+	if err != nil {
+		t.Errorf("Tnt call _deleteCashpointPatchById err: %v", err)
+	}
 }
 
 func TestPatchChangeExistCP(t *testing.T) {
@@ -133,7 +180,7 @@ func TestPatchChangeExistCP(t *testing.T) {
 		Data   PatchRequest `json:"data"`
 		UserId uint         `json:"user_id"`
 	}
-	patchReq := getPatchExampleExistCP()
+	patchReq, expPatchData := getPatchExampleExistCP()
 	request := Req{
 		Data:   *patchReq,
 		UserId: 1,
@@ -142,7 +189,7 @@ func TestPatchChangeExistCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Json Marshal error %v", err)
 	}
-	fmt.Print("Request:\n", string(requestJson), "\n")
+	fmt.Println("Request:\n", string(requestJson), "\n")
 
 	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
@@ -158,7 +205,7 @@ func TestPatchChangeExistCP(t *testing.T) {
 
 	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
 	if err != nil {
-		t.Errorf("Failed to create patch: %v", err)
+		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
 		return
 	}
 	CpId := TaranResp.Data[0].([]interface{})[0]
@@ -167,16 +214,16 @@ func TestPatchChangeExistCP(t *testing.T) {
 		t.Error("Failed to create patch, CpId == 0")
 		return
 	} else {
-		fmt.Print("\nCreate new patch, CpId = ", CpId)
+		fmt.Println("\nCreate new patch, CpId = ", CpId)
 	}
 
 	CPPatchesTaranResp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
 	if err != nil {
-		t.Errorf("Failed to unmarshal %v", err)
+		t.Errorf("Tnt getCashpointPatches call err: %v", err)
 	}
 	CPPatchesJson := CPPatchesTaranResp.Data[0].([]interface{})[0].(string)
 
-	fmt.Print("\nPatches of cashpoint №", CpId, ":\n", CPPatchesJson, "\n")
+	fmt.Println("\nPatches of cashpoint №", CpId, ":\n", CPPatchesJson, "\n")
 	CPPatchesJsonByte := []byte(CPPatchesJson)
 	var CPPatches map[string]interface{}
 	err = json.Unmarshal(CPPatchesJsonByte, &CPPatches)
@@ -184,18 +231,17 @@ func TestPatchChangeExistCP(t *testing.T) {
 		t.Errorf("Patches unmarshal err: %v", err)
 	}
 
-	last_key := int64(0)
-	//Search last patch number
-	for key := range CPPatches {
-		int_key, _ := strconv.ParseInt(key, 10, 64)
-		if int_key > last_key {
-			last_key = int_key
-		}
-	}
+	lastPatch := searchLastPatch(t, CPPatchesJsonByte)
+	resp, err := hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
+	resPatch := resp.Data[0].([]interface{})
+	expectedPatch := []interface{}{uint64(lastPatch), CpId.(uint64), uint64(request.UserId), expPatchData, uint64(0)}
+	comparePatches(t, resPatch, expectedPatch)
 
-	fmt.Println("last patch id = ", last_key)
-	_, err = hCtx.Tnt().Call("_deleteCashpointPatchById", []interface{}{last_key})
+	fmt.Println("response patch:\n", resPatch)
+
+	fmt.Println("Delete patch ", lastPatch)
+	resp, err = hCtx.Tnt().Call("_deleteCashpointPatchById", []interface{}{lastPatch})
 	if err != nil {
-		t.Errorf("P_deleteCashpointPatchById err: %v", err)
+		t.Errorf("Tnt _deleteCashpointPatchById call err: %v", err)
 	}
 }

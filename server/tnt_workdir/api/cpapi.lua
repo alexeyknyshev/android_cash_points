@@ -379,6 +379,14 @@ function getCashpointPatches(cpId)
     return json.encode(setmetatable(result, { __serialize = "map" }))
 end
 
+function getCashpointPatchByPatchId(id)
+    if not id then
+        return nil
+    end
+
+    return box.space.cashpoints_patches.index[0]:select{ id }[1]
+end
+
 function _getCashpointPatchVotes(patchId)
     if not patchId then
         return nil
