@@ -519,8 +519,8 @@ function deltaInside(from, to, delta, curTime)
     if from > to then
         to = to + 60 * 24
     end
-    if (from-curTime) <= 0 and (to-delta-curTime) >= 0 then
-            return true
+    if (from - curTime) <= 0 and (to - delta - curTime) >= 0 then
+        return true
     end
     return false
 end
@@ -537,6 +537,10 @@ function getPrevDaySch(schedule, nameCurDay)
 end
 
 function matchingTimeFilter(tuple, filter)
+    if not filter.schedule then
+        return true
+    end
+
     local ok, schedule = pcall(json.decode, tuple[COL_CP_SCHEDULE])
     if not ok then
         return true
