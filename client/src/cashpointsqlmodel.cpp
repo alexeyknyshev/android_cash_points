@@ -197,13 +197,15 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                               "cord_lon, cord_lat, address, "
                               "address_comment, metro_name, main_office, "
                               "without_weekend, round_the_clock, "
-                              "works_as_shop, rub, usd, eur, cash_in, timestamp, schedule) "
+                              "works_as_shop, free_access, rub, usd, eur, cash_in, "
+                              "timestamp, schedule) "
                               "VALUES "
                               "(:id, :type, :bank_id, :town_id, "
                               ":cord_lon, :cord_lat, :address, "
                               ":address_comment, :metro_name, :main_office, "
                               ":without_weekend, :round_the_clock, "
-                              ":works_as_shop, :rub, :usd, :eur, :cash_in, :timestamp, :schedule)"))
+                              ":works_as_shop, :free_access, :rub, :usd, :eur, :cash_in, "
+                              ":timestamp, :schedule)"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
                    << mQueryUpdate.lastError().databaseText();
@@ -213,7 +215,8 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                                  "cord_lon, cord_lat, address, "
                                  "address_comment, metro_name, main_office, "
                                  "without_weekend, round_the_clock, "
-                                 "works_as_shop, rub, usd, eur, cash_in, timestamp, schedule "
+                                 "works_as_shop, free_access, rub, usd, eur, cash_in, "
+                                 "timestamp, schedule "
                                  "FROM cp WHERE id = :id"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
@@ -266,6 +269,7 @@ void CashPointSqlModel::addCashPoint(const QJsonObject &obj)
         mQueryUpdate.bindValue(":without_weekend", cp.withoutWeekend);
         mQueryUpdate.bindValue(":round_the_clock", cp.roundTheClock);
         mQueryUpdate.bindValue(":works_as_shop", cp.worksAsShop);
+        mQueryUpdate.bindValue(":free_access", cp.freeAccess);
         mQueryUpdate.bindValue(":rub", cp.rub);
         mQueryUpdate.bindValue(":usd", cp.usd);
         mQueryUpdate.bindValue(":eur", cp.eur);
@@ -305,12 +309,13 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         const bool withoutWeekEnd =    mQueryCashpoint.value(10).toBool();
         const bool roundTheClock =     mQueryCashpoint.value(11).toBool();
         const bool worksAsShop =       mQueryCashpoint.value(12).toBool();
-        const bool rub =               mQueryCashpoint.value(13).toBool();
-        const bool usd =               mQueryCashpoint.value(14).toBool();
-        const bool eur =               mQueryCashpoint.value(15).toBool();
-        const bool cashIn =            mQueryCashpoint.value(16).toBool();
-        const int timestamp =          mQueryCashpoint.value(17).toInt();
-        const QString schedule =       mQueryCashpoint.value(18).toString();
+        const bool freeAccess =        mQueryCashpoint.value(13).toBool();
+        const bool rub =               mQueryCashpoint.value(14).toBool();
+        const bool usd =               mQueryCashpoint.value(15).toBool();
+        const bool eur =               mQueryCashpoint.value(16).toBool();
+        const bool cashIn =            mQueryCashpoint.value(17).toBool();
+        const int timestamp =          mQueryCashpoint.value(18).toInt();
+        const QString schedule =       mQueryCashpoint.value(19).toString();
 
         QJsonObject o;
         o["id"] = id;
@@ -326,6 +331,7 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         o["without_weekend"] = withoutWeekEnd;
         o["round_the_clock"] = roundTheClock;
         o["works_as_shop"] = worksAsShop;
+        o["free_access"] = freeAccess;
         o["rub"] = rub;
         o["usd"] = usd;
         o["eur"] = eur;

@@ -77,16 +77,16 @@ int main(int argc, char *argv[])
                              "town_id integer, cord_lon real, cord_lat real, address text, "
                              "address_comment text, metro_name text, main_office integer, "
                              "without_weekend integer, round_the_clock integer, "
-                             "works_as_shop integer, rub integer, usd integer, "
+                             "works_as_shop integer, free_access integer, rub integer, usd integer, "
                              "eur integer, cash_in integer, timestamp integer, schedule text)");
     db.commit();
 
     qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
     ServerApi *api = new ServerApi(
 //                                   "192.168.1.126"
-//                                   "localhost"
+                                   "localhost"
 //                                   "52.89.4.111"
-                                   "5.23.98.144"
+//                                   "5.23.98.144"
                                    , 8080);
 
     HostsModel *hostsModel = new HostsModel(api, &settings, api);
