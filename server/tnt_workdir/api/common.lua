@@ -670,17 +670,17 @@ local function validateCashpointFields(cp, checkRequired, func)
         town_id = { type = 'number', required = true },
         longitude = { type = 'number', required = true },
         latitude = { type = 'number', required = true },
-        address = { type = 'string', required = false },
-        address_comment = { type = 'string', required = false },
-        metro_name = { type = 'string', required = false },
+        address = { type = 'string', required = false, default = "" },
+        address_comment = { type = 'string', required = false, default = "" },
+        metro_name = { type = 'string', required = false, default = "" },
         free_access = { type = 'boolean', required = true },
         main_office = { type = 'boolean', required = true },
         without_weekend = { type = 'boolean', required = true },
         round_the_clock = { type = 'boolean', required = true },
         works_as_shop = { type = 'boolean', required = true },
         schedule = { type = 'table', required = true },
-        tel = { type = 'string', required = false },
-        additional = { type = 'string', required = false },
+        tel = { type = 'string', required = false, default = "" },
+        additional = { type = 'string', required = false, default = "" },
         rub = { type = 'boolean', required = true },
         usd = { type = 'boolean', required = true },
         eur = { type = 'boolean', required = true },
@@ -691,10 +691,13 @@ local function validateCashpointFields(cp, checkRequired, func)
 
     if checkRequired then
         for k, v in pairs(allowedFields) do
-            if v.required and cp[k] == nil then
-                return malformedRequest("missing required cashpoint field '" .. tostring(k) .. "'")
-            end
-            if cp[k] ~= nil then
+            if cp[k] == nil then
+                if v.required then
+                    return malformedRequest("missing required cashpoint field '" .. tostring(k) .. "'")
+                else
+                    cp[k] = v.default
+                end
+            else
                 local cpKType = type(cp[k])
                 if cpKType ~= v.type then
                     return malformedRequest("wrong type of cashpoint field '" .. tostring(k) .. "'. " ..
