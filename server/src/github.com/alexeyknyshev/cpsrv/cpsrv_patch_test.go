@@ -13,7 +13,7 @@ import (
 	//"net/http"
 	//"net/http/httptest"
 	//"sort"
-	"reflect"
+	//"reflect"
 	"strconv"
 	"testing"
 )
@@ -40,6 +40,11 @@ type PatchRequest struct {
 	Usd            *bool    `json:"usd,omitempty"`
 	Eur            *bool    `json:"eur,omitempty"`
 	CashIn         *bool    `json:"cash_in,omitempty"`
+}
+
+type TestPatchReq struct {
+	Data   PatchRequest `json:"data"`
+	UserId uint         `json:"user_id"`
 }
 
 func getPatchExampleNewCP() *PatchRequest {
@@ -116,16 +121,34 @@ func comparePatches(t *testing.T, resPatch []interface{}, expectedPatch []interf
 	}
 }
 
+func invokeTaranPatchFuncs(t *testing.T, hCtx *HandlerContextStruct, requestJson []byte) (uint32, uint64) {
+	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
+	if err != nil {
+		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
+	}
+	CpId := TaranResp.Data[0].([]interface{})[0]
+	if CpId.(uint64) == uint64(0) {
+		t.Error("Failed to create patch, CpId == 0")
+		return 0, 0
+	} else {
+		fmt.Println("\nCreate new patch, CpId = ", CpId)
+	}
+
+	resp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
+	if err != nil {
+		t.Errorf("Tnt getCashpointPatches call err: %v", err)
+	}
+	byteResp := []byte(resp.Data[0].([]interface{})[0].(string))
+	lastPatch := searchLastPatch(t, byteResp)
+	return lastPatch, CpId.(uint64)
+}
+
 func TestPatchCreateNewCP(t *testing.T) {
 
-	type Req struct {
-		Data   PatchRequest `json:"data"`
-		UserId uint         `json:"user_id"`
-	}
 	patchReq := getPatchExampleNewCP()
-	request := Req{
+	request := TestPatchReq{
 		Data:   *patchReq,
-		UserId: 0,
+		UserId: 1,
 	}
 	requestJson, err := json.Marshal(request)
 	if err != nil {
@@ -137,6 +160,7 @@ func TestPatchCreateNewCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connection to tarantool failed: %v", err)
 	}
+
 	defer hCtx.Close()
 
 	metrics, err := getSpaceMetrics(hCtx)
@@ -145,29 +169,16 @@ func TestPatchCreateNewCP(t *testing.T) {
 	}
 	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
-	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
-	if err != nil {
-		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
+	lastPatch, CpId := invokeTaranPatchFuncs(t, hCtx, requestJson)
+	if lastPatch == 0 {
+		return
 	}
-	CpId := TaranResp.Data[0].([]interface{})[0]
-
-	fmt.Println("\nCreate new patch, CpId = ", CpId)
-
-	resp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
-	if err != nil {
-		t.Errorf("Tnt getCashpointPatches call err: %v", err)
-	}
-
-	//Json response parse and compare
-	byteResp := []byte(resp.Data[0].([]interface{})[0].(string))
-
-	lastPatch := searchLastPatch(t, byteResp)
-	resp, err = hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
+	resp, err := hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
 	resPatch := resp.Data[0].([]interface{})
-	expPatchData := "{\"id\":" + strconv.FormatInt(int64(CpId.(uint64)), 10) + "}"
-	expectedPatch := []interface{}{uint64(lastPatch), CpId.(uint64), uint64(request.UserId), expPatchData, uint64(0)}
+	expPatchData := "{\"id\":" + strconv.FormatInt(int64(CpId), 10) + "}"
+	expectedPatch := []interface{}{uint64(lastPatch), CpId, uint64(request.UserId), expPatchData, uint64(0)}
 	comparePatches(t, resPatch, expectedPatch)
-	fmt.Println("Delete patch ", lastPatch)
+	fmt.Println("Delete cashpoint ", CpId)
 	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
 	if err != nil {
 		t.Errorf("Tnt call _deleteCashpointPatchById err: %v", err)
@@ -176,12 +187,8 @@ func TestPatchCreateNewCP(t *testing.T) {
 
 func TestPatchChangeExistCP(t *testing.T) {
 
-	type Req struct {
-		Data   PatchRequest `json:"data"`
-		UserId uint         `json:"user_id"`
-	}
 	patchReq, expPatchData := getPatchExampleExistCP()
-	request := Req{
+	request := TestPatchReq{
 		Data:   *patchReq,
 		UserId: 1,
 	}
@@ -203,38 +210,13 @@ func TestPatchChangeExistCP(t *testing.T) {
 	}
 	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
 
-	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
-	if err != nil {
-		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
+	lastPatch, CpId := invokeTaranPatchFuncs(t, hCtx, requestJson)
+	if lastPatch == 0 {
 		return
 	}
-	CpId := TaranResp.Data[0].([]interface{})[0]
-	fmt.Print(reflect.TypeOf(CpId), " Volume = ", CpId)
-	if CpId == uint64(0) {
-		t.Error("Failed to create patch, CpId == 0")
-		return
-	} else {
-		fmt.Println("\nCreate new patch, CpId = ", CpId)
-	}
-
-	CPPatchesTaranResp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
-	if err != nil {
-		t.Errorf("Tnt getCashpointPatches call err: %v", err)
-	}
-	CPPatchesJson := CPPatchesTaranResp.Data[0].([]interface{})[0].(string)
-
-	fmt.Println("\nPatches of cashpoint №", CpId, ":\n", CPPatchesJson, "\n")
-	CPPatchesJsonByte := []byte(CPPatchesJson)
-	var CPPatches map[string]interface{}
-	err = json.Unmarshal(CPPatchesJsonByte, &CPPatches)
-	if err != nil {
-		t.Errorf("Patches unmarshal err: %v", err)
-	}
-
-	lastPatch := searchLastPatch(t, CPPatchesJsonByte)
 	resp, err := hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
 	resPatch := resp.Data[0].([]interface{})
-	expectedPatch := []interface{}{uint64(lastPatch), CpId.(uint64), uint64(request.UserId), expPatchData, uint64(0)}
+	expectedPatch := []interface{}{uint64(lastPatch), CpId, uint64(request.UserId), expPatchData, uint64(0)}
 	comparePatches(t, resPatch, expectedPatch)
 
 	fmt.Println("response patch:\n", resPatch)
@@ -243,5 +225,114 @@ func TestPatchChangeExistCP(t *testing.T) {
 	resp, err = hCtx.Tnt().Call("_deleteCashpointPatchById", []interface{}{lastPatch})
 	if err != nil {
 		t.Errorf("Tnt _deleteCashpointPatchById call err: %v", err)
+	}
+}
+
+type VotePatch struct {
+	PatchId uint32 `json:"patch_id,omitempty"`
+	UserId  uint32 `json:"user_id"`
+	Score   uint32 `json:"score"`
+}
+
+func voteCompare(t *testing.T, res, expected *VotePatch) bool {
+	success := true
+	if res.UserId != expected.UserId {
+		t.Error("expected UserId = ", expected.UserId, "got UserId = ", res.UserId)
+		success = false
+	}
+	if res.Score != expected.Score {
+		t.Error("expected Score = ", expected.Score, "got Score = ", res.Score)
+		success = false
+	}
+	return success
+}
+
+func invokeTaranVoteFuncs(t *testing.T, hCtx *HandlerContextStruct, voteJsonReq []byte, lastPatch uint32) (*([]VotePatch), bool) {
+	voteResp, err := hCtx.Tnt().Call("cashpointVotePatch", []interface{}{voteJsonReq})
+	if err != nil {
+		t.Errorf("Tnt cashpointVotePatch call err:\n%v", err)
+		fmt.Println("voteResp:", voteResp)
+		return nil, false
+	}
+	decodeVoteResp := voteResp.Data[0].([]interface{})[0].(bool)
+	if !decodeVoteResp {
+		return nil, decodeVoteResp
+	}
+
+	voteList, err := hCtx.Tnt().Call("getCashpointPatchVotes", []interface{}{lastPatch})
+	if err != nil {
+		t.Errorf("Tnt getCashpointPatchVotes call err: %v", err)
+	}
+	fmt.Println("getCashpointPatchVotes return:", voteList.Data[0].([]interface{})[0].(string))
+	var decodeVoteList []VotePatch
+	err = json.Unmarshal([]byte(voteList.Data[0].([]interface{})[0].(string)), &decodeVoteList)
+	if err != nil {
+		t.Errorf("Unmarshal err: %v", err)
+		return nil, decodeVoteResp
+	}
+	return &decodeVoteList, decodeVoteResp
+}
+
+//Test voting and double voting by one user
+func TestPatchOneUserVoting(t *testing.T) {
+
+	patchReq := getPatchExampleNewCP()
+	request := TestPatchReq{
+		Data:   *patchReq,
+		UserId: 1,
+	}
+	requestJson, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("Json Marshal error %v", err)
+	}
+	fmt.Println("Request:\n", string(requestJson), "\n")
+
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+
+	lastPatch, CpId := invokeTaranPatchFuncs(t, hCtx, requestJson)
+	if lastPatch == 0 {
+		return
+	}
+	resp, err := hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
+	resPatch := resp.Data[0].([]interface{})
+	fmt.Println("response patch:\n", resPatch)
+	voteReq := VotePatch{
+		PatchId: lastPatch,
+		UserId:  2,
+		Score:   1,
+	}
+	voteJsonReq, _ := json.Marshal(voteReq)
+	fmt.Println("\nrequest vote:", string(voteJsonReq))
+	decodeVoteList, success := invokeTaranVoteFuncs(t, hCtx, voteJsonReq, lastPatch)
+	if !success {
+		t.Error("cashpointVotePatch return false. Expected true")
+	}
+	success = voteCompare(t, &(*decodeVoteList)[0], &voteReq)
+	if success {
+		fmt.Println("compare success")
+	}
+	//test double voting
+	fmt.Println("Test double voting")
+	_, success = invokeTaranVoteFuncs(t, hCtx, voteJsonReq, lastPatch)
+	if success {
+		t.Error("Double voting test failed")
+	} else {
+		fmt.Println("Double voting test pass")
+	}
+	fmt.Println("Delete cashpoint ", CpId)
+	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
+	if err != nil {
+		t.Errorf("Tnt call _deleteCashpointPatchById err: %v", err)
 	}
 }
