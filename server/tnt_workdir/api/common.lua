@@ -586,15 +586,16 @@ function matchingWithoutWeekend(tuple, filter)
 end
 
 function matchingApproved(tuple, filter)
+    if filter.approved == nil then
+        return true
+    end
+
     local approved = true
     if tuple[COL_CP_APPROVED] ~= nil then
         approved = tuple[COL_CP_APPROVED]
     end
 
-    if filter.approved ~= nil then
-        return approved == filter.approved
-    end
-    return approved
+    return approved == filter.approved
 end
 
 function validateRequest(req, func)
