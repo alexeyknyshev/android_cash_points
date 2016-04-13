@@ -38,7 +38,7 @@ local COL_CP_PATCH_VOTE_ID = 1
 local COL_CP_PATCH_VOTE_PATCH_ID = 2
 local COL_CP_PATCH_VOTE_USER_ID = 3
 local COL_CP_PATCH_VOTE_DATA = 4
---local COL_CP_PATCH_VOTE_TIMESTAMP = 5
+local COL_CP_PATCH_VOTE_TIMESTAMP = 5
 
 local PATCH_APPROVE_VOTES = 5
 
@@ -466,7 +466,7 @@ function cashpointVotePatch(reqJson)
     box.begin()
     local ok, err = pcall(box.space.cashpoints_patches_votes.auto_increment, box.space.cashpoints_patches_votes, {vote.patch_id, vote.user_id, vote.score})
     if not ok then
-        box.error(malformedRequest(err, func))
+        print(func..": "..err)
         box.rollback()
         return false
     end

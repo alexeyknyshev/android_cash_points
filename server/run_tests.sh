@@ -22,7 +22,7 @@ while [[ `nc -z 0 3302; echo $?` -ne 0 ]]; do
 	fi
 done
 if [ $# -ge 1 ]; then
-	go test github.com/alexeyknyshev/cpsrv -test.run $1
+	go test github.com/alexeyknyshev/cpsrv -test.run $*
 else
 	go test github.com/alexeyknyshev/cpsrv
 fi

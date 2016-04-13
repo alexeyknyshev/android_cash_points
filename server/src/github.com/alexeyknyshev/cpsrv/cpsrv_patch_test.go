@@ -1,45 +1,35 @@
 package main
 
 import (
-	//"bytes"
 	"encoding/json"
-	//"errors"
 	"fmt"
-	//"github.com/alexeyknyshev/gojsondiff"
-	//"github.com/alexeyknyshev/gojsondiff/formatter"
-	//"github.com/gorilla/mux"
-	//"io/ioutil"
-	//"log"
-	//"net/http"
-	//"net/http/httptest"
-	//"sort"
-	//"reflect"
+	"net/http"
 	"strconv"
 	"testing"
 )
 
 type PatchRequest struct {
-	Id             uint32   `json:"id,omitempty"`
-	Longitude      float64  `json:"longitude,omitempty"`
-	Latitude       float64  `json:"latitude,omitempty"`
-	Type           string   `json:"type,omitempty"`
-	BankId         uint32   `json:"bank_id,omitempty"`
-	TownId         uint32   `json:"town_id,omitempty"`
-	Address        string   `json:"address,omitempty"`
-	AddressComment string   `json:"address_comment,omitempty"`
-	MetroName      string   `json:"metro_name,omitempty"`
-	FreeAccess     *bool    `json:"free_access,omitempty"`
-	MainOffice     *bool    `json:"main_office,omitempty"`
-	WithoutWeekend *bool    `json:"without_weekend,omitempty"`
-	RoundTheClock  *bool    `json:"round_the_clock,omitempty"`
-	WorksAsShop    *bool    `json:"works_as_shop,omitempty"`
-	Schedule       Schedule `json:"schedule,omitempty"`
-	Tel            string   `json:"tel,omitempty"`
-	Additional     string   `json:"additional,omitempty"`
-	Rub            *bool    `json:"rub,omitempty"`
-	Usd            *bool    `json:"usd,omitempty"`
-	Eur            *bool    `json:"eur,omitempty"`
-	CashIn         *bool    `json:"cash_in,omitempty"`
+	Id             uint32    `json:"id,omitempty"`
+	Longitude      float64   `json:"longitude,omitempty"`
+	Latitude       float64   `json:"latitude,omitempty"`
+	Type           string    `json:"type,omitempty"`
+	BankId         uint32    `json:"bank_id,omitempty"`
+	TownId         uint32    `json:"town_id,omitempty"`
+	Address        string    `json:"address,omitempty"`
+	AddressComment string    `json:"address_comment,omitempty"`
+	MetroName      string    `json:"metro_name,omitempty"`
+	FreeAccess     *bool     `json:"free_access,omitempty"`
+	MainOffice     *bool     `json:"main_office,omitempty"`
+	WithoutWeekend *bool     `json:"without_weekend,omitempty"`
+	RoundTheClock  *bool     `json:"round_the_clock,omitempty"`
+	WorksAsShop    *bool     `json:"works_as_shop,omitempty"`
+	Schedule       *Schedule `json:"schedule,omitempty"`
+	Tel            string    `json:"tel,omitempty"`
+	Additional     string    `json:"additional,omitempty"`
+	Rub            *bool     `json:"rub,omitempty"`
+	Usd            *bool     `json:"usd,omitempty"`
+	Eur            *bool     `json:"eur,omitempty"`
+	CashIn         *bool     `json:"cash_in,omitempty"`
 }
 
 type TestPatchReq struct {
@@ -50,6 +40,7 @@ type TestPatchReq struct {
 func getPatchExampleNewCP() *PatchRequest {
 	False := false
 	True := true
+	sched := Schedule{}
 	patchReq := PatchRequest{
 		Longitude:      37.6878262,
 		Latitude:       55.6946643,
@@ -64,8 +55,8 @@ func getPatchExampleNewCP() *PatchRequest {
 		WithoutWeekend: &False,
 		RoundTheClock:  &False,
 		WorksAsShop:    &True,
-		Schedule:       Schedule{},
 		Tel:            "",
+		Schedule:       &sched,
 		Additional:     "",
 		Rub:            &True,
 		Usd:            &False,
@@ -79,9 +70,9 @@ func getPatchExampleNewCP() *PatchRequest {
 func getPatchExampleExistCP() (*PatchRequest, string) {
 	patchReq := PatchRequest{
 		Id:     58552,
-		BankId: 2764,
+		BankId: 322,
 	}
-	exampleJson := "{\"schedule\":{},\"bank_id\":" + strconv.FormatUint(uint64(patchReq.BankId), 10) + "}"
+	exampleJson := "{\"bank_id\":" + strconv.FormatUint(uint64(patchReq.BankId), 10) + "}"
 	return &patchReq, exampleJson
 
 }
@@ -91,6 +82,7 @@ func searchLastPatch(t *testing.T, resJsonPatches []byte) uint32 {
 	err := json.Unmarshal(resJsonPatches, &CPPatches)
 	if err != nil {
 		t.Errorf("Unmarshal err %v", err)
+		return 0
 	}
 	last_key := uint64(0)
 	//Search last patch number
@@ -122,16 +114,23 @@ func comparePatches(t *testing.T, resPatch []interface{}, expectedPatch []interf
 }
 
 func invokeTaranPatchFuncs(t *testing.T, hCtx *HandlerContextStruct, requestJson []byte) (uint32, uint64) {
-	TaranResp, err := hCtx.Tnt().Call("cashpointProposePatch", []interface{}{requestJson})
-	if err != nil {
-		t.Errorf("Tnt cashpointProposePatch call err: %v", err)
+	url, handlerCreate := handlerCashpointCreate(hCtx)
+	request := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: "/cashpoint",
+		HandlerUrl:  url,
+		Data:        string(requestJson),
 	}
-	CpId := TaranResp.Data[0].([]interface{})[0]
-	if CpId.(uint64) == uint64(0) {
-		t.Error("Failed to create patch, CpId == 0")
-		return 0, 0
-	} else {
-		fmt.Println("\nCreate new patch, CpId = ", CpId)
+	response, err := readResponse(testRequest(request, handlerCreate))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+
+	var CpId uint64 = 0
+	err = json.Unmarshal(response.Data, &CpId)
+	if err != nil {
+		t.Errorf("Cannot unpack cashpoint id response: %v => %s", err, string(response.Data))
 	}
 
 	resp, err := hCtx.Tnt().Call("getCashpointPatches", []interface{}{CpId})
@@ -140,7 +139,17 @@ func invokeTaranPatchFuncs(t *testing.T, hCtx *HandlerContextStruct, requestJson
 	}
 	byteResp := []byte(resp.Data[0].([]interface{})[0].(string))
 	lastPatch := searchLastPatch(t, byteResp)
-	return lastPatch, CpId.(uint64)
+	if lastPatch == 0 {
+		fmt.Println("Delete cashpoint ", CpId)
+		resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
+		if err != nil {
+			t.Errorf("Tnt call deleteCashpointById err: %v", err)
+		}
+		if !resp.Data[0].([]interface{})[0].(bool) {
+			t.Error("deleteCashpointById return false")
+		}
+	}
+	return lastPatch, CpId
 }
 
 func TestPatchCreateNewCP(t *testing.T) {
@@ -181,7 +190,10 @@ func TestPatchCreateNewCP(t *testing.T) {
 	fmt.Println("Delete cashpoint ", CpId)
 	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
 	if err != nil {
-		t.Errorf("Tnt call _deleteCashpointPatchById err: %v", err)
+		t.Errorf("Tnt call deleteCashpointById err: %v", err)
+	}
+	if !resp.Data[0].([]interface{})[0].(bool) {
+		t.Error("deleteCashpointById return false")
 	}
 }
 
@@ -263,7 +275,7 @@ func invokeTaranVoteFuncs(t *testing.T, hCtx *HandlerContextStruct, voteJsonReq 
 	if err != nil {
 		t.Errorf("Tnt getCashpointPatchVotes call err: %v", err)
 	}
-	fmt.Println("getCashpointPatchVotes return:", voteList.Data[0].([]interface{})[0].(string))
+	//fmt.Println("getCashpointPatchVotes return:", voteList.Data[0].([]interface{})[0].(string))
 	var decodeVoteList []VotePatch
 	err = json.Unmarshal([]byte(voteList.Data[0].([]interface{})[0].(string)), &decodeVoteList)
 	if err != nil {
@@ -273,7 +285,7 @@ func invokeTaranVoteFuncs(t *testing.T, hCtx *HandlerContextStruct, voteJsonReq 
 	return &decodeVoteList, decodeVoteResp
 }
 
-//Test voting and double voting by one user
+//Test single and double voting by one user
 func TestPatchOneUserVoting(t *testing.T) {
 
 	patchReq := getPatchExampleNewCP()
@@ -333,6 +345,90 @@ func TestPatchOneUserVoting(t *testing.T) {
 	fmt.Println("Delete cashpoint ", CpId)
 	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
 	if err != nil {
-		t.Errorf("Tnt call _deleteCashpointPatchById err: %v", err)
+		t.Errorf("Tnt call deleteCashpointById err: %v", err)
+	}
+	if !resp.Data[0].([]interface{})[0].(bool) {
+		t.Error("deleteCashpointById return false")
+	}
+}
+
+//Test voting by different users. Check approve mark after expected limit of votes
+func TestPatchVotingByDiffUsers(t *testing.T) {
+	patchReq := getPatchExampleNewCP()
+	request := TestPatchReq{
+		Data:   *patchReq,
+		UserId: 1,
+	}
+	requestJson, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("Json Marshal error %v", err)
+	}
+	fmt.Println("Request:\n", string(requestJson), "\n")
+
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+
+	lastPatch, CpId := invokeTaranPatchFuncs(t, hCtx, requestJson)
+	if lastPatch == 0 {
+		return
+	}
+	resp, err := hCtx.Tnt().Call("getCashpointPatchByPatchId", []interface{}{lastPatch})
+	resPatch := resp.Data[0].([]interface{})
+	fmt.Println("response patch:\n", resPatch)
+	const NumberOfUsers = 5 // equals PATCH_APPROVE_VOTES from cpapi.lua
+	var voteReqs [NumberOfUsers]VotePatch
+	var voteJsonReqs [NumberOfUsers][]byte
+	for i, _ := range voteReqs {
+		voteReqs[i].PatchId = lastPatch
+		voteReqs[i].Score = 1
+		voteReqs[i].UserId = uint32(i + 1)
+		voteJsonReqs[i], _ = json.Marshal(voteReqs[i])
+		fmt.Println("request vote №", i, ":", voteReqs[i])
+	}
+	for i, voteJsonReq := range voteJsonReqs {
+		decodeVoteList, success := invokeTaranVoteFuncs(t, hCtx, voteJsonReq, lastPatch)
+		if !success {
+			t.Error("cashpointVotePatch return false but expected true")
+		}
+		voteCompare(t, &(*decodeVoteList)[i], &(voteReqs[i]))
+	}
+	//approve check
+	resp, err = hCtx.Tnt().Call("getCashpointById", []interface{}{CpId})
+
+	if err != nil {
+		t.Errorf("Tnt call getCashpointById err: %v", err)
+	}
+	strResp := []byte(resp.Data[0].([]interface{})[0].(string))
+	var decodeResp map[string]interface{}
+	err = json.Unmarshal(strResp, &decodeResp)
+	if err != nil {
+		t.Error("unmarshal err: ", err)
+	} else {
+		if decodeResp["approved"].(bool) {
+			fmt.Println("cashpoint approved")
+		} else {
+			t.Error("cashpoint not approved after", NumberOfUsers, "votes")
+		}
+	}
+
+	fmt.Println("Delete cashpoint ", CpId)
+
+	resp, err = hCtx.Tnt().Call("deleteCashpointById", []interface{}{CpId})
+
+	if err != nil {
+		t.Errorf("Tnt call deleteCashpointById err: %v", err)
+	}
+	if !resp.Data[0].([]interface{})[0].(bool) {
+		t.Error("deleteCashpointById return false")
 	}
 }
