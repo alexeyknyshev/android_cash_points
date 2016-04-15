@@ -13,7 +13,7 @@ class CashPointInRadius : public CashPointRequest
 public:
     CashPointInRadius(CashPointSqlModel *model);
 
-    bool fromJson(const QJsonObject &json);
+    bool fromJson(const QJsonObject &json) override;
 
 private slots:
     void fetchIds(ServerApiPtr api, quint32 leftAttempts);
