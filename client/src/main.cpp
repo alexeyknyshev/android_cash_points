@@ -5,6 +5,7 @@
 #include "icoimageprovider.h"
 #include "emptyimageprovider.h"
 #include "locationservice.h"
+#include "feedbackservice.h"
 #include "searchengine.h"
 #include "appstateproxy.h"
 #include "hostsmodel.h"
@@ -133,6 +134,7 @@ int main(int argc, char *argv[])
     SearchEngine *searchEngine = new SearchEngine(bankListModel, townListModel);
 
     LocationService *locationService = new LocationService(&app);
+    FeedbackService *feedbackService = new FeedbackService(&app);
 
     QQmlApplicationEngine *engine = new QQmlApplicationEngine;
 
@@ -145,6 +147,7 @@ int main(int argc, char *argv[])
     engine->rootContext()->setContextProperty("cashpointModel", cashpointModel);
     engine->rootContext()->setContextProperty("serverApi", api);
     engine->rootContext()->setContextProperty("locationService", locationService);
+    engine->rootContext()->setContextProperty("feedbackService", feedbackService);
     engine->rootContext()->setContextProperty("searchEngine", searchEngine);
     engine->rootContext()->setContextProperty("hostsModel", hostsModel);
     engine->load(QUrl(QStringLiteral("qrc:/ui/main.qml")));

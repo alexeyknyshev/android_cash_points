@@ -23,7 +23,8 @@ SOURCES += src/main.cpp \
     src/requests/nearbyclusterrequestfactory.cpp \
     src/emptyimageprovider.cpp \
     src/appstateproxy.cpp \
-    src/hostsmodel.cpp
+    src/hostsmodel.cpp \
+    src/feedbackservice.cpp
 
 RESOURCES += qml.qrc
 
@@ -64,7 +65,8 @@ HEADERS += \
     src/requests/nearbyclusters.h \
     src/requests/nearbyclusterrequestfactory.h \
     src/appstateproxy.h \
-    src/hostsmodel.h
+    src/hostsmodel.h \
+    src/feedbackservice.h
 
 QMAKE_CXXFLAGS += -std=c++11
 

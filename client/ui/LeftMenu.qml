@@ -198,6 +198,7 @@ Rectangle {
                 text: qsTr("Сообщить об ошибке")
                 ico: "../icon/bug.svg"
                 property string qmlfile: ""
+                property string url: "https://github.com/alexeyknyshev/android_cash_points/issues/new"
             }
         }
 
@@ -280,7 +281,11 @@ Rectangle {
                         }
                         onClicked: {
                             topItem.itemClicked(model.qmlfile)
-                            console.log(model.name + " clicked: loading " + model.qmlfile)
+                            if (model.qmlfile && model.qmlfile.length > 0) {
+                                console.log(model.name + " clicked: loading " + model.qmlfile)
+                            } else if (model.url && model.url.length > 0) {
+                                feedbackService.openUrl(model.url)
+                            }
                         }
                     }
                 }
