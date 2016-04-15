@@ -39,5 +39,6 @@
         <file alias="place_add_plus.svg">ico/other/place_add_plus.svg</file>
         <file alias="round_the_clock.svg">ico/other/round_the_clock.svg</file>
         <file alias="limited_access.svg">ico/other/limited_access.svg</file>
+        <file alias="place_gray.svg">ico/other/place_gray.svg</file>
     </qresource>
 </RCC>

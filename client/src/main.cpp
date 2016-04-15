@@ -100,6 +100,7 @@ int main(int argc, char *argv[])
         ":/icon/zoom_out.svg",
         ":/icon/marker.svg",
         ":/icon/place.svg",
+        ":/icon/place_gray.svg",
         ":/icon/place_add.svg",
         ":/icon/place_add_plus.svg",
         ":/icon/add.svg",
