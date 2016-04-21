@@ -7,14 +7,14 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"os"
-	"strconv"
 )
 
-const PARSERING_FILE = "metro.json"
-const DATABASE_NAME = "towns.db"
-
-func dbOpen() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "./"+DATABASE_NAME)
+func dbOpen(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec("DROP TABLE IF EXISTS metro")
 	if err != nil {
 		return nil, err
 	}
@@ -31,18 +31,6 @@ func dbOpen() (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-func insertRow(db *sql.DB, latitude, longitude float64, town_id, branch_id int64, name, ext string) error {
-	query := "INSERT INTO metro (latitude, longitude, town_id, branch_id, name, ext) VALUES ('" +
-		strconv.FormatFloat(latitude, 'g', -1, 64) + "','" +
-		strconv.FormatFloat(longitude, 'g', -1, 64) + "','" +
-		strconv.FormatInt(town_id, 10) + "','" +
-		strconv.FormatInt(branch_id, 10) + "','" +
-		name + "', '" + ext + "');"
-	fmt.Println(query)
-	_, err := db.Exec(query)
-	return err
 }
 
 type GeoData struct {
@@ -73,34 +61,39 @@ type Cells struct {
 type MetroTuple struct {
 	Id     string `json:"Id"`
 	Number int    `json:"Number"`
-	Cells  Cells  `json:Cells`
+	Cells  Cells  `json:"Cells"`
 }
 
 func main() {
-	//os.Remove("./" + DATABASE_NAME)
-	db, err := dbOpen()
+	args := os.Args[1:]
+	fmt.Println("Migration has begun")
+	if len(args) == 0 {
+		log.Fatal("Towns db file path is not specified")
+	}
+	if len(args) == 1 {
+		log.Fatal("Metro json file path is not specified")
+	}
+	dbPath := args[0]
+	jsonPath := args[1]
+	db, err := dbOpen(dbPath)
 	if err != nil {
+		log.Fatal(err)
 		return
 	}
 	defer db.Close()
-	jsonFile, _ := os.Open(PARSERING_FILE)
+	jsonFile, _ := os.Open(jsonPath)
 	json.NewDecoder(jsonFile)
 	dec := json.NewDecoder(jsonFile)
 
-	t, err := dec.Token()
+	_, err = dec.Token()
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%T: %v\n", t, t)
 
 	var tuple MetroTuple
-	var latitude float64
-	var longitude float64
 	town_id := int64(4) //Moscow
-	var branchName string
-	var name string
-	var ext string
 	branchMap := make(map[string]int64)
+	stmt, err := db.Prepare(`INSERT INTO metro (latitude, longitude, town_id, branch_id, name, ext) VALUES (?, ?, ?, ?, ?, ?)`)
 	for dec.More() {
 
 		// decode an array value
@@ -108,24 +101,25 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		latitude = tuple.Cells.Geo.Coords[0]
-		longitude = tuple.Cells.Geo.Coords[1]
-		name = tuple.Cells.NameOfStation
-		ext = tuple.Cells.Name
-		branchName = tuple.Cells.Line
+		latitude := tuple.Cells.Geo.Coords[1]
+		longitude := tuple.Cells.Geo.Coords[0]
+		name := tuple.Cells.NameOfStation
+		ext := tuple.Cells.Name
+		branchName := tuple.Cells.Line
 		if branchMap[branchName] == 0 {
 			branchMap[branchName] = int64(len(branchMap)) + int64(1)
 		}
-		insertRow(db, latitude, longitude, town_id, branchMap[branchName], name, ext)
-		fmt.Println(tuple.Cells.Geo.Coords[0])
+		_, err = stmt.Exec(latitude, longitude, town_id, branchMap[branchName], name, ext)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	// read closing bracket
-	t, err = dec.Token()
+	_, err = dec.Token()
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%T: %v\n", t, t)
-
+	fmt.Println("Migration was done susseccfully")
 	fmt.Println(branchMap)
 
 }

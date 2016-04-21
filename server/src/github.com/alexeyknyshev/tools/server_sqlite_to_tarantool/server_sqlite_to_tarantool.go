@@ -2,8 +2,8 @@ package main
 
 import (
 	"database/sql"
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/tarantool/go-tarantool"
@@ -796,7 +796,7 @@ func migrateRegions(townsDb *sql.DB, tnt *tarantool.Connection) {
 			log.Println("Error", err)
 			log.Println("Code", resp.Code)
 			log.Println("Data", resp.Data)
-			return;
+			return
 		}
 	}
 
@@ -902,7 +902,7 @@ func migrateBanks(banksDb *sql.DB, tnt *tarantool.Connection) {
 			log.Println("Error", err)
 			log.Println("Code", resp.Code)
 			log.Println("Data", resp.Data)
-			return;
+			return
 		}
 
 // 		err = redisCli.Cmd("SET", "bank:"+strconv.FormatUint(uint64(bankId), 10), string(jsonData)).Err
@@ -1006,7 +1006,7 @@ func migrateCashpoints(cpDb *sql.DB, tnt *tarantool.Connection) {
 			log.Println("Error", err)
 			log.Println("Code", resp.Code)
 			log.Println("Data", resp.Data)
-			return;
+			return
 		}
 
 // 		err = redisCli.Cmd("SADD", "cp:town:"+townIdStr, cp.Id).Err
@@ -1182,7 +1182,7 @@ func migrateClustersGeo(tnt *tarantool.Connection, quadKeySet map[string][]uint3
 			avgLon += lon
 			avgLat += lat			
 
-// 			return;
+// 			return
 		}
 
 		cpCount := len(cpList)
@@ -1197,16 +1197,77 @@ func migrateClustersGeo(tnt *tarantool.Connection, quadKeySet map[string][]uint3
 			log.Println("Error", err)
 			log.Println("Code", resp.Code)
 			log.Println("Data", resp.Data)
-			return;
+			return
 		}
 
 // 		log.Println(quadKey)
 	}
 }
 
+type Metro struct {
+	Id        uint32
+	Latitude  float64
+	Longitude float64
+	Town_id   uint32
+	Branch_id uint32
+	Name      string
+	Ext       string
+}
+
+func migrateMetro(townsDb *sql.DB, tnt *tarantool.Connection) {
+	SpaceId, err := getTntSpaceId(tnt, "metro")
+	if err != nil {
+		log.Fatalf("cannot get space id: %v", err)
+	}
+
+	err = tntSpaceClear(tnt, SpaceId)
+	if err != nil {
+		log.Fatalf("cannot drop space '%s': %v", "metro", err)
+	}
+
+	context := "migrateMetro"
+	var tupleCount int
+	err = townsDb.QueryRow(`SELECT COUNT(*) FROM metro`).Scan(&tupleCount)
+	if err != nil {
+		log.Fatalf("%s: metro: %v\n", context, err)
+	}
+	var metroT Metro
+	rows, err := townsDb.Query(`SELECT id, latitude, longitude, town_id, branch_id, name, ext FROM metro`)
+	if err != nil {
+		log.Fatalf("%s: %v\n", context, err)
+	}
+	currentMetroIndex := 0
+	for rows.Next() {
+		err = rows.Scan(&metroT.Id, &metroT.Latitude, &metroT.Longitude, &metroT.Town_id, &metroT.Branch_id, &metroT.Name, &metroT.Ext)
+		if err != nil {
+			log.Fatalf("%s: sql scan error: %v\n", err)
+			return
+		}
+
+		resp, err := tnt.Insert(SpaceId, []interface{}{
+			metroT.Id, []float64{metroT.Longitude, metroT.Latitude}, metroT.Town_id,
+			metroT.Branch_id, metroT.Name, metroT.Ext})
+
+		if err != nil {
+			log.Println("Insert")
+			log.Println("Error", err)
+			log.Println("Code", resp.Code)
+			log.Println("Data", resp.Data)
+			return
+		}
+		currentMetroIndex++
+		if currentMetroIndex%100 == 0 {
+			log.Printf("[%d/%d] Metro processed\n", currentMetroIndex, tupleCount)
+		}
+	}
+	log.Printf("[%d/%d] Metro processed\n", tupleCount, tupleCount)
+
+}
+
 func migrate(townsDb, cpDb, banksDb *sql.DB, tnt *tarantool.Connection) {
 	migrateMessages(townsDb, tnt)
 	migrateTowns(townsDb, cpDb, tnt)
+	migrateMetro(townsDb, tnt)
 	migrateRegions(townsDb, tnt)
 	migrateCashpoints(cpDb, tnt)
 	migrateBanks(banksDb, tnt)
