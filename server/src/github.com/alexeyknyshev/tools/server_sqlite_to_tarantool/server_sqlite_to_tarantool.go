@@ -718,10 +718,6 @@ func migrateTowns(townsDb, cpDb *sql.DB, tnt *tarantool.Connection) {
 			log.Fatal(err)
 		}
 
-// 		if town.Id > lastTownId {
-// 			lastTownId = town.Id
-// 		}
-
 		if regionId != 0 {
 			town.RegionId = new(uint32)
 			*town.RegionId = regionId
@@ -856,12 +852,6 @@ func migrateBanks(banksDb *sql.DB, tnt *tarantool.Connection) {
 
 		bankList = append(bankList, bank)
 	}
-	//log.Printf("Banks count: %d", len(bankList))
-
-// 	err = redisCli.Cmd("SET", "bank_next_id", lastBankId).Err
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
 
 	stmt, err := banksDb.Prepare(`SELECT partner_id FROM partners WHERE id = ?`)
 	if err != nil {
@@ -904,16 +894,6 @@ func migrateBanks(banksDb *sql.DB, tnt *tarantool.Connection) {
 			log.Println("Data", resp.Data)
 			return;
 		}
-
-// 		err = redisCli.Cmd("SET", "bank:"+strconv.FormatUint(uint64(bankId), 10), string(jsonData)).Err
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 
-// 		err = redisCli.Cmd("SADD", "banks", bankId).Err
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
 
 		currentBankIdx++
 
@@ -1009,31 +989,13 @@ func migrateCashpoints(cpDb *sql.DB, tnt *tarantool.Connection) {
 			return;
 		}
 
-// 		err = redisCli.Cmd("SADD", "cp:town:"+townIdStr, cp.Id).Err
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 
-// 		err = redisCli.Cmd("SADD", "cp:bank:"+bankIdStr, cp.Id).Err
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 
-// 		err = redisCli.Cmd("ZADD", "cp:history", 0, cp.Id).Err
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-
 		currentCashpointIndex++
 
 		if currentCashpointIndex%500 == 0 {
 			log.Printf("[%d/%d] Cashpoints processed\n", currentCashpointIndex, cashpointsCount)
 		}
 	}
-// 	err = redisCli.Cmd("SET", "cp_next_id", lastCashpointId).Err
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
+
 	log.Printf("[%d/%d] Cashpoints processed\n", cashpointsCount, cashpointsCount)
 }
 
@@ -1078,12 +1040,6 @@ func migrateClusters(cpDb *sql.DB, tnt *tarantool.Connection) (map[string][]uint
 			}
 			quadKeySet[response.QuadKey] = append(quadKeySet[response.QuadKey], response.Id)
 			
-// 			result := redisCli.Cmd("SADD", "cluster:"+response.QuadKey, response.Id)
-// 			if result.Err != nil {
-// 				log.Printf("%s: cannot add cp:%d to cluster:%s", context, response.Id, response.QuadKey)
-// 				break
-// 			}
-
 			cashpointIndex++
 
 			newProgress := math.Floor(float64(cashpointIndex) / float64(cashpointsCount) / float64(maxZoom - minZoom) * 100.0)
