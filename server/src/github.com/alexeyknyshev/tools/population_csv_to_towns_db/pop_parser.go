@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	name             = 0
-	population       = 1
-	aroundTupleCount = 26000
+	name       = 0
+	population = 1
 )
 
 func dbOpen(path string) (*sql.DB, error) {
@@ -47,19 +46,6 @@ func dbOpen(path string) (*sql.DB, error) {
 	return db, err
 }
 
-/**
-func MoscowCityParse(reader *csv.Reader, name string) []string {
-	//fmt.Println("Parse Moscow Federal City")
-	secondLevel := "округ"
-	//thridLevel := []string{"район", "поселение"}
-	record := reader.Read()
-	if strings.Contains(s, substr)
-}
-
-func NonFederalCityParse(reader *csv.Reader, name string) {
-
-}
-**/
 type popTuple struct {
 	name       string
 	population int64
@@ -73,7 +59,7 @@ func parseRecord(record []string) (popTuple, error) {
 	return tuple, err
 }
 
-func getMatchingTuples(tupleArray [aroundTupleCount]popTuple, name string) []popTuple {
+func getMatchingTuples(tupleArray []popTuple, name string) []popTuple {
 	var tempTuples []popTuple
 	for _, tuple := range tupleArray {
 		if strings.Contains(tuple.name, name) {
@@ -110,33 +96,21 @@ func main() {
 	}
 	defer csvFile.Close()
 	reader := csv.NewReader(csvFile)
-	//fmt.Println(args)
 	db, err := dbOpen(dbPath)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 	defer db.Close()
-	//stmt, err := db.Prepare(`INSERT INTO population (name, first_level, second_level, thrid_level, population) VALUES (?, ?, ?, ?, ?) `)
-	if err != nil {
-		log.Fatal("Prepare statement error:", err)
-	}
 	keyWords := []string{"автономный округ", "республика", " край ", "область", "муниципальный район", "городской округ"}
 	skipRows := []string{"городское поселение", "район"}
-	//Administation
-	// firstLevel := []string{"автономный округ", "республика", " край ", "область"}
-	// federalCityFL := string{"город федерального значения"}
-	// secondLevel := []string{"муниципальный район", "городской округ"}
-	// thridLevel := []string{"городское поселение"}
-	//Levels := [][]string{firstLevel, secondLevel, thridLevel}
-
-	//_ = stmt
 
 	counter := 0
 	skip := false
-	var tupleArray [aroundTupleCount]popTuple
+	tupleArray := []popTuple{}
 	totalWarning := 0
 	cont := false
+
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -177,7 +151,7 @@ func main() {
 		if err != nil {
 			continue
 		}
-		tupleArray[counter] = tempTuple
+		tupleArray = append(tupleArray, tempTuple)
 		counter++
 	}
 	fmt.Println("Amount of successful parse towns -", counter)
