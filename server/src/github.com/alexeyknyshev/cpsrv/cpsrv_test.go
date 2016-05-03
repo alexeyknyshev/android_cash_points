@@ -288,6 +288,7 @@ type Town struct {
 	RegionalCenter bool    `json:"regional_center"`
 	Big            bool    `json:"big"`
 	Zoom           uint32  `json:"zoom"`
+	HasMetro       bool    `json:"has_metro"`
 }
 
 func TestTown(t *testing.T) {
@@ -322,6 +323,7 @@ func TestTown(t *testing.T) {
 		RegionalCenter: true,
 		Big:            true,
 		Zoom:           10,
+		HasMetro:       true,
 	}
 	expectedJson, _ := json.Marshal(expected)
 
@@ -1503,7 +1505,7 @@ func getMetroTuple() Metro {
 		Longitude:       37.526596999601,
 		Latitude:        55.643621500032,
 		Id:              779,
-		StationExitName: "Беляево, вход-выход 2 в северный вестибюль",
+		StationExitName: "вход-выход 2 в северный вестибюль",
 		TownId:          4,
 		BranchId:        3,
 	}
