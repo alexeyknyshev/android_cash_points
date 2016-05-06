@@ -689,7 +689,7 @@ func migrateTowns(townsDb, cpDb *sql.DB, tnt *tarantool.Connection) {
 
 	rows, err := townsDb.Query(`SELECT id, name, name_tr, region_id,
                                        regional_center, latitude,
-                                       longitude, zoom, has_emblem FROM towns`)
+                                       longitude, zoom, has_emblem, population FROM towns`)
 
 	if err != nil {
 		log.Fatalf("%s: %v\n", context, err)
@@ -703,12 +703,13 @@ func migrateTowns(townsDb, cpDb *sql.DB, tnt *tarantool.Connection) {
 
 	currentTownIdx := 1
 	for rows.Next() {
+		var population interface{}
 		town := Town{}
 		var regionId uint32 = 0
 		err = rows.Scan(&town.Id, &town.Name, &town.NameTr,
 			&regionId, &town.RegionalCenter,
 			&town.Latitude, &town.Longitude,
-			&town.Zoom, &town.Big)
+			&town.Zoom, &town.Big, &population)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -728,14 +729,14 @@ func migrateTowns(townsDb, cpDb *sql.DB, tnt *tarantool.Connection) {
 		resp, err := tnt.Insert(spaceId, []interface{}{
 			uint(town.Id), coord, town.Name,
 			town.NameTr, regionId, town.RegionalCenter,
-			town.Zoom, town.Big, town.CashpointsCount,
+			town.Zoom, town.Big, town.CashpointsCount, population,
 		})
 		if err != nil {
 			log.Println("Insert")
 			log.Println("Error", err)
 			log.Println("Code", resp.Code)
 			log.Println("Data", resp.Data)
-			return;
+			return
 		}
 
 		currentTownIdx++
