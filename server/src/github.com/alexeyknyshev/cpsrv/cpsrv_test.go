@@ -136,6 +136,15 @@ func checkJsonResponse(t *testing.T, got, expected []byte) bool {
 
 // ======================================================================
 
+type SpaceMetrics struct {
+	Regions    uint32 `json:"regions"`
+	Towns      uint32 `json:"towns"`
+	Cashpoints uint32 `json:"cashpoints"`
+	Banks      uint32 `json:"banks"`
+	Clusters   uint32 `json:"clusters"`
+	CashpointsPatches uint32 `json:"cashpoints_patches"`
+}
+
 func getSpaceMetrics(hCtx HandlerContext) ([]byte, error) {
 	url, handler := handlerSpaceMetrics(hCtx)
 	request := TestRequest{RequestType: "GET", EndpointUrl: url}
@@ -1321,14 +1330,22 @@ func TestCashpointEdit(t *testing.T) {
 	}
 	checkHttpCode(t, response.Code, http.StatusOK)
 
-	checkJsonResponse(t, response.Data, []byte(`{"1":{"type":"atm"}}`))
+	var metrics_ SpaceMetrics
+	err = json.Unmarshal(metrics, &metrics_)
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+
+	cpPatchId := strconv.FormatUint(uint64(metrics_.CashpointsPatches + 1), 10)
+
+	checkJsonResponse(t, response.Data, []byte(`{"` + cpPatchId + `":{"type":"atm"}}`))
 	checkHttpCode(t, response.Code, http.StatusOK)
 
 	// resend same patch
 	response, err = readResponse(testRequest(requestEdit, handlerEdit))
 	checkHttpCode(t, response.Code, http.StatusInternalServerError)
 
-	_, err = hCtx.Tnt().Eval("box.space.cashpoints_patches:delete{1}", []interface{}{})
+	_, err = hCtx.Tnt().Eval("box.space.cashpoints_patches:delete{" + cpPatchId + "}", []interface{}{})
 	if err != nil {
 		t.Errorf("Cannot delete patch with id '1': %v", err)
 	}
