@@ -26,19 +26,19 @@ public:
 
 signals:
     void serverDataReceived();
-    void filterRequest(QString filter);
-    void requestError(QString error);
+    void requestError(int id, QString msg);
+    void filterRequest(QString filter, QString options);
 
     void updateProgress(int done, int total);
 
 public slots:
-    void setFilter(QString filter);
+    void setFilter(QString filter, QString options);
 
     void updateFromServer();
 
 protected:
     ListSqlModel(ListSqlModel *submodel);
-    virtual void setFilterImpl(const QString &filter) = 0;
+    virtual void setFilterImpl(const QString &filter, const QJsonObject &options) = 0;
     virtual void updateFromServerImpl(quint32 leftAttempts) = 0;
     virtual int getLastRole() const = 0;
 
@@ -60,8 +60,8 @@ protected:
     void emitServerDataReceived()
     { emit serverDataReceived(); }
 
-    void emitRequestError(const QString &err)
-    { emit requestError(err); }
+    void emitRequestError(int requestId, const QString &msg)
+    { emit requestError(requestId, msg); }
 
     void emitUpdateProgress()
     { emit updateProgress(mUploadedCount, mExpectedUploadCount); }
@@ -86,7 +86,7 @@ protected:
     { return mDBConnectionName; }
 
 private slots:
-    void _setFilter(QString filter);
+    void _setFilter(QString filter, QString options);
 
 private:
     mutable QHash<int, QByteArray> mRoleNames;

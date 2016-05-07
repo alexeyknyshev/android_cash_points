@@ -10,8 +10,11 @@
 
 #include "rpctype.h"
 #include "serverapi.h"
+
 #include "requests/cashpointrequest.h"
-#include "requests/cashpointcreate.h"
+#include "requests/cashpointcreatefactory.h"
+#include "requests/cashpointeditfactory.h"
+#include "requests/cashpointpatchesfactory.h"
 #include "requests/cashpointrequestinradiusfactory.h"
 #include "requests/nearbyclusterrequestfactory.h"
 
@@ -19,6 +22,9 @@
 #define RT_RADUS "radius"
 #define RT_TOWN "town"
 #define RT_CLUSTER "cluster"
+#define RT_CREATE "create"
+#define RT_EDIT "edit"
+#define RT_PATCHES "patches"
 
 struct CashPoint : public RpcType<CashPoint>
 {
@@ -41,6 +47,7 @@ struct CashPoint : public RpcType<CashPoint>
     bool eur;
     bool cashIn;
     int timestamp;
+    bool approved;
 
     CashPoint()
         : bankId(0),
@@ -56,7 +63,8 @@ struct CashPoint : public RpcType<CashPoint>
           usd(false),
           eur(false),
           cashIn(false),
-          timestamp(0)
+          timestamp(0),
+          approved(false)
     { }
 
     static CashPoint fromJsonObject(const QJsonObject &obj)
@@ -81,6 +89,7 @@ struct CashPoint : public RpcType<CashPoint>
         result.usd            = obj["usd"].toBool();
         result.eur            = obj["eur"].toBool();
         result.timestamp      = obj["timestamp"].toInt();
+        result.approved       = obj["approved"].toBool();
 
         return result;
     }
@@ -105,6 +114,9 @@ struct CashPoint : public RpcType<CashPoint>
         item->setData(rub,            CashPointSqlModel::RubRole);
         item->setData(usd,            CashPointSqlModel::UsdRole);
         item->setData(eur,            CashPointSqlModel::EurRole);
+        item->setData(cashIn,         CashPointSqlModel::CashInRole);
+        item->setData(approved,       CashPointSqlModel::ApprovedRole);
+
 //        item->setData(timestamp,      CashPointSqlModel::);
     }
 };
@@ -182,6 +194,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
     setRoleName(UsdRole,            "cp_usd");
     setRoleName(EurRole,            "cp_eur");
     setRoleName(CashInRole,         "cp_cash_in");
+    setRoleName(ApprovedRole,       "cp_approved");
     setRoleName(SizeRole,           "cp_size");
 
     if (!mQuery.prepare("SELECT id, timestamp FROM cp")) {
@@ -198,14 +211,14 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                               "address_comment, metro_name, main_office, "
                               "without_weekend, round_the_clock, "
                               "works_as_shop, free_access, rub, usd, eur, cash_in, "
-                              "timestamp, schedule) "
+                              "timestamp, approved, schedule) "
                               "VALUES "
                               "(:id, :type, :bank_id, :town_id, "
                               ":cord_lon, :cord_lat, :address, "
                               ":address_comment, :metro_name, :main_office, "
                               ":without_weekend, :round_the_clock, "
                               ":works_as_shop, :free_access, :rub, :usd, :eur, :cash_in, "
-                              ":timestamp, :schedule)"))
+                              ":timestamp, :approved, :schedule)"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
                    << mQueryUpdate.lastError().databaseText();
@@ -216,7 +229,7 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
                                  "address_comment, metro_name, main_office, "
                                  "without_weekend, round_the_clock, "
                                  "works_as_shop, free_access, rub, usd, eur, cash_in, "
-                                 "timestamp, schedule "
+                                 "timestamp, approved, schedule "
                                  "FROM cp WHERE id = :id"))
     {
         qWarning() << "CashPointSqlModel cannot prepare query:"
@@ -225,6 +238,9 @@ CashPointSqlModel::CashPointSqlModel(const QString &connectionName,
 
     mRequestFactoryMap[RT_RADUS] = new CashPointRequestInRadiusFactory;
     mRequestFactoryMap[RT_CLUSTER] = new NearbyClusterRequestFactory;
+    mRequestFactoryMap[RT_CREATE] = new CashPointCreateFactory;
+    mRequestFactoryMap[RT_EDIT] = new CashPointEditFactory;
+    mRequestFactoryMap[RT_PATCHES] = new CashPointPatchesFactory;
 
     connect(this, SIGNAL(delayedUpdate()), SLOT(updateFromServer()), Qt::QueuedConnection);
 }
@@ -275,6 +291,7 @@ void CashPointSqlModel::addCashPoint(const QJsonObject &obj)
         mQueryUpdate.bindValue(":eur", cp.eur);
         mQueryUpdate.bindValue(":cash_in", cp.cashIn);
         mQueryUpdate.bindValue(":timestamp", cp.timestamp);
+        mQueryUpdate.bindValue(":approved", cp.approved);
         mQueryUpdate.bindValue(":schedule", cp.schedule);
 
         if (!mQueryUpdate.exec()) {
@@ -289,8 +306,8 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
 {
     mQueryCashpoint.bindValue(0, id);
     if (!mQueryCashpoint.exec()) {
-        qWarning() << "CashPointSqlModel: failed to fetch cached cashpoint "
-                   << id << " from db";
+        qWarning() << "CashPointSqlModel: failed to fetch cached cashpoint"
+                   << id << "from db";
     }
     if (mQueryCashpoint.first()) {
         const int id = mQueryCashpoint.value(0).toInt();
@@ -315,7 +332,10 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         const bool eur =               mQueryCashpoint.value(16).toBool();
         const bool cashIn =            mQueryCashpoint.value(17).toBool();
         const int timestamp =          mQueryCashpoint.value(18).toInt();
-        const QString schedule =       mQueryCashpoint.value(19).toString();
+        const bool approved =          mQueryCashpoint.value(19).toBool();
+
+        /// TODO: schedule is json object
+        const QString schedule =       mQueryCashpoint.value(20).toString();
 
         QJsonObject o;
         o["id"] = id;
@@ -337,7 +357,8 @@ QJsonObject CashPointSqlModel::getCachedCashpointData(quint32 id)
         o["eur"] = eur;
         o["cash_in"] = cashIn;
         o["timestamp"] = timestamp;
-        o["schedule"] = schedule;
+        o["approved"] = approved;
+        ///o["schedule"] = schedule;
         return o;
     }
     return QJsonObject();
@@ -367,6 +388,35 @@ QMap<quint32, int> CashPointSqlModel::getCachedCashpoints() const
     return result;
 }
 
+bool CashPointSqlModel::sendRequestJson(RequestFactory *factory, const QString &data, QJSValue &callback)
+{
+    QString errMsg;
+
+    QJsonParseError err;
+    const QJsonDocument json = QJsonDocument::fromJson(data.toUtf8(), &err);
+    if (err.error == QJsonParseError::NoError) {
+        if (json.isObject()) {
+            CashPointRequest *req = factory->createRequest(this, callback);
+            if (req->fromJson(json.object())) {
+                sendRequest(req);
+                return true;
+            } else {
+                delete req;
+                errMsg = factory->getName() + " " + trUtf8("request could not be parsed from json");
+            }
+        } else {
+            errMsg = factory->getName() + " " + trUtf8("request must be json object");
+        }
+    } else {
+        errMsg = factory->getName() + " " + trUtf8("malformed json");
+    }
+
+    callback.call({ QJSValue(0), QJSValue(-1), QJSValue(false), errMsg });
+    emit cashPointOperationError(factory->getName().toLower(), errMsg);
+
+    return false;
+}
+
 void CashPointSqlModel::sendRequest(CashPointRequest *request)
 {
     if (!request) {
@@ -384,6 +434,8 @@ void CashPointSqlModel::sendRequest(CashPointRequest *request)
 
     connect(request, SIGNAL(destroyed(QObject*)),
             this, SLOT(onRequestDeleted(QObject*)));
+    connect(request, SIGNAL(error(CashPointRequest*,QString)),
+            this, SLOT(onRequestErrorReceived(CashPointRequest*,QString)));
     connect(request, SIGNAL(responseReady(CashPointRequest*,bool)),
             this, SLOT(onRequestDataReceived(CashPointRequest*,bool)));
 
@@ -392,27 +444,19 @@ void CashPointSqlModel::sendRequest(CashPointRequest *request)
     emit delayedUpdate();
 }
 
-void CashPointSqlModel::createCashPoint(QString data)
+void CashPointSqlModel::editCashPoint(QString data, QJSValue callback)
 {
-    QJsonParseError err;
-    const QJsonDocument json = QJsonDocument::fromJson(data.toUtf8(), &err);
-    if (err.error != QJsonParseError::NoError) {
-        emit cashPointCreateError(trUtf8("Malformed cashpoint json data"));
-        return;
-    }
+    sendRequestJson(mRequestFactoryMap[RT_EDIT], data, callback);
+}
 
-    if (!json.isObject()) {
-        emit cashPointCreateError(trUtf8("Cashpoint data schould be json object"));
-        return;
-    }
+void CashPointSqlModel::createCashPoint(QString data, QJSValue callback)
+{
+    sendRequestJson(mRequestFactoryMap[RT_CREATE], data, callback);
+}
 
-    CashPointCreate *req = new CashPointCreate(this);
-    if (req->fromJson(json.object())) {
-        sendRequest(req);
-    } else {
-        delete req;
-        emit cashPointCreateError(trUtf8("Cashpoint data could not be parsed fron json"));
-    }
+void CashPointSqlModel::getCashPointPatches(QString data, QJSValue callback)
+{
+    sendRequestJson(mRequestFactoryMap[RT_PATCHES], data, callback);
 }
 
 QString CashPointSqlModel::getLastGeoPos() const
@@ -448,8 +492,9 @@ void CashPointSqlModel::saveLastGeoPos(QString data)
     getSettings()->sync();
 }
 
-void CashPointSqlModel::setFilterImpl(const QString &filter)
+void CashPointSqlModel::setFilterImpl(const QString &filter, const QJsonObject &options)
 {
+    Q_UNUSED(options);
     if (filter.isEmpty()) {
         return;
     }
@@ -462,7 +507,7 @@ void CashPointSqlModel::setFilterImpl(const QString &filter)
     }
 
     if (!json.isObject()) {
-        emitRequestError("CashPointSqlModel::setFilterImpl: request is not a json object.");
+        emitRequestError(0, "CashPointSqlModel::setFilterImpl: request is not a json object.");
         return;
     }
 
@@ -482,24 +527,38 @@ QStandardItem *CashPointSqlModel::getCachedItem(quint32 id, QList<QStandardItem 
     return item;
 }
 
-void CashPointSqlModel::onRequestDataReceived(CashPointRequest *request, bool requestFinished)
+void CashPointSqlModel::onRequestErrorReceived(CashPointRequest *request, QString msg)
+{
+    emit requestError(request->getId(), msg);
+}
+
+void CashPointSqlModel::onRequestDataReceived(CashPointRequest *request, bool reqFinished)
 {
     Q_ASSERT(request);
     CashPointResponse *response = request->getResponse();
-    if (response) {
+    switch (response->type) {
+    case CashPointResponse::CashpointData: {
         clear();
         mItemsHash.clear();
-        onCashpointDataReceived(response);
-        onClusterDataReceived(response);
+        int count = onCashpointDataReceived(response);
+        count += onClusterDataReceived(response);
+        emit objectsFetched(count);
+        break;
+    }
+    case CashPointResponse::EditResult:
+        break;
+    case CashPointResponse::CreateResult:
+        break;
     }
 
-    if (requestFinished) {
+    if (reqFinished) {
         qDebug() << request->metaObject()->className() << "request deleted";
         request->deleteLater();
+        emit requestFinished(request->getId(), true);
     }
 }
 
-void CashPointSqlModel::onCashpointDataReceived(CashPointResponse *response)
+int CashPointSqlModel::onCashpointDataReceived(CashPointResponse *response)
 {
     const auto objList = response->cashPointData.values();
     for (const QJsonObject &obj : objList) {
@@ -556,9 +615,11 @@ void CashPointSqlModel::onCashpointDataReceived(CashPointResponse *response)
         qDebug() << "deleted item" << item->data(IdRole).toUInt();
         delete item;
     }
+
+    return response->visiableSet.size();
 }
 
-void CashPointSqlModel::onClusterDataReceived(CashPointResponse *response)
+int CashPointSqlModel::onClusterDataReceived(CashPointResponse *response)
 {
     const int rCount = rowCount();
     for (int row = 0; row < rCount; row++) {
@@ -581,6 +642,8 @@ void CashPointSqlModel::onClusterDataReceived(CashPointResponse *response)
         cluster.fillItem(item);
         appendRow(item);
     }
+
+    return response->clusterData.size();
 }
 
 void CashPointSqlModel::onRequestDeleted(QObject *request)
@@ -598,16 +661,16 @@ void CashPointSqlModel::setFilterJson(const QJsonObject &json)
     const auto it = mRequestFactoryMap.find(type);
     if (it != mRequestFactoryMap.end()) {
         RequestFactory *factory = it.value();
-        req = factory->createRequest(this);
+        req = factory->createRequest(this, QJSValue::UndefinedValue);
         const bool ready = req->fromJson(json);
         if (!ready) {
             delete req;
-            emitRequestError("CashPointSqlModel::setFilterJson: cannot preapre request of type '" + type + "' "
-                             "from json data: " + QString::fromUtf8(QJsonDocument(json).toJson()));
+            emitRequestError(0, "CashPointSqlModel::setFilterJson: cannot preapre request of type '" + type + "' "
+                                "from json data: " + QString::fromUtf8(QJsonDocument(json).toJson()));
             return;
         }
     } else {
-        emitRequestError("CashPointSqlModel::setFilterJson: unknown req type: " + type);
+        emitRequestError(0, "CashPointSqlModel::setFilterJson: unknown req type: " + type);
         return;
     }
 
@@ -631,7 +694,7 @@ void CashPointSqlModel::setFilterFreeForm(const QString &filter)
                 return;
             }
             RequestFactory *factory = it.value();
-            req = factory->createRequest(this);
+            req = factory->createRequest(this, QJSValue::UndefinedValue);
         } else {
             if (wordList.contains(trUtf8("ближайший"))) {
 

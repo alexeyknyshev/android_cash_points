@@ -23,7 +23,7 @@ void CashPointInRadius::fetchIds(ServerApiPtr api, quint32 leftAttempts)
         return;
     }
 
-    api->sendRequest("/nearby/cashpoints", data,
+    mId = api->sendRequest("/nearby/cashpoints", data,
     [this, api, leftAttempts](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (!isRunning()) {
             if (isDisposing()) {
@@ -67,6 +67,7 @@ void CashPointInRadius::fetchIds(ServerApiPtr api, quint32 leftAttempts)
 
         mCashpointsToProcess.clear();
         mResponse = new CashPointResponse;
+        mResponse->type = CashPointResponse::CashpointData;
 
         const QJsonArray arr = json.array();
         const auto end = arr.constEnd();
@@ -160,7 +161,7 @@ void CashPointInRadius::fetchCashpoints(ServerApiPtr api, quint32 leftAttempts)
     const quint32 totalAttempts = getModel()->getAttemptsCount();
 
     /// Get cashpoints data from list
-    api->sendRequest("/cashpoints", json,
+    mId = api->sendRequest("/cashpoints", json,
     [this, api, leftAttempts, step, lastRequest, totalAttempts]
     (ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (!isRunning()) {
@@ -204,7 +205,6 @@ void CashPointInRadius::fetchCashpoints(ServerApiPtr api, quint32 leftAttempts)
         }
         const QJsonArray cashpoints = json.array();
 
-        /// TODO copy json into response
         if (!mResponse) {
             mResponse = new CashPointResponse;
         }

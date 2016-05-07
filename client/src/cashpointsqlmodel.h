@@ -4,6 +4,8 @@
 #include <QtSql/QSqlQuery>
 #include <QtCore/QJsonObject>
 
+#include <QtQml/QJSValue>
+
 #include "listsqlmodel.h"
 
 class CashPointRequest;
@@ -35,6 +37,7 @@ public:
         UsdRole,
         EurRole,
         CashInRole,
+        ApprovedRole,
 
         SizeRole,
 
@@ -65,18 +68,23 @@ public:
     Q_INVOKABLE QString getLastGeoPos() const;
 
 public slots:
-    void createCashPoint(QString data);
+    void editCashPoint(QString data, QJSValue callback);
+    void createCashPoint(QString data, QJSValue callback);
+    void getCashPointPatches(QString data, QJSValue callback);
+
     void saveLastGeoPos(QString data);
 
 signals:
     void delayedUpdate();
-    void cashPointCreateError(QString errText);
+    void requestFinished(int id, bool ok);
+    void cashPointOperationError(QString operation, QString errText);
+    void objectsFetched(int count);
 
 protected:
     void updateFromServerImpl(quint32 leftAttempts) override
     { Q_UNUSED(leftAttempts); }
 
-    void setFilterImpl(const QString &filter) override;
+    void setFilterImpl(const QString &filter, const QJsonObject &options) override;
 
     int getLastRole() const override { return RoleLast; }
 
@@ -84,15 +92,18 @@ protected:
     bool needEscapeFilter() const override { return false; }
 
 private slots:
+    void onRequestErrorReceived(CashPointRequest *request, QString msg);
     void onRequestDataReceived(CashPointRequest *request, bool requestFinished);
     void onRequestDeleted(QObject *request);
 
 private:
+    bool sendRequestJson(RequestFactory *factory, const QString &data, QJSValue &callback);
+
     void setFilterJson(const QJsonObject &json);
     void setFilterFreeForm(const QString &filter);
 
-    void onCashpointDataReceived(CashPointResponse *response);
-    void onClusterDataReceived(CashPointResponse *response);
+    int onCashpointDataReceived(CashPointResponse *response);
+    int onClusterDataReceived(CashPointResponse *response);
 
     QStandardItem *getCachedItem(quint32 id, QList<QStandardItem *> &pool);
 

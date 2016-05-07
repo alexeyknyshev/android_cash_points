@@ -6,8 +6,11 @@
 
 class CashPointCreate : public CashPointRequest
 {
+    Q_OBJECT
+
 public:
-    CashPointCreate(CashPointSqlModel *model);
+    CashPointCreate(CashPointSqlModel *model,
+                    QJSValue callback = QJsonValue::Undefined);
 
     virtual bool fromJson(const QJsonObject &json) override;
 

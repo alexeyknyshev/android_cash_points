@@ -1,5 +1,10 @@
 #include "listsqlmodel.h"
 
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonParseError>
+#include <QtCore/QJsonObject>
+#include <QtCore/QDebug>
+
 #define DEFAULT_ATTEMPTS_COUNT 3
 #define DEFAULT_BATCH_SIZE 256
 
@@ -21,8 +26,8 @@ ListSqlModel::ListSqlModel(const QString &connectionName,
     setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
     setRequestBatchSize(DEFAULT_BATCH_SIZE);
 
-    connect(this, SIGNAL(filterRequest(QString)),
-            this, SLOT(_setFilter(QString)), Qt::QueuedConnection);
+    connect(this, SIGNAL(filterRequest(QString, QString)),
+            this, SLOT(_setFilter(QString, QString)), Qt::QueuedConnection);
 }
 
 ListSqlModel::ListSqlModel(ListSqlModel *submodel)
@@ -37,8 +42,8 @@ ListSqlModel::ListSqlModel(ListSqlModel *submodel)
     setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
     setRequestBatchSize(DEFAULT_BATCH_SIZE);
 
-    connect(this, SIGNAL(filterRequest(QString)),
-            this, SLOT(_setFilter(QString)), Qt::QueuedConnection);
+    connect(this, SIGNAL(filterRequest(QString,QString)),
+            this, SLOT(_setFilter(QString,QString)), Qt::QueuedConnection);
 }
 
 QString ListSqlModel::escapeFilter(QString filter)
@@ -65,18 +70,30 @@ QString ListSqlModel::escapeFilter(QString filter)
     return filter;
 }
 
-void ListSqlModel::setFilter(QString filter)
+void ListSqlModel::setFilter(QString filter, QString options)
 {
     if (needEscapeFilter()) {
-        emit filterRequest(escapeFilter(filter));
+        emit filterRequest(escapeFilter(filter), options);
     } else {
-        emit filterRequest(filter);
+        emit filterRequest(filter, options);
     }
 }
 
-void ListSqlModel::_setFilter(QString filter)
+void ListSqlModel::_setFilter(QString filter, QString options)
 {
-    setFilterImpl(filter);
+    QJsonParseError err;
+    auto doc = QJsonDocument::fromJson(options.toUtf8(), &err);
+    QJsonObject obj;
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "Cannot parse filter options json!";
+    } else {
+        if (doc.isObject()) {
+            obj = doc.object();
+        } else {
+            qWarning() << "Filter options must be json object";
+        }
+    }
+    setFilterImpl(filter, obj);
 }
 
 void ListSqlModel::updateFromServer()
