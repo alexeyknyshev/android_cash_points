@@ -131,7 +131,7 @@ function deleteCashpointById(cpId)
             print("Cashpoint has been deleted but has not found in quadtree")
         end
         if tuple[COL_CP_APPROVED] == true then -- dec town cashpoint count only if cashpoint has been commited
-            box.space.towns:update(cp.town_id, {{ '-',  COL_TOWN_CP_COUNT, 1 }})
+            box.space.towns:update(tuple[COL_CP_TOWN_ID], {{ '-',  COL_TOWN_CP_COUNT, 1 }})
         end
 
         _deleteCashpointPatches(cpId)

@@ -39,7 +39,7 @@ local COL_CP_PATCH_VOTE_ID = 1
 local COL_CP_PATCH_VOTE_PATCH_ID = 2
 local COL_CP_PATCH_VOTE_USER_ID = 3
 local COL_CP_PATCH_VOTE_DATA = 4
---local COL_CP_PATCH_VOTE_TIMESTAMP = 5
+local COL_CP_PATCH_VOTE_TIMESTAMP = 5
 
 local PATCH_APPROVE_VOTES = 5
 
@@ -381,6 +381,14 @@ function getCashpointPatches(cpId)
     return json.encode(setmetatable(result, { __serialize = "map" }))
 end
 
+function getCashpointPatchByPatchId(id)
+    if not id then
+        return nil
+    end
+
+    return box.space.cashpoints_patches.index[0]:select{ id }[1]
+end
+
 function _getCashpointPatchVotes(patchId)
     if not patchId then
         return nil
@@ -437,7 +445,7 @@ end
 -- vote struct:
 --    patch_id
 --    user_id
---    vote
+--    score
 function cashpointVotePatch(reqJson)
     local func = "cashpointVotePatch"
     local vote = json.decode(reqJson)
@@ -445,13 +453,11 @@ function cashpointVotePatch(reqJson)
         box.error(malformedRequest("missing patch id for vote", func))
         return false
     end
-
     local t = box.space.cashpoints_patches.index[0]:select{ vote.patch_id }
     if #t == 0 then
         box.error(malformedRequest("no such patch id for vote", func))
         return false
     end
-
     local patchTuple = t[1]
 
     local err = validateVote(vote.user_id, vote.score)
@@ -459,9 +465,14 @@ function cashpointVotePatch(reqJson)
         box.error(err)
         return false
     end
-
     box.begin()
-    box.space.cashpoints_patches_votes:auto_increment{ vote.patch_id, vote.user_id, vote.score }
+    local ok, err = pcall(box.space.cashpoints_patches_votes.auto_increment, box.space.cashpoints_patches_votes, {vote.patch_id, vote.user_id, vote.score})
+    if not ok then
+        print(func..": "..err)
+        box.rollback()
+        return false
+    end
+
     if isCashpointPatchApproved(vote.patch_id) then
         if cashpointCommit(patchTuple[COL_CP_PATCH_DATA], vote.user_id) == 0 then
             box.rollback()

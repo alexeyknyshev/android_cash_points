@@ -145,5 +145,26 @@ else
      print('space already exists: clusters_cache')
 end
 
+if not box.space.metro then
+    local metro = box.schema.space.create('metro')
+    metro:create_index('primary', {
+                        type = 'TREE',
+                        parts = {1, 'NUM'},
+    })
+    metro:create_index('spatial', {
+        type = 'RTREE',
+        parts = { 2, 'ARRAY' },
+        unique = false,
+    })
+    metro:create_index('secondary', { -- town_id
+        type = 'TREE',
+        parts = { 3, 'NUM'},
+        unique = false,
+    })
+    print('created space: metro')
+else
+    print('space already exists: metro')
+end
+
 local console = require('console')
 console.listen('127.0.0.1:3302')
