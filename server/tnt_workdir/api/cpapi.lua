@@ -25,6 +25,7 @@ local COL_CP_ID = 1
 --local COL_VERSION = 21
 --local COL_CP_TIMESTAMP = 22
 local COL_CP_APPROVED = 23
+local COL_CP_CREATOR = 24
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -175,6 +176,7 @@ local function updateOldCp(old, new)
     return old, dataChanged
 end
 
+-- patch table contains 1+ field except id
 local function isCashpointPatchTable(cp)
     for k, _ in pairs(cp) do
         if k ~= 'id' then
@@ -244,7 +246,7 @@ function cashpointCommit(reqJson, userId)
             cp.address, cp.address_comment, cp.metro_name, cp.free_access,
             cp.main_office, cp.without_weekend, cp.round_the_clock,
             cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
-            cp.usd, cp.eur, cp.cash_in, cp.version, timestamp, approved,
+            cp.usd, cp.eur, cp.cash_in, cp.version, timestamp, approved, cp.creator
         }
 
         return cp.id
@@ -272,7 +274,7 @@ function cashpointCommit(reqJson, userId)
             cp.address, cp.address_comment, cp.metro_name, cp.free_access,
             cp.main_office, cp.without_weekend, cp.round_the_clock,
             cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
-            cp.usd, cp.eur, cp.cash_in, version, timestamp, approved,
+            cp.usd, cp.eur, cp.cash_in, version, timestamp, approved, userId
         }
         cp.id = tuple[COL_CP_ID]
 
