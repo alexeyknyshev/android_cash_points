@@ -2,11 +2,12 @@
 box.cfg{
     listen = 3301,
     logger = '/var/log/tarantool/cashpoints.log',
-    work_dir = "/var/lib/cpsrv"
+    work_dir = '/var/lib/cpsrv',
+    snap_dir = 'snap',
+    wal_dir = 'wal'
 }
 
 package.path = package.path .. ';/var/lib/cpsrv/lua/api/?.lua'
---package.path = package.path .. ';./api/?.lua'
 
 box.schema.user.passwd('admin', 'admin')
 
@@ -32,6 +33,7 @@ local townapi = require('townapi')
 local bankapi = require('bankapi')
 local clusterapi = require('clusterapi')
 local metrics = require('metrics')
+local metroapi = require('metroapi')
 
 if not box.space.banks then
     local banks = box.schema.space.create('banks')

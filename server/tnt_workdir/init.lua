@@ -1,4 +1,9 @@
-box.cfg{ listen = 3301, logger = 'tnt.log' }
+box.cfg{
+    listen = 3301,
+    logger = 'tnt.log',
+    snap_dir = 'snap',
+    wal_dir = 'wal',
+}
 
 package.path = package.path .. ';./api/?.lua'
 
