@@ -10,6 +10,8 @@ services:
       - tarantool
     networks:
       cpnet:
+    ports:
+      - "8080:80"
   tarantool:
     build:
       context: .
@@ -17,6 +19,8 @@ services:
     volumes:
       - ./tnt_workdir/init_docker.lua:/var/lib/cpsrv/lua/init.lua:ro
       - ./tnt_workdir/api:/var/lib/cpsrv/lua/api:ro
+      - ./tnt_workdir/snap:/var/lib/cpsrv/snap
+      - ./tnt_workdir/wal:/var/lib/cpsrv/wal
     command: tarantool /var/lib/cpsrv/lua/init.lua
     networks:
       cpnet:

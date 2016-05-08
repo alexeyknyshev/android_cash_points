@@ -1,6 +1,6 @@
 {
     "CertificateDir": "./cert",
-    "Port": 8080,
+    "Port": 80,
     "UserLoginMinLength": 4,
     "UserPwdMinLength": 4,
     "UseTLS": false,
