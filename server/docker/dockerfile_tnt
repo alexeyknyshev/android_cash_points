@@ -1,0 +1,23 @@
+FROM ubuntu:trusty
+
+RUN apt-get update
+
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -q -y curl apt-transport-https
+
+RUN curl -s http://download.tarantool.org/tarantool/1.6/gpgkey | apt-key add --
+RUN touch /etc/apt/sources.list.d/tarantool.list
+
+RUN echo "deb http://download.tarantool.org/tarantool/1.6/ubuntu/ trusty main" >>\
+  /etc/apt/sources.list.d/tarantool.list
+RUN echo "deb-src http://download.tarantool.org/tarantool/1.6/ubuntu/ trusty main" >>\
+  /etc/apt/sources.list.d/tarantool.list
+
+RUN apt-get update
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -q -y tarantool
+
+RUN touch /var/log/tarantool/cashpoints.log
+#RUN chown tarantool /var/log/tarantool
+RUN chown tarantool /var/log/tarantool/cashpoints.log
+
+EXPOSE 3301
+

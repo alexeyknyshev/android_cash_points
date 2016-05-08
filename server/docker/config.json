@@ -1,0 +1,14 @@
+{
+    "CertificateDir": "./cert",
+    "Port": 8080,
+    "UserLoginMinLength": 4,
+    "UserPwdMinLength": 4,
+    "UseTLS": false,
+    "ReqResLogTTL": 60,
+    "UUID_TTL": 250,
+    "BanksIcoDir": "/var/lib/cpsrv/data/banks/ico",
+    "TestingMode": true,
+    "TntUser": "admin",
+    "TntPass": "admin",
+    "TntUrl": "tarantool:3301"
+}
