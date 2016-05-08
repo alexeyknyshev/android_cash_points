@@ -228,6 +228,10 @@ func main() {
 	router.HandleFunc(handlerTown(handlerContext)).Methods("GET")
 	router.HandleFunc(handlerTownsBatch(handlerContext)).Methods("POST")
 	router.HandleFunc(handlerTownsList(handlerContext)).Methods("GET")
+
+	router.HandleFunc(handlerMetroList(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerMetro(handlerContext)).Methods("GET")
+	router.HandleFunc(handlerMetroBatch(handlerContext)).Methods("POST")
 	router.HandleFunc(handlerBank(handlerContext)).Methods("GET")
 	router.HandleFunc(handlerBankIco(handlerContext, serverConfig)).Methods("GET")
 	router.HandleFunc(handlerBanksList(handlerContext)).Methods("GET")

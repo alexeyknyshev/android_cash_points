@@ -12,6 +12,15 @@ local COL_TOWN_CP_COUNT = 9
 
 local MAX_TOWNS_BATCH_SIZE = 1024
 
+local TOWN_HAS_METRO = {[4] = true}
+
+local function _doTownHasMetro(townId)
+    if TOWN_HAS_METRO[townId] then
+        return true
+    end
+    return false
+end
+
 local function _getTownById(townId)
     local t = box.space.towns.index[0]:select(townId)
     if #t == 0 then
@@ -30,6 +39,7 @@ local function _getTownById(townId)
         regional_center = t[COL_TOWN_REGIONAL_CENTER],
         zoom = t[COL_TOWN_ZOOM],
         big = t[COL_TOWN_BIG],
+        has_metro = _doTownHasMetro(townId)
     }
 
     return town
