@@ -288,6 +288,7 @@ type Town struct {
 	RegionalCenter bool    `json:"regional_center"`
 	Big            bool    `json:"big"`
 	Zoom           uint32  `json:"zoom"`
+	HasMetro       bool    `json:"has_metro"`
 }
 
 func TestTown(t *testing.T) {
@@ -322,6 +323,7 @@ func TestTown(t *testing.T) {
 		RegionalCenter: true,
 		Big:            true,
 		Zoom:           10,
+		HasMetro:       true,
 	}
 	expectedJson, _ := json.Marshal(expected)
 
@@ -1484,4 +1486,88 @@ func TestTimeFilter(t *testing.T) {
 		}
 	}
 
+}
+
+//Test metro
+type Metro struct {
+	StationName     string  `json:"station_name"`
+	Longitude       float64 `json:"longitude"`
+	Latitude        float64 `json:"latitude"`
+	Id              uint32  `json:"id"`
+	StationExitName string  `json:"station_exit_name"`
+	TownId          uint32  `json:"town_id"`
+	BranchId        uint32  `json:"branch_id"`
+}
+
+func getMetroTuple() Metro {
+	expected := Metro{
+		StationName:     "Беляево",
+		Longitude:       37.526596999601,
+		Latitude:        55.643621500032,
+		Id:              779,
+		StationExitName: "вход-выход 2 в северный вестибюль",
+		TownId:          4,
+		BranchId:        3,
+	}
+	return expected
+}
+
+func TestMetro(t *testing.T) {
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+
+	url, handler := handlerMetro(hCtx)
+	metroId := uint32(779)
+	request := TestRequest{RequestType: "GET", EndpointUrl: "/metro/" + strconv.FormatInt(int64(metroId), 10), HandlerUrl: url}
+	response, err := readResponse(testRequest(request, handler))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+	expectedJson, _ := json.Marshal(getMetroTuple())
+	checkJsonResponse(t, response.Data, expectedJson)
+}
+
+func TestMetroBatch(t *testing.T) {
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+
+	url, handler := handlerMetroBatch(hCtx)
+	data := struct {
+		Metro []uint32 `json:"metro"`
+	}{
+		[]uint32{779},
+	}
+	dataJson, _ := json.Marshal(data)
+	request := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: url,
+		Data:        string(dataJson),
+	}
+	response, _ := readResponse(testRequest(request, handler))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+	expectedTuple, err := json.Marshal(getMetroTuple())
+	expectedResponse := "[" + string(expectedTuple) + "]"
+	checkJsonResponse(t, response.Data, []byte(expectedResponse))
 }

@@ -24,6 +24,7 @@ local townapi = require('townapi')
 local bankapi = require('bankapi')
 local clusterapi = require('clusterapi')
 local metrics = require('metrics')
+local metroapi = require('metroapi')
 
 if not box.space.banks then
     local banks = box.schema.space.create('banks')
