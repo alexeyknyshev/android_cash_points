@@ -22,6 +22,7 @@ local COL_CP_CASH_IN = 20
 local COL_CP_VERSION = 21
 local COL_CP_TIMESTAMP = 22
 local COL_CP_APPROVED = 23
+local COL_CP_PATCH_COUNT = 24
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -53,8 +54,10 @@ local function _cashpointTupleToTable(t)
     if not ok then
         schedule = setmetatable({}, { __serialize = "map" })
     end
+
+    local cpId = t[COL_CP_ID]
     local cp = {
-        id = t[COL_CP_ID],
+        id = cpId,
         longitude = t[COL_CP_COORD][1],
         latitude = t[COL_CP_COORD][2],
         type = t[COL_CP_TYPE],
@@ -78,6 +81,7 @@ local function _cashpointTupleToTable(t)
         version = t[COL_CP_VERSION],
         timestamp = t[COL_CP_TIMESTAMP],
         approved = approved,
+        patch_count = getCashpointPatchesCount(cpId)
     }
 
     return cp

@@ -361,6 +361,14 @@ function cashpointProposePatch(reqJson)
     end
 end
 
+function getCashpointPatchesCount(cpId)
+    if not cpId then
+        return nil
+    end
+
+    return #box.space.cashpoints_patches.index[1]:select{ cpId }
+end
+
 function getCashpointPatches(cpId)
     if not cpId then
         return nil
