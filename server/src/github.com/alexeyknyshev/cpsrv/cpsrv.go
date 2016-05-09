@@ -70,7 +70,16 @@ func makeHandlerContext(serverConfig *ServerConfig) (*HandlerContextStruct, erro
 		User:          serverConfig.TntUser,
 		Pass:          serverConfig.TntPass,
 	}
-	tnt, err := tarantool.Connect(serverConfig.TntUrl, opts)
+	timeout := 10
+	var err error
+	var tnt *tarantool.Connection
+	for i := 0; i <= timeout; i++ {
+		time.Sleep(1 * time.Second)
+		tnt, err = tarantool.Connect(serverConfig.TntUrl, opts)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("Cannot connect to tarantool: %v", err)
 	}
