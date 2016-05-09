@@ -390,9 +390,10 @@ type CashpointShort struct {
 
 type CashpointFull struct {
 	CashpointShort
-	Version uint32 `json:"version"`
+	Version    uint32  `json:"version"`
 	//	Timestamp      uint64  `json:"timestamp"` // TODO: timestamp on server
-	Approved bool `json:"approved"`
+	Approved   bool    `json:"approved"`
+	PatchCount uint32  `json:"patch_count"`
 }
 
 func TestCashpointGet(t *testing.T) {
@@ -451,7 +452,8 @@ func TestCashpointGet(t *testing.T) {
 		CashpointShort: cpShort,
 		Version:        0,
 		//Timestamp: 0,
-		Approved: true,
+		Approved:       true,
+		PatchCount:     0,
 	}
 	expectedJson, _ := json.Marshal(cp)
 	checkJsonResponse(t, response.Data, expectedJson)
@@ -831,6 +833,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		CashpointShort: cp,
 		Version:        0,
 		Approved:       false,
+		PatchCount:     0,
 	}
 	expectedJson, _ := json.Marshal(cpFull)
 
@@ -1313,6 +1316,7 @@ func TestCashpointEdit(t *testing.T) {
 		CashpointShort: cp,
 		Version:        0,
 		Approved:       true,
+		PatchCount:     0,
 	}
 
 	expectedJson, _ := json.Marshal(cpFull)
