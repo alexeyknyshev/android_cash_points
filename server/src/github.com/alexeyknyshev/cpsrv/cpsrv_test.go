@@ -833,7 +833,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		CashpointShort: cp,
 		Version:        0,
 		Approved:       false,
-		PatchCount:     0,
+		PatchCount:     1, // created & not approved cp has atleast 1 patch
 	}
 	expectedJson, _ := json.Marshal(cpFull)
 
@@ -1316,7 +1316,7 @@ func TestCashpointEdit(t *testing.T) {
 		CashpointShort: cp,
 		Version:        0,
 		Approved:       true,
-		PatchCount:     0,
+		PatchCount:     1,
 	}
 
 	expectedJson, _ := json.Marshal(cpFull)
