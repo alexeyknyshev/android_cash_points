@@ -17,7 +17,8 @@ before_script:
 script:
   - cd $HOME/gopath/src/github.com/alexeyknyshev/android_cash_points/server
   - export GOPATH=$PWD
-  - cp /tmp/00000000000000000000.snap /tmp/00000000000000000000.xlog tnt_workdir
+  - cp -r /tmp/snap tnt_workdir
+  - cp -r /tmp/wal tnt_workdir
   - cd tnt_workdir && tarantool init.lua &
   - cd $GOPATH
   - go get github.com/alexeyknyshev/gojsondiff
