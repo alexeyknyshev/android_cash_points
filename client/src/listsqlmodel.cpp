@@ -26,6 +26,8 @@ ListSqlModel::ListSqlModel(const QString &connectionName,
     setAttemptsCount(DEFAULT_ATTEMPTS_COUNT);
     setRequestBatchSize(DEFAULT_BATCH_SIZE);
 
+    setRoleName(SelectedRole, "selected");
+
     connect(this, SIGNAL(filterRequest(QString, QString)),
             this, SLOT(_setFilter(QString, QString)), Qt::QueuedConnection);
 }
@@ -99,6 +101,11 @@ void ListSqlModel::_setFilter(QString filter, QString options)
 void ListSqlModel::updateFromServer()
 {
     updateFromServerImpl(getAttemptsCount());
+}
+
+bool ListSqlModel::setData(const QModelIndex &index, const QVariant &value, int role)
+{
+    return QStandardItemModel::setData(index, value, role);
 }
 
 QVariant ListSqlModel::data(const QModelIndex &item, int role) const

@@ -12,6 +12,11 @@ class ListSqlModel : public QStandardItemModel
 {
     Q_OBJECT
 
+protected:
+    enum ListRoles {
+        SelectedRole = 0x1111
+    };
+
 public:
     ListSqlModel(const QString &connectionName,
                  ServerApi *api,
@@ -23,6 +28,10 @@ public:
     ServerApi *getServerApi() const { return mApi; }
     quint32 getAttemptsCount() const { return mRequestAttemptsCount; }
     quint32 getRequestBatchSize() const { return mRequestBatchSize; }
+
+    Q_INVOKABLE QList<int> getSelectedIds() {
+        return getSelectedIdsImpl();
+    }
 
 signals:
     void serverDataReceived();
@@ -44,6 +53,8 @@ protected:
 
     virtual QSqlQuery *getQuery() = 0;
     virtual bool needEscapeFilter() const = 0;
+
+    virtual QList<int> getSelectedIdsImpl() const = 0;
 
     void setAttemptsCount(quint32 count) { mRequestAttemptsCount = count; }
 
@@ -79,6 +90,7 @@ protected:
     { return mExpectedUploadCount; }
 
     /// reimplemented qt methods
+    bool setData(const QModelIndex &index, const QVariant &value, int role) override;
     QVariant data(const QModelIndex &item, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
