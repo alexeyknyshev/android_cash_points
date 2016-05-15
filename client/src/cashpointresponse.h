@@ -5,8 +5,19 @@
 #include <QtCore/QMap>
 #include <QtCore/QSet>
 
-struct CashPointResponse
+class CashPointResponse
 {
+public:
+    CashPointResponse()
+        : type(CashpointData)
+    { }
+
+    enum Type {
+        CashpointData,
+        CreateResult,
+        EditResult
+    };
+
     void addCashPointData(const QJsonObject &o);
     void addVisiableCashpoint(quint32 id);
 
@@ -18,6 +29,8 @@ struct CashPointResponse
     QList<QJsonObject> clusterData;
 
     QString message;
+
+    Type type;
 };
 
 #endif // CASHPOINTRESPONSE_H
