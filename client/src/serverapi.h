@@ -66,14 +66,14 @@ public:
     QString getHost() const;
     int getPort() const;
 
-    qint64 uniqueRequestId() const;
+    int uniqueRequestId() const;
 
     void setCallbacksExpireTime(quint32 msec);
     quint32 getCallbacksExpireTime() const;
 
     typedef std::function<void(RequestStatusCode reqCode, HttpStatusCode httpCode, const QByteArray &data)> Callback;
 
-    qint64 sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth = false);
+    int sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth = false);
 
 signals:
     void responseReceived(qint64 requestId);
@@ -91,7 +91,7 @@ private slots:
 private:
     void emitPong(bool ok);
 
-    mutable qint64 mNextUniqueId;
+    mutable int mNextUniqueId;
     QUrl mSrvUrl;
     QNetworkAccessManager *mNetworkMgr;
     QSslConfiguration *mSslConfig;

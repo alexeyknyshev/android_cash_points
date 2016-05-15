@@ -77,9 +77,9 @@ int ServerApi::getPort() const
     return mSrvUrl.port();
 }
 
-qint64 ServerApi::uniqueRequestId() const
+int ServerApi::uniqueRequestId() const
 {
-    if (std::numeric_limits<qint64>::max() != mNextUniqueId) {
+    if (std::numeric_limits<int>::max() != mNextUniqueId) {
         mNextUniqueId++;
     } else {
         mNextUniqueId = 1;
@@ -103,12 +103,12 @@ void ServerApi::postRequest(QString path, QJsonObject data, ServerApi::Callback 
     Q_ASSERT_X(false, "ServerApi::postRequest", "not implemented yet");
 }
 
-qint64 ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth)
+int ServerApi::sendRequest(QString path, QJsonObject data, ServerApi::Callback callback, bool auth)
 {
     /// TODO: added authenticated request sending
     Q_UNUSED(auth)
 
-    qint64 requestId = uniqueRequestId();
+    int requestId = uniqueRequestId();
     mCallbacks.insert(requestId, ExpCallback(QDateTime::currentDateTime(), callback));
 
     QUrl requestUrl(mSrvUrl);
