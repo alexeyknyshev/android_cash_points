@@ -7,39 +7,24 @@
 
 #include "../serverapi.h"
 
-CashPointCreate::CashPointCreate(CashPointSqlModel *model)
-    : CashPointRequest(model)
+CashPointCreate::CashPointCreate(CashPointSqlModel *model, QJSValue callback)
+    : CashPointRequest(model, callback)
 {
     registerStepHandlers({
                              STEP_HANDLER(createCashpoint)
                          });
 }
 
-#define CHECK_JSON_TYPE_STRING(val)\
-if (!val.isString()) {\
-    return false;\
-}\
-
-#define CHECK_JSON_TYPE_NUMBER(val)\
-if (!val.isDouble()) {\
-    return false;\
-}\
-
-#define CHECK_JSON_TYPE_BOOL(val)\
-if (!val.isBool()) {\
-    return false;\
-}\
-
 bool CashPointCreate::fromJson(const QJsonObject &json)
 {
-    const QJsonValue type =   json["type"];
+    const QJsonValue type = json["type"];
     const QJsonValue bankId = json["bank_id"];
     const QJsonValue townId = json["town_id"];
     const QJsonValue longitude = json["longitude"];
-    const QJsonValue latitude = json["latitide"];
-    const QJsonValue address = json["address"];
+    const QJsonValue latitude = json["latitude"];
+    //const QJsonValue address = json["address"];
     const QJsonValue addressComment = json["address_comment"];
-    const QJsonValue metroName = json["metro_name"];
+    //const QJsonValue metroName = json["metro_name"];
     const QJsonValue freeAccess = json["free_access"];
     const QJsonValue mainOffice = json["main_office"];
     const QJsonValue withoutWeekend = json["without_weekend"];
@@ -53,27 +38,28 @@ bool CashPointCreate::fromJson(const QJsonObject &json)
     const QJsonValue eur = json["eur"];
     const QJsonValue cashIn = json["cash_in"];
 
-    CHECK_JSON_TYPE_STRING(type)
-    CHECK_JSON_TYPE_NUMBER(bankId)
-    CHECK_JSON_TYPE_NUMBER(townId)
-    CHECK_JSON_TYPE_NUMBER(longitude)
-    CHECK_JSON_TYPE_NUMBER(latitude)
-    CHECK_JSON_TYPE_STRING(address)
-    CHECK_JSON_TYPE_STRING(addressComment)
-    CHECK_JSON_TYPE_STRING(metroName)
-    CHECK_JSON_TYPE_BOOL(freeAccess)
-    CHECK_JSON_TYPE_BOOL(mainOffice)
-    CHECK_JSON_TYPE_BOOL(withoutWeekend)
-    CHECK_JSON_TYPE_BOOL(roundTheClock)
-    CHECK_JSON_TYPE_BOOL(worksAsShop)
-    CHECK_JSON_TYPE_STRING(schedule)
-    CHECK_JSON_TYPE_STRING(tel)
-    CHECK_JSON_TYPE_STRING(additional)
-    CHECK_JSON_TYPE_BOOL(rub)
-    CHECK_JSON_TYPE_BOOL(usd)
-    CHECK_JSON_TYPE_BOOL(eur)
-    CHECK_JSON_TYPE_BOOL(cashIn)
+    CHECK_JSON_TYPE_STRING_STRICT(type)
+    CHECK_JSON_TYPE_NUMBER_STRICT(bankId)
+    CHECK_JSON_TYPE_NUMBER_STRICT(townId)
+    CHECK_JSON_TYPE_NUMBER_STRICT(longitude)
+    CHECK_JSON_TYPE_NUMBER_STRICT(latitude)
+    //CHECK_JSON_TYPE_STRING_STRICT(address)
+    CHECK_JSON_TYPE_STRING_STRICT(addressComment)
+    //CHECK_JSON_TYPE_STRING_STRICT(metroName)
+    CHECK_JSON_TYPE_BOOL_STRICT(freeAccess)
+    CHECK_JSON_TYPE_BOOL_STRICT(mainOffice)
+    CHECK_JSON_TYPE_BOOL_STRICT(withoutWeekend)
+    CHECK_JSON_TYPE_BOOL_STRICT(roundTheClock)
+    CHECK_JSON_TYPE_BOOL_STRICT(worksAsShop)
+    CHECK_JSON_TYPE_OBJECT_STRICT(schedule)
+    CHECK_JSON_TYPE_STRING_STRICT(tel)
+    CHECK_JSON_TYPE_STRING_STRICT(additional)
+    CHECK_JSON_TYPE_BOOL_STRICT(rub)
+    CHECK_JSON_TYPE_BOOL_STRICT(usd)
+    CHECK_JSON_TYPE_BOOL_STRICT(eur)
+    CHECK_JSON_TYPE_BOOL_STRICT(cashIn)
 
+    data = json;
     return true;
 }
 
@@ -81,7 +67,11 @@ void CashPointCreate::createCashpoint(ServerApiPtr api, quint32 leftAttempts)
 {
     const int step = 0;
 
-    api->sendRequest("/cashpoint", data,
+    QJsonObject reqData;
+    reqData["user_id"] = 0;
+    reqData["data"] = data;
+
+    mId = api->sendRequest("/cashpoint", reqData,
     [this, api, leftAttempts](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (!isRunning()) {
             if (isDisposing()) {
@@ -108,6 +98,21 @@ void CashPointCreate::createCashpoint(ServerApiPtr api, quint32 leftAttempts)
             return;
         }
 
+        bool ok = false;
+        data.toLongLong(&ok);
+
+        QString text;
+        if (ok) {
+            text = trUtf8("Cashpoint successfully added");
+        } else {
+            text = trUtf8("Cashpoint adding failed!");
+        }
+        emitStepFinished(*api, step, ok, text);
+
+        mResponse = new CashPointResponse;
+        mResponse->type = CashPointResponse::CreateResult;
+        emitResponseReady(true);
+/*
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
@@ -130,6 +135,8 @@ void CashPointCreate::createCashpoint(ServerApiPtr api, quint32 leftAttempts)
         }
 
         mResponse = new CashPointResponse;
+        mResponse->type = CashPointResponse::CreateResult;
+        bool ok = false;
 
         const QJsonArray arr = obj["cash_points"].toArray();
         const auto end = arr.constEnd();
@@ -137,9 +144,16 @@ void CashPointCreate::createCashpoint(ServerApiPtr api, quint32 leftAttempts)
             const QJsonValue &val = *it;
             const int id = val.toInt();
             if (id > 0) {
+                ok = true;
                 mResponse->addCashPointData(this->data);
-                mResponse->message = trUtf8("Cashpoint successfully added to system");
             }
         }
+
+        if (ok) {
+            mResponse->message = trUtf8("Cashpoint successfully added");
+        } else {
+            mResponse->message = trUtf8("Cashpoint adding failed!");
+        }
+        emitResponseReady(true);*/
     });
 }

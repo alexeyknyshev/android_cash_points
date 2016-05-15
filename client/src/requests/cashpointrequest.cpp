@@ -5,17 +5,18 @@
 #include "../serverapi.h"
 #include "../cashpointsqlmodel.h"
 
-CashPointRequest::CashPointRequest(CashPointSqlModel *model)
+CashPointRequest::CashPointRequest(CashPointSqlModel *model, QJSValue callback)
     : mModel(model),
       mHandlersRegistered(false),
       mResponse(nullptr),
       mIsRunning(false),
-      mIsDisposing(false)
+      mIsDisposing(false),
+      mId(-1),
+      mCallback(callback)
 {
     connect(this, SIGNAL(update(quint32,int)), SLOT(send(quint32,int)), Qt::QueuedConnection);
-    connect(this, SIGNAL(error(QString)), mModel, SIGNAL(requestError(QString)));
     connect(this, SIGNAL(stepFinished(ServerApi*,int,bool,QString)),
-            SLOT(_stepFinished(ServerApi*,int,bool)), Qt::QueuedConnection);
+            SLOT(_stepFinished(ServerApi*,int,bool,QString)), Qt::QueuedConnection);
 }
 
 CashPointRequest::~CashPointRequest()
@@ -76,8 +77,9 @@ void CashPointRequest::registerStepHandlers(const QStringList &handlers)
     }
 }
 
-void CashPointRequest::_stepFinished(ServerApi *api, int step, bool ok)
+void CashPointRequest::_stepFinished(ServerApi *api, int step, bool ok, QString msg)
 {
+    mCallback.call({ QJSValue(getId()), QJSValue(step), QJSValue(ok), QJSValue(msg) });
     if (ok && step >= 0) {
         step++;
         if (step < mStepHandlers.size()) {
@@ -95,7 +97,7 @@ void CashPointRequest::emitUpdate(quint32 leftAttempts, int step)
 
 void CashPointRequest::emitError(QString err)
 {
-    emit error(err);
+    emit error(this, err);
 }
 
 void CashPointRequest::emitStepFinished(ServerApi *api, int step, bool ok, QString text)

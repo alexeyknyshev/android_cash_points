@@ -65,7 +65,7 @@ void NearbyClusters::fetchClusters(ServerApiPtr api, quint32 leftAttempts)
         return;
     }
 
-    api->sendRequest("/nearby/clusters", data,
+    mId = api->sendRequest("/nearby/clusters", data,
     [this, api, leftAttempts]
     (ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         qDebug() << "callback " << this;
@@ -110,6 +110,7 @@ void NearbyClusters::fetchClusters(ServerApiPtr api, quint32 leftAttempts)
         }
 
         mResponse = new CashPointResponse;
+        mResponse->type = CashPointResponse::CashpointData;
 
         const QJsonArray arr = json.array();
         const auto end = arr.end();
