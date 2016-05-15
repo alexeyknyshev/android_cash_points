@@ -24,7 +24,32 @@ QImage IcoImageProvider::requestImage(const QString &id, QSize *size, const QSiz
         if (size) {
             *size = QSize();
         }
-        return QImage();
+
+        int index = id.indexOf(':');
+        if (index >= 0) {
+            const QString name = id.left(index);
+            const QString arg = id.mid(index + 1);
+
+            auto templIt = mImageTemplates.find(name);
+            if (templIt == mImageTemplates.end()) {
+                qDebug() << "No such image template:" << name;
+                return QImage();
+            }
+
+            auto &v = templIt.value();
+            QByteArray icoData = v.first;
+            const QByteArray &placeholder = v.second;
+            icoData.replace(placeholder, arg.toUtf8());
+
+            if (loadSvgImage(id, icoData)) {
+                it = mRenderers.find(id);
+            } else {
+                qDebug() << "Cannot bake svg image from template";
+                return QImage();
+            }
+        } else {
+            return QImage();
+        }
     }
 
     QSvgRenderer *renderer = it.value();
@@ -60,6 +85,11 @@ bool IcoImageProvider::loadSvgImage(const QString &name, const QByteArray &data)
 
     mRenderers[name] = renderer;
     return true;
+}
+
+void IcoImageProvider::loadSvgImageTemplate(const QString &name, const QByteArray &data, const QByteArray &placeholder)
+{
+    mImageTemplates.insert(name, { data, placeholder });
 }
 
 bool IcoImageProvider::unloadSvgImage(const QString &name)
