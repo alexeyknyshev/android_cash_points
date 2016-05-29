@@ -1,0 +1,12 @@
+---
+- config:
+    - testset: "Testing backend service"
+
+- test:
+    - name: "Ping server"
+    - group: "Ping"
+    - url: "/ping"
+    - method: "GET"
+    - headers: { Id: 1 }
+    - validators:
+        - compare: { jsonpath_mini: 'text', expected: 'pong' }

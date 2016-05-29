@@ -1,42 +1,22 @@
 <RCC>
     <qresource prefix="/">
-        <file>main.qml</file>
-        <file>MapView.qml</file>
-        <file>MapHoldDialog.qml</file>
-        <file>MapHoldDialogItem.qml</file>
-        <file>MapMeMark.qml</file>
-        <file>EnableLocServiceDialog.qml</file>
-        <file>BanksList.qml</file>
-        <file>LeftMenu.qml</file>
-        <file>TownList.qml</file>
-        <file>UpperSwitcher.qml</file>
-    </qresource>
-    <qresource prefix="/ico">
-        <file>marker.png</file>
-        <file>ico/logo/alfabank.svg</file>
-        <file>ico/logo/rosbank.svg</file>
-        <file>ico/logo/gazprombank.svg</file>
-        <file>ico/logo/unicreditbank.svg</file>
-        <file>ico/logo/vtb24.svg</file>
-        <file>ico/logo/binbank.svg</file>
-        <file>ico/logo/raiffeisen.svg</file>
-        <file>ico/logo/zenit.svg</file>
-        <file>ico/logo/sberbank.svg</file>
-        <file>ico/logo/fk_otkritie.svg</file>
-        <file>ico/logo/promsvyazbank.svg</file>
-        <file>ico/logo/vtb.svg</file>
-        <file>ico/logo/rsb.svg</file>
-        <file>ico/logo/mspbank.svg</file>
-        <file>ico/logo/ingbank.svg</file>
-        <file>ico/logo/homecreditbank.svg</file>
-        <file>ico/logo/nordea.svg</file>
-        <file>ico/logo/citibank.svg</file>
-        <file>ico/logo/hsbc.svg</file>
-        <file>ico/logo/vozrojdenie.svg</file>
-        <file>ico/logo/smpbank.svg</file>
-        <file>ico/logo/intercommerzbank.svg</file>
-        <file>ico/logo/deutschebank.svg</file>
-        <file>ico/logo/mtsbank.svg</file>
+        <file>ui/BanksList.qml</file>
+        <file>ui/EnableLocServiceDialog.qml</file>
+        <file>ui/LeftMenu.qml</file>
+        <file>ui/main.qml</file>
+        <file>ui/MapHoldDialog.qml</file>
+        <file>ui/MapHoldDialogItem.qml</file>
+        <file>ui/MapMeMark.qml</file>
+        <file>ui/MapView.qml</file>
+        <file>ui/SettingsView.qml</file>
+        <file>ui/TownList.qml</file>
+        <file>ui/UpperSwitcher.qml</file>
+        <file>ui/ViewLoader.qml</file>
+        <file>ui/viewloadercreator.js</file>
+        <file>ui/MapPlaceMark.qml</file>
+        <file>ui/MapInfoView.qml</file>
+        <file>ui/CashpointView.qml</file>
+        <file alias="app_ico.png">ui/app_ico.png</file>
     </qresource>
     <qresource prefix="/icon">
         <file alias="atm.svg">ico/other/atm_gray.svg</file>
@@ -46,11 +26,19 @@
         <file alias="like.svg">ico/other/like_gray.svg</file>
         <file alias="town.svg">ico/other/buildings_gray.svg</file>
         <file alias="bank.svg">ico/other/bank_gray.svg</file>
-    </qresource>
-    <qresource prefix="/sql">
-        <file alias="banks.sql">sql/banks.sql</file>
-        <file alias="town.sql">sql/town.sql</file>
-        <file alias="region.sql">sql/region.sql</file>
-        <file alias="bank.sql">sql/bank.sql</file>
+        <file alias="star.svg">ico/other/star.svg</file>
+        <file alias="star_gray.svg">ico/other/star_gray.svg</file>
+        <file alias="aim.svg">ico/other/aim.svg</file>
+        <file alias="zoom_out.svg">ico/other/zoom_out.svg</file>
+        <file alias="zoom_in.svg">ico/other/zoom_in.svg</file>
+        <file alias="marker.svg">ico/other/marker.svg</file>
+        <file alias="place.svg">ico/other/place.svg</file>
+        <file alias="add.svg">ico/other/add.svg</file>
+        <file alias="cluster.svg">ico/other/cluster.svg</file>
+        <file alias="place_add.svg">ico/other/place_add.svg</file>
+        <file alias="place_add_plus.svg">ico/other/place_add_plus.svg</file>
+        <file alias="round_the_clock.svg">ico/other/round_the_clock.svg</file>
+        <file alias="limited_access.svg">ico/other/limited_access.svg</file>
+        <file alias="place_gray.svg">ico/other/place_gray.svg</file>
     </qresource>
 </RCC>

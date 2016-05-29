@@ -1,0 +1,15 @@
+{
+    "CertificateDir": "./cert",
+    "Port": 8080,
+    "UserLoginMinLength": 4,
+    "UserPwdMinLength": 4,
+    "UseTLS": false,
+    "RedisScriptsDir": "./redis_scripts",
+    "ReqResLogTTL": 60,
+    "UUID_TTL": 250,
+    "BanksIcoDir": "./data/banks/ico",
+    "TestingMode": true,
+    "TntUser": "admin",
+    "TntPass": "admin",
+    "TntUrl": "localhost:3301"
+}

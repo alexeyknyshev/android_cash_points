@@ -1,0 +1,12 @@
+FROM golang:1.6
+
+ADD src /usr/src/cpsrv/src
+ADD docker/config.json /etc/cpsrv/config.json
+
+RUN mkdir /usr/src/cpsrv/bin
+RUN cd /usr/src/cpsrv && export GOPATH=$PWD && go build github.com/alexeyknyshev/cpsrv
+RUN cp /usr/src/cpsrv/cpsrv /usr/bin/
+
+CMD /usr/bin/cpsrv /etc/cpsrv/config.json
+
+EXPOSE 8080
