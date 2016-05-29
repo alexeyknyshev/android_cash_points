@@ -33,9 +33,7 @@ bool CashPointCreate::fromJson(const QJsonObject &json)
     const QJsonValue schedule = json["schedule"];
     const QJsonValue tel = json["tel"];
     const QJsonValue additional = json["additional"];
-    const QJsonValue rub = json["rub"];
-    const QJsonValue usd = json["usd"];
-    const QJsonValue eur = json["eur"];
+    const QJsonValue currency = json["currency"];
     const QJsonValue cashIn = json["cash_in"];
 
     CHECK_JSON_TYPE_STRING_STRICT(type)
@@ -54,9 +52,7 @@ bool CashPointCreate::fromJson(const QJsonObject &json)
     CHECK_JSON_TYPE_OBJECT_STRICT(schedule)
     CHECK_JSON_TYPE_STRING_STRICT(tel)
     CHECK_JSON_TYPE_STRING_STRICT(additional)
-    CHECK_JSON_TYPE_BOOL_STRICT(rub)
-    CHECK_JSON_TYPE_BOOL_STRICT(usd)
-    CHECK_JSON_TYPE_BOOL_STRICT(eur)
+    CHECK_JSON_TYPE_ARRAY_STRICT(currency)
     CHECK_JSON_TYPE_BOOL_STRICT(cashIn)
 
     data = json;

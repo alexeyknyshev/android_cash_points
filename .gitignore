@@ -31,3 +31,7 @@
 *.log
 *.xlog
 
+# Android related stuff
+client/android/google-play-services_lib/
+
+builds/

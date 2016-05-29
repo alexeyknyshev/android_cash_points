@@ -54,6 +54,11 @@ if (!val.isObject()) {\
     return false;\
 }\
 
+#define CHECK_JSON_TYPE_ARRAY_STRICT(val)\
+if (!val.isArray()) {\
+    return false;\
+}\
+
 class CashPointRequest : public QObject
 {
     Q_OBJECT

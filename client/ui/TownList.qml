@@ -2,21 +2,19 @@ import QtQuick 2.0
 import QtQuick.Controls 1.3
 import QtGraphicalEffects 1.0
 
-//ApplicationWindow {
-//    visible: true
-//    width: 800
-//    height: 600
-//    visibility: "FullScreen"
-
 Rectangle {
     id: topRect
     anchors.fill: parent
     color: "#EDEDED"
 
-    signal townSelected(int id, string name)
+    property var externalAction
+
+    onExternalActionChanged: {
+        //console.log(JSON.stringify(externalAction))
+    }
 
     onParentChanged: {
-        townListModel.setFilter("")
+        townListModel.setFilter("", "{}")
     }
 
     Rectangle {
@@ -78,9 +76,9 @@ Rectangle {
 
             onDisplayTextChanged: {
                 if (isUserTextShowed) {
-                    townListModel.setFilter(displayText)
+                    townListModel.setFilter(displayText, "{}")
                 } else {
-                    townListModel.setFilter("")
+                    townListModel.setFilter("", "{}")
                 }
             }
         } // TextInput
@@ -248,7 +246,10 @@ Rectangle {
                         }
                         onClicked: {
                             console.log("selected town: " + model.town_name + " (" + model.town_id + ")")
-                            topRect.townSelected(model.town_id, model.town_name)
+                            //console.log("externalAction:" + JSON.stringify(topRect.externalAction))
+                            if (topRect.externalAction && topRect.externalAction.callback) {
+                                topRect.externalAction.callback({ "id": model.town_id })
+                            }
                         }
                     }
                 }

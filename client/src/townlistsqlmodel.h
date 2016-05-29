@@ -32,6 +32,8 @@ public:
 
     QVariant data(const QModelIndex &item, int role) const override;
 
+    Q_INVOKABLE QString getTownData(int townId) const;
+
     QSqlQuery *getQuery() override { return &mQuery; }
 
 signals:
@@ -44,11 +46,13 @@ signals:
 
 protected:
     void updateFromServerImpl(quint32 leftAttempts) override;
-    void setFilterImpl(const QString &filter) override;
+    void setFilterImpl(const QString &filter, const QJsonObject &options) override;
 
     int getLastRole() const override { return RoleLast; }
 
     bool needEscapeFilter() const override { return true; }
+
+    QList<int> getSelectedIdsImpl() const override { return {}; }
 
 private slots:
     void restoreTownsData();
@@ -80,6 +84,7 @@ private:
     QSqlQuery mQuery;
     QSqlQuery mQueryUpdateTowns;
     QSqlQuery mQueryUpdateRegions;
+    mutable QSqlQuery mQueryById;
 };
 
 #endif // TOWNLISTSQLMODEL_H

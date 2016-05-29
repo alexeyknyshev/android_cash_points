@@ -98,7 +98,8 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
     : ListSqlModel(connectionName, api, imageProvider, settings),
       mQuery(QSqlDatabase::database(connectionName)),
       mQueryUpdateTowns(QSqlDatabase::database(connectionName)),
-      mQueryUpdateRegions(QSqlDatabase::database(connectionName))
+      mQueryUpdateRegions(QSqlDatabase::database(connectionName)),
+      mQueryById(QSqlDatabase::database(connectionName))
 {
     setRowCount(11000);
 
@@ -116,6 +117,12 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
                         "ORDER BY regional_center DESC, region_id, id"))
     {
         qDebug() << "TownListSqlModel cannot prepare query:" << mQuery.lastError().databaseText();
+    }
+
+    if (!mQueryById.prepare("SELECT id, name, name_tr, region_id, regional_center, cord_lon, cord_lat, zoom "
+                            "FROM towns WHERE id = :town_id"))
+    {
+        qDebug() << "TownListSqlModel cannot prepare query:" << mQueryById.lastError().databaseText();
     }
 
     if (!mQueryUpdateTowns.prepare("INSERT OR REPLACE INTO towns (id, name, name_tr, region_id, "
@@ -144,7 +151,7 @@ TownListSqlModel::TownListSqlModel(const QString &connectionName,
     connect(this, SIGNAL(updateRegionsRequest(quint32)),
             this, SLOT(updateRegions(quint32)), Qt::QueuedConnection);
 
-    setFilter("");
+    setFilter("", "{}");
 }
 
 QVariant TownListSqlModel::data(const QModelIndex &item, int role) const
@@ -157,9 +164,38 @@ QVariant TownListSqlModel::data(const QModelIndex &item, int role) const
     return QStandardItemModel::data(index(item.row(), role - IdRole), role);
 }
 
-
-void TownListSqlModel::setFilterImpl(const QString &filter)
+QString TownListSqlModel::getTownData(int townId) const
 {
+    mQueryById.bindValue(0, townId);
+    if (!mQueryById.exec()) {
+        qWarning() << "TownListSqlModel::getTownData query failed:" << mQueryById.lastError().databaseText();
+        return "";
+    }
+
+    if (mQueryById.next()) {
+        int id = mQueryById.value(0).toInt();
+        if (id > 0) {
+            QJsonObject obj;
+
+            obj["id"] = id;
+            obj["name"] = mQueryById.value(1).toString();
+            obj["name_tr"] = mQueryById.value(2).toString();
+            obj["region_id"] = mQueryById.value(3).toInt();
+            obj["regional_center"] = mQueryById.value(4).toBool();
+            obj["longitude"] = mQueryById.value(5).toFloat();
+            obj["latitude"] = mQueryById.value(6).toFloat();
+            obj["zoom"] = mQueryById.value(7).toFloat();
+
+            return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+        }
+    }
+
+    return "";
+}
+
+void TownListSqlModel::setFilterImpl(const QString &filter, const QJsonObject &options)
+{
+    Q_UNUSED(options);
     for (int i = 0; i < 2; ++i) {
         mQuery.bindValue(i, filter);
     }
@@ -235,20 +271,20 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateTownsIds: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
     /// Get list of towns' ids
-    getServerApi()->sendRequest("/towns", {},
-    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest("/towns", {},
+    [&, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateTownIds(leftAttempts - 1);
             return;
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 
@@ -261,7 +297,7 @@ void TownListSqlModel::updateTownsIds(quint32 leftAttempts)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            emitRequestError("Server response json parse error: " + err.errorString());
+            emitRequestError(requestId, "Server response json parse error: " + err.errorString());
             return;
         }
 
@@ -288,7 +324,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateTownsData: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
@@ -306,8 +342,8 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
     }
 
     /// Get towns data from list
-    getServerApi()->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
-    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest("/towns", { QPair<QString, QJsonValue>("towns", requestTownsBatch) },
+    [&, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             for (const QJsonValue &val : requestTownsBatch) {
                 const int id = val.toInt();
@@ -321,7 +357,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 
@@ -341,7 +377,7 @@ void TownListSqlModel::updateTownsData(quint32 leftAttempts)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            emitRequestError("updateTownsData: response parse error: " + err.errorString());
+            emitRequestError(requestId, "updateTownsData: response parse error: " + err.errorString());
             return;
         }
 
@@ -365,19 +401,19 @@ void TownListSqlModel::updateRegions(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateRegions: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
-    getServerApi()->sendRequest("/regions", {},
-    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest("/regions", {},
+    [&, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateRegions(leftAttempts - 1);
             return;
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 

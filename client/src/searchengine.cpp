@@ -11,6 +11,10 @@
 #include <QtCore/QDebug>
 #include <QtCore/QSettings>
 
+const int RUB = 643;
+const int USD = 840;
+const int EUR = 978;
+
 class SearchEngineFilter
 {
 public:
@@ -67,7 +71,20 @@ public:
 
             const auto end = other.getJsonPatch().constEnd();
             for (auto it = other.getJsonPatch().constBegin(); it != end; it++) {
-                mPatch.insert(it.key(), it.value());
+                if (it.value().isArray()) {
+                    auto pi = mPatch.find(it.key());
+                    if (pi == mPatch.end()) {
+                        mPatch.insert(it.key(), it.value());
+                    } else {
+                        Q_ASSERT_X(pi.value().isArray(), "Suggestion::join",
+                                "merging json array with non-array type");
+                        auto data = pi.value().toArray();
+                        data.append(it.value());
+                        *pi = data;
+                    }
+                } else {
+                    mPatch.insert(it.key(), it.value());
+                }
             }
         }
 
@@ -113,8 +130,12 @@ public:
         for (const QString &m : matching) {
             if (removeMatching(request, m)) {
                 return { Suggestion(true,
-                                   { QObject::trUtf8("круглосуточно") },
-                                   QJsonObject{ { "round_the_clock", true } }) };
+                                    { QObject::trUtf8("круглосуточно") },
+                                    QJsonObject{ { "round_the_clock", true } },
+                                    QMap<int, QVariant>{
+                                        { SearchEngine::NameRole, QObject::trUtf8("круглосуточно") },
+                                        { SearchEngine::TypeRole, "filter" }
+                                    }) };
             }
         }
 
@@ -231,7 +252,11 @@ public:
                 if (removeMatching(request, m)) {
                     return { Suggestion(true,
                                         { QObject::trUtf8("банкомат") },
-                                        QJsonObject{ { "type", "atm" } }) };
+                                        QJsonObject{ { "type", "atm" } },
+                                        QMap<int, QVariant>{
+                                            { SearchEngine::NameRole, QObject::trUtf8("Банкоматы") },
+                                            { SearchEngine::TypeRole, "filter" }
+                                        }) };
                 }
             }
         }
@@ -248,12 +273,16 @@ public:
                 if (removeMatching(request, m)) {
                     return { Suggestion(true,
                                         { QObject::trUtf8("офис") },
-                                        QJsonObject{ { "type", "office" } }) };
+                                        QJsonObject{ { "type", "office" } },
+                                        QMap<int, QVariant>{
+                                            { SearchEngine::NameRole, QObject::trUtf8("Офисы") },
+                                            { SearchEngine::TypeRole, "filter" }
+                                        }) };
                 }
             }
         }
 
-        return { };
+        return {};
     }
 };
 
@@ -273,13 +302,15 @@ public:
                 if (removeMatching(request, m)) {
                     return { Suggestion(true,
                                         { QObject::trUtf8("рубли") },
-                                        QJsonObject{ { "rub", true } },
+                                        QJsonObject{ { "currency", QJsonArray({ RUB }) } },
                                         QMap<int, QVariant>{
                                             { SearchEngine::NameRole, QObject::trUtf8("Валюта: рубли") },
-                                            { SearchEngine::TypeRole, "currency" },
+                                            { SearchEngine::TypeRole, "filter" },
                                         }) };
                 }
             }
+
+            return {};
         }
 
         {
@@ -292,13 +323,15 @@ public:
                 if (removeMatching(request, m)) {
                     return { Suggestion(true,
                                         { QObject::trUtf8("доллары") },
-                                        QJsonObject{ { "usd", true } },
+                                        QJsonObject{ { "currency", QJsonArray({ USD }) } },
                                         QMap<int, QVariant>{
                                             { SearchEngine::NameRole, QObject::trUtf8("Валюта: доллары США") },
-                                            { SearchEngine::TypeRole, "currency" },
+                                            { SearchEngine::TypeRole, "filter" },
                                         }) };
                 }
             }
+
+            return {};
         }
 
         {
@@ -311,7 +344,7 @@ public:
                 if (removeMatching(request, m)) {
                     return { Suggestion(true,
                                         { QObject::trUtf8("евро") },
-                                        QJsonObject{ { "eur", true } },
+                                        QJsonObject{ { "currency", QJsonArray({ EUR }) } },
                                         QMap<int, QVariant>{
                                             { SearchEngine::NameRole, QObject::trUtf8("Валюта: евро") },
                                             { SearchEngine::TypeRole, "currency" },
@@ -327,11 +360,15 @@ public:
 #define MY_BANKS "mybanks"
 #define SHOW_PARTNER_BANKS "showPartnerBanks"
 
+#define SEARCH_GROUP "search"
+#define SHOW_ONLY_APPROVED_POINTS "showOnlyApprovedPoints"
+
 SearchEngine::SearchEngine(BankListSqlModel *bankListModel,
                            TownListSqlModel *townListModel)
     : ListSqlModel(bankListModel),
       mBankListModel(bankListModel),
-      mTownListModel(townListModel)
+      mTownListModel(townListModel),
+      mShowOnlyApprovedPoints(false)
 {
     mFilters.append(new Filter24Hour);
     mFilters.append(new FilterPointType);
@@ -344,6 +381,10 @@ SearchEngine::SearchEngine(BankListSqlModel *bankListModel,
 
     getSettings()->beginGroup(MY_BANKS);
     mShowPartnerBanks = getSettings()->value(SHOW_PARTNER_BANKS, false).toBool();
+    getSettings()->endGroup();
+
+    getSettings()->beginGroup(SEARCH_GROUP);
+    mShowOnlyApprovedPoints = getSettings()->value(SHOW_ONLY_APPROVED_POINTS, false).toBool();
     getSettings()->endGroup();
 
     setRoleName(IdRole,   "id");
@@ -416,16 +457,31 @@ void SearchEngine::fillJsonData(const QStandardItem *item, QJsonObject &json)
 
 QString SearchEngine::getCandidate() const
 {
+    QJsonObject json;
+
     for (int row = 0; row < rowCount(); row++) {
         QStandardItem *currentItem = item(row);
         if (currentItem->data(CandidateRole).toBool() == true) {
-            const int id = currentItem->data(IdRole).toInt();
-            if (id > 0) {
-                QJsonObject json;
+            const QString type = currentItem->data(TypeRole).toString();
+            if (type == "ext" || type == "create") {
                 fillJsonData(currentItem, json);
-                return QString::fromUtf8(QJsonDocument(json).toJson());
+                break;
+            } else {
+                if (type == "town" || type == "bank") {
+                    const int id = currentItem->data(IdRole).toInt();
+                    if (id > 0) {
+                        fillJsonData(currentItem, json);
+                        break;
+                    }
+                } else {
+                    fillJsonData(currentItem, json);
+                }
             }
         }
+    }
+
+    if (!json.empty()) {
+        return QString::fromUtf8(QJsonDocument(json).toJson());
     }
 
     return "";
@@ -465,11 +521,27 @@ QString SearchEngine::getMineBanksFilter()
     return QString::fromUtf8(json.toJson(QJsonDocument::Compact));
 }
 
-void SearchEngine::setFilterImpl(const QString &filter)
+void SearchEngine::setFilterImpl(const QString &filter, const QJsonObject &options)
 {
     clear();
     if (filter.isEmpty() || filter.count('%') == filter.size()) {
-        emit rowCountChanged(0);
+        if (options["extendedSearchEnabled"].toBool()) {
+            QStandardItem *extendedSearch = new QStandardItem;
+            //extendedSearch->setData(1, SearchEngine::IdRole); // make id checking logic happy
+            extendedSearch->setData(trUtf8("Расширенный поиск"), SearchEngine::NameRole);
+            extendedSearch->setData("ext", SearchEngine::TypeRole);
+            extendedSearch->setData(true, SearchEngine::CandidateRole);
+            appendRow(extendedSearch);
+
+            QStandardItem *createCashpoint = new QStandardItem;
+            createCashpoint->setData(trUtf8("Добавить отделение / банкомат"), SearchEngine::NameRole);
+            createCashpoint->setData("create", SearchEngine::TypeRole);
+            appendRow(createCashpoint);
+
+            emit rowCountChanged(2);
+        } else {
+            emit rowCountChanged(0);
+        }
         return;
     }
 
@@ -482,6 +554,10 @@ void SearchEngine::setFilterImpl(const QString &filter)
     QList<SearchEngineFilter::Suggestion> decorators;
 
     for (const SearchEngineFilter *f : mFilters) {
+        if (filterCopy.isEmpty()) {
+            break;
+        }
+
         QList<SearchEngineFilter::Suggestion> sugList = f->filter(filterCopy);
         if (!sugList.isEmpty()) {
             if (sugList.first().isDecorator()) {
@@ -512,11 +588,17 @@ void SearchEngine::setFilterImpl(const QString &filter)
     }
 
     {
-        const auto end = suggestions.end();
-        for (auto it = suggestions.begin(); it != end; it++) {
-            for (const SearchEngineFilter::Suggestion &dec : decorators) {
-                it->join(dec);
+        if (!suggestions.empty()) {
+            const auto end = suggestions.end();
+            if (!decorators.empty()) {
+                for (auto it = suggestions.begin(); it != end; it++) {
+                    for (const SearchEngineFilter::Suggestion &dec : decorators) {
+                        it->join(dec);
+                    }
+                }
             }
+        } else {
+            suggestions = decorators;
         }
     }
     {
@@ -644,10 +726,15 @@ void SearchEngine::showOnlyMineBanks(bool enabled)
     emit showOnlyMineBanksChanged(enabled);
 }
 
-void SearchEngine::setFilterPatch(QString filterPatch)
+void SearchEngine::showOnlyApprovedPoints(bool enabled)
 {
-    mFilterPatch = filterPatch;
-    emit filterPatchChanged(filterPatch);
+    if (enabled != mShowOnlyApprovedPoints) {
+        mShowOnlyApprovedPoints = enabled;
+        getSettings()->beginGroup(SEARCH_GROUP);
+        getSettings()->setValue(SHOW_ONLY_APPROVED_POINTS, enabled);
+        getSettings()->endGroup();
+        emit showOnlyApprovedPointsChanged(enabled);
+    }
 }
 
 void SearchEngine::setShowPartnerBanks(bool show)

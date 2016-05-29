@@ -24,7 +24,14 @@ SOURCES += src/main.cpp \
     src/emptyimageprovider.cpp \
     src/appstateproxy.cpp \
     src/hostsmodel.cpp \
-    src/feedbackservice.cpp
+    src/requests/cashpointedit.cpp \
+    src/requests/cashpointpatches.cpp \
+    src/requests/cashpointcreatefactory.cpp \
+    src/requests/cashpointeditfactory.cpp \
+    src/requests/cashpointpatchesfactory.cpp \
+    src/feedbackservice.cpp \
+    src/googleapiclient.cpp \
+    src/filtersmodel.cpp
 
 RESOURCES += qml.qrc
 
@@ -66,7 +73,17 @@ HEADERS += \
     src/requests/nearbyclusterrequestfactory.h \
     src/appstateproxy.h \
     src/hostsmodel.h \
-    src/feedbackservice.h
+    src/requests/cashpointedit.h \
+    src/requests/cashpointpatches.h \
+    src/requests/cashpointcreatefactory.h \
+    src/requests/cashpointeditfactory.h \
+    src/requests/cashpointpatchesfactory.h \
+    src/feedbackservice.h \
+    src/googleapiclient.h \
+    src/filtersmodel.h
+
+OTHER_FILES += \
+    android/src/net/agnia/cashpoints/CashPointsActivity.java
 
 QMAKE_CXXFLAGS += -std=c++11
 

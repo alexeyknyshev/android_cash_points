@@ -15,7 +15,8 @@ class SearchEngine : public ListSqlModel
     Q_PROPERTY(int rowCount READ rowCount NOTIFY rowCountChanged)
     Q_PROPERTY(int suggestionsCount READ getSuggestionsCount WRITE setSuggestionsCount NOTIFY suggestionsCountChanged)
     Q_PROPERTY(bool showOnlyMineBanks READ isShowingOnlyMineBanks WRITE showOnlyMineBanks NOTIFY showOnlyMineBanksChanged)
-    Q_PROPERTY(QString filterPatch READ getFilterPatch WRITE setFilterPatch NOTIFY filterPatchChanged)
+    Q_PROPERTY(bool showOnlyApprovedPoints READ isShowingOnlyApprovedPoints WRITE showOnlyApprovedPoints NOTIFY showOnlyApprovedPointsChanged)
+    //Q_PROPERTY(QString filterPatch READ getFilterPatch WRITE setFilterPatch NOTIFY filterPatchChanged)
     Q_PROPERTY(bool showPartnerBanks READ isShowingPartnerBanks WRITE setShowPartnerBanks NOTIFY showPartnerBanksChanged)
 
 public:
@@ -40,38 +41,48 @@ public:
 
     Q_INVOKABLE QString getCandidate() const;
     inline int getSuggestionsCount() const { return mSuggestionsCount; }
-    inline const QString &getFilterPatch() const { return mFilterPatch; }
 
     Q_INVOKABLE QString getMineBanksFilter();
 
     inline bool isShowingOnlyMineBanks() const { return mShowOnlyMineBanks; }
+    inline bool isShowingOnlyApprovedPoints() const { return mShowOnlyApprovedPoints; }
     inline bool isShowingPartnerBanks() const { return mShowPartnerBanks; }
 
 signals:
     void rowCountChanged(int count);
     void suggestionsCountChanged(int count);    
     void showOnlyMineBanksChanged(bool enabled);
-    void filterPatchChanged(QString filterPatch);
+    void showOnlyApprovedPointsChanged(bool enabled);
     void showPartnerBanksChanged(bool showing);
 
 public slots:
     void setSuggestionsCount(int count);
     void showOnlyMineBanks(bool enabled);
-    void setFilterPatch(QString filterPatch);
+    void showOnlyApprovedPoints(bool enabled);
+
     void setShowPartnerBanks(bool show);
 
 protected:
     bool setData(const QModelIndex &index, const QVariant &value, int role);
 
-    void setFilterImpl(const QString &filter);
+    void setFilterImpl(const QString &filter, const QJsonObject &options) override;
     int getLastRole() const override { return RoleLast; }
     bool needEscapeFilter() const override { return false; }
     void updateFromServerImpl(quint32) override { }
+
+    QList<int> getSelectedIdsImpl() const override { return {}; }
 
     QSqlQuery *getQuery() override { return nullptr; }
 
 private:
     static void fillJsonData(const QStandardItem *item, QJsonObject &json);
+
+    struct FilterPatch {
+        QString name;
+//        QJsonObject filter;
+    };
+
+    QList<FilterPatch> mSavedRequests;
 
     QList<SearchEngineFilter *> mFilters;
 
@@ -80,8 +91,8 @@ private:
 
     int mSuggestionsCount;
     bool mShowOnlyMineBanks;
+    bool mShowOnlyApprovedPoints;
     bool mShowPartnerBanks;
-    QString mFilterPatch;
 };
 
 #endif // SEARCHENGINE_H

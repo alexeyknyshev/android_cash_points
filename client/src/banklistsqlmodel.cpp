@@ -181,7 +181,7 @@ BankListSqlModel::BankListSqlModel(const QString &connectionName,
     connect(this, SIGNAL(updateBankIcoRequest(quint32,quint32)),
             this, SLOT(updateBankIco(quint32,quint32)), Qt::QueuedConnection);
 
-    setFilter("");
+    setFilter("", "{}");
 }
 
 QVariant BankListSqlModel::data(const QModelIndex &item, int role) const
@@ -322,8 +322,10 @@ void BankListSqlModel::updateFromServerImpl(quint32 leftAttempts)
     emitUpdateBanksIds(leftAttempts);
 }
 
-void BankListSqlModel::setFilterImpl(const QString &filter)
+void BankListSqlModel::setFilterImpl(const QString &filter, const QJsonObject &options)
 {
+    Q_UNUSED(options);
+
     for (int i = 0; i < 5; ++i) {
         mQuery.bindValue(i, filter);
     }
@@ -349,6 +351,21 @@ void BankListSqlModel::setFilterImpl(const QString &filter)
         insertRow(row, items);
         ++row;
     }
+}
+
+QList<int> BankListSqlModel::getSelectedIdsImpl() const
+{
+    QList<int> result;
+
+    const int rows = rowCount();
+    for (int i = 0; i < rows; i++) {
+        QModelIndex idx = index(i, 0);
+        if (data(idx, SelectedRole).toBool()) {
+            result.append(data(idx, IdRole).toInt());
+        }
+    }
+
+    return result;
 }
 
 static QList<int> getBanksIdList(const QJsonDocument &json)
@@ -385,20 +402,20 @@ void BankListSqlModel::updateBanksIds(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateBanksIds: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
     /// Get list of banks' ids
-    getServerApi()->sendRequest("/banks", {},
-    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest("/banks", {},
+    [&, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateBanksIds(leftAttempts - 1);
             return;
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 
@@ -411,7 +428,7 @@ void BankListSqlModel::updateBanksIds(quint32 leftAttempts)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            emitRequestError("updateBanksIds: server response json parse error: " + err.errorString());
+            emitRequestError(requestId, "updateBanksIds: server response json parse error: " + err.errorString());
             return;
         }
 
@@ -425,7 +442,7 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateBanksData: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
@@ -443,8 +460,8 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
     }
 
     /// Get banks data from list
-    getServerApi()->sendRequest("/banks", { QPair<QString, QJsonValue>("banks", requestBanksBatch) },
-    [&](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest("/banks", { QPair<QString, QJsonValue>("banks", requestBanksBatch) },
+    [&, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode httpCode, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             for (const QJsonValue &val : requestBanksBatch) {
                 const int id = val.toInt();
@@ -458,7 +475,7 @@ void BankListSqlModel::updateBanksData(quint32 leftAttempts)
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 
@@ -533,20 +550,20 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
 {
     if (leftAttempts == 0) {
         qDebug() << "updateBankIco: no retry attempt left";
-        emitRequestError(trUtf8("Could not connect to server after serval attempts"));
+        emitRequestError(0, trUtf8("Could not connect to server after serval attempts"));
         return;
     }
 
     const QString requestPath = "/bank/" + QString::number(bankId) + "/ico";
-    getServerApi()->sendRequest(requestPath, {},
-    [&, bankId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode code, const QByteArray &data) {
+    const int requestId = getServerApi()->sendRequest(requestPath, {},
+    [&, bankId, requestId](ServerApi::RequestStatusCode reqCode, ServerApi::HttpStatusCode code, const QByteArray &data) {
         if (reqCode == ServerApi::RSC_Timeout) {
             emitUpdateBankIco(leftAttempts - 1, bankId);
             return;
         }
 
         if (reqCode != ServerApi::RSC_Ok) {
-            emitRequestError(ServerApi::requestStatusCodeText(reqCode));
+            emitRequestError(requestId, ServerApi::requestStatusCodeText(reqCode));
             return;
         }
 
@@ -560,19 +577,19 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
         QJsonParseError err;
         const QJsonDocument json = QJsonDocument::fromJson(data, &err);
         if (err.error != QJsonParseError::NoError) {
-            emitRequestError("updateBankIco: response parse error: " + err.errorString());
+            emitRequestError(requestId, "updateBankIco: response parse error: " + err.errorString());
             return;
         }
 
         const QJsonObject jsonObj = json.object();
         if (jsonObj.isEmpty()) {
-            emitRequestError("updateBankIco: empty json object in response: " + data);
+            emitRequestError(requestId, "updateBankIco: empty json object in response: " + data);
             return;
         }
 
         const int bankId = jsonObj["bank_id"].toInt();
         if (bankId == 0) {
-            emitRequestError("updateBankIco: invalid bankId");
+            emitRequestError(requestId, "updateBankIco: invalid bankId");
             return;
         }
 
@@ -580,7 +597,7 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
 
         const QString bankIcoPath = "ico/bank/" + QString::number(bankId);
         if (!getIcoImageProvider()->loadSvgImage("bank/" + QString::number(bankId), icoData.toUtf8())) {
-            emitRequestError("updateBankIco: cannot load ico into ImageProvider: " + QString::number(bankId));
+            emitRequestError(requestId, "updateBankIco: cannot load ico into ImageProvider: " + QString::number(bankId));
             return;
         }
 
@@ -588,8 +605,9 @@ void BankListSqlModel::updateBankIco(quint32 leftAttempts, quint32 bankId)
         mQueryUpdateBankIco.bindValue(1, bankId);
 
         if (!mQueryUpdateBankIco.exec()) {
-            emitRequestError("updateBanksData: failed to update 'banks' table. Ico for bank: " + QString::number(bankId));
-            emitRequestError("updateBanksData: " + mQueryUpdateBankIco.lastError().databaseText());
+            QString msg = "failed to update 'banks' table. Ico for bank: " + QString::number(bankId) + " " +
+                    mQueryUpdateBankIco.lastError().databaseText();
+            emitRequestError(requestId, "updateBanksData: " + msg);
             return;
         }
 

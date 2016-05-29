@@ -1,5 +1,7 @@
 import QtQuick 2.4
 import QtQuick.Controls 1.3
+import QtQuick.Layouts 1.1
+import QtQuick.Dialogs 1.2
 import QtLocation 5.3
 import QtPositioning 5.3
 import QtSensors 5.3
@@ -15,11 +17,10 @@ Item {
 
     property bool active: true
     property bool showZoomLevel: false
-    property bool showControls: true
-
+    property bool showControls: false
     property real cashpointZoom: 15
 
-    property real contolsOpacity: showControls ? 1.0 : 0.0
+    property real controlsOpacity: showControls ? 1.0 : 0.0
 
     signal clicked()
     signal menuClicked()
@@ -41,12 +42,26 @@ Item {
 
     function getActionCallback() {
         return function(action) {
-            if (action.type === "undo" && infoView.state !== "hidden") {
+            if (action.type === "undo" && infoView.state !== "") {
+                map._hideCashpoint()
                 infoView.hide()
                 return false
             }
             return true
         }
+    }
+
+    function isCashpoint(type) {
+        if (type) {
+            if (type === "atm") {
+                return true
+            } else if (type === "office") {
+                return true
+            } else if (type === "cash") {
+                return true
+            }
+        }
+        return false
     }
 
     function cashpointTypePrintable(type) {
@@ -60,7 +75,15 @@ Item {
         return ""
     }
 
-    function currencyTypePrintable(cp) {
+    function bankById(id) {
+        var bankJsonData = bankListModel.getBankData(id)
+
+        if (bankJsonData && bankJsonData.length > 0) {
+            return JSON.parse(bankJsonData)
+        }
+    }
+
+/*    function currencyTypePrintable(cp) {
         var text = ""
         if (cp.rub) {
             text += qsTr("рубли")
@@ -78,13 +101,13 @@ Item {
             text += qsTr("евро")
         }
         return text
-    }
+    }*/
 
     function getVisiableAreaRadius() {
         var radius = 0//locationService.getGeoRegionRadius(map.visibleRegion)
         if (radius <= 10.0) {
-            console.log(map.center)
-            console.log(map.toCoordinate(Qt.point(0.0, 0.0)))
+            //console.log(map.center)
+            //console.log(map.toCoordinate(Qt.point(0.0, 0.0)))
             radius = locationService.getGeoRegionRadiusEstimate(map.center, map.toCoordinate(Qt.point(0.0, 0.0)))
         }
         return radius
@@ -96,6 +119,10 @@ Item {
 
     function getMapZoom() {
         return map.zoomLevel
+    }
+
+    function moveToCoord(coord, zoom) {
+        map.moveToCoord(coord, zoom)
     }
 
     onEnabledChanged: {
@@ -115,7 +142,7 @@ Item {
         updateInterval: 200
         preferredPositioningMethods: PositionSource.AllPositioningMethods
         onPositionChanged: {
-            console.log("position changed")
+            //console.log("position changed")
             map.showMyPos()
             stop()
         }
@@ -124,9 +151,9 @@ Item {
             return map.minimumZoomLevel + (map.maximumZoomLevel - map.minimumZoomLevel) * scale
         }
 
-        onActiveChanged: {
+        /*onActiveChanged: {
             console.log("active changed: " + active.toString())
-        }
+        }*/
 
         function debugPrintSupportedPositioningMethods() {
             if (supportedPositioningMethods == PositionSource.AllPositioningMethods) {
@@ -147,9 +174,9 @@ Item {
 
     EnableLocServiceDialog {
         id: enableLocServiceDialog
-        onVisibilityChanged: {
+        /*onVisibilityChanged: {
             console.log("dialog showed")
-        }
+        }*/
         onRejected: {
             findMeButtonRotationAnim.stop()
             findMeButtonRotationAnimBack.start()
@@ -178,30 +205,67 @@ Item {
         zoomLevel: 13
         maximumZoomLevel: 18.9
 
+        property int currentCashpointId: 0
+
         onParentChanged: {
             var lastPos = JSON.parse(cashpointModel.getLastGeoPos())
             coordLatitude = lastPos.latitude
             coordLongitude = lastPos.longitude
             targetZoomLevel = lastPos.zoom
             _moveToCoord(QtPositioning.coordinate(lastPos.latitude, lastPos.longitude), lastPos.zoom)
+
+            onStartFindMeTimeout.start()
+        }
+
+        Timer {
+            id: onStartFindMeTimeout
+            repeat: false
+            interval: 2000
+
+            onTriggered: map.findMe()
         }
 
         function targetCoord() {
             return QtPositioning.coordinate(coordLatitude, coordLongitude)
         }
 
+        property bool searchOneAtLeast: false
+        Connections {
+            target: cashpointModel
+            onObjectsFetched: {
+                //console.log("objects fetched:", count)
+
+                if (count == 0 && map.searchOneAtLeast) {
+                    // TODO: fetch nearby point and
+                    // zoom out to it
+
+                    var json = {
+                        "filter": { },
+                        "distance": 500, // TODO: distance from options
+                        "longitude": map.coordLatitude,
+                        "latitude": map.coordLatitude,
+                    }
+
+                    /// TODO: send nearest point request
+                }
+            }
+        }
+
         MapItemView {
             model: cashpointModel
             delegate: MapQuickItem {
                 id: item
-                anchorPoint.x: width * 0.5
-                anchorPoint.y: model.cp_type === "cluster" ? height * 0.5 : height
-                height: Math.min(map.width, map.height) * 0.1
-                width: Math.min(map.width, map.height) * 0.1
+                anchorPoint.x: sideSize * 0.5 * (multiplier > 1.0 ? multiplier : 1.0)
+                anchorPoint.y: model.cp_type === "cluster" ? sideSize * 0.5 * (multiplier > 1.0 ? multiplier : 1.0)
+                                                           : sideSize
+                height: sideSize
+                width: sideSize
                 coordinate {
                     longitude: model.cp_coord_lon
                     latitude: model.cp_coord_lat
                 }
+
+                property real sideSize: Math.min(map.width, map.height) * 0.1
 
                 property var pointId: model.cp_id
                 property var pointBankId: model.cp_bank_id
@@ -209,15 +273,69 @@ Item {
                 property var pointName: model.cp_name
                 property var pointAddress: model.cp_address
 
-                sourceItem: Item {
-                        property real cpSizeLen: model.cp_size.toString().length
-                        property real multiplier: model.cp_type === "cluster" ? (cpSizeLen > 3 ? 1.0 + (cpSizeLen - 3) * 0.25 : 1.0) : 1.0
-                        width: item.width * (multiplier > 1.0 ? multiplier : 1.0)
-                        height: item.height * (multiplier > 1.0 ? multiplier : 1.0)
+                property real cpSizeLen: model.cp_size ? model.cp_size.toString().length : 1.0
+                property real multiplier: model.cp_type === "cluster" ? (cpSizeLen > 3 ? 1.0 + (cpSizeLen - 3) * 0.25 : 1.0) : 1.0
 
-                        onMultiplierChanged: {
+                sourceItem: Item {
+                        width: item.width * (item.multiplier > 1.0 ? item.multiplier : 1.0)
+                        height: item.height * (item.multiplier > 1.0 ? item.multiplier : 1.0)
+
+                        /*property bool showTooltip: item.pointId === map.currentCashpointId
+
+                        onShowTooltipChanged: {
+                            item.z = item.z + (showTooltip ? 1 : -1)
+
+                            var sceneCoord = map.fromCoordinate(QtPositioning.coordinate(item.coordinate.latitude,
+                                                                                         item.coordinate.longitude))
+                            console.log("scene coord =", sceneCoord)
+
+                            var preferVertical = 1
+                            var preferHorizontal = 0
+
+                            if (sceneCoord.x < map.width * 0.3) {
+                                preferHorizontal = 1
+                            } else if (sceneCoord.x > map.width * 0.7) {
+                                preferHorizontal = -1
+                            }
+
+                            if (sceneCoord.y < map.height * 0.4) {
+                                preferVertical = -1
+                            }
+
+                            if (preferVertical == 1) {
+                                //toolTip.anchors.bottom = marker.top
+                                if (preferHorizontal == 0) {
+                                    //toolTip.anchors.horizontalCenter = marker.horizontalCenter
+                                    toolTip.state = "top"
+                                } else {
+                                    if (preferHorizontal == 1) {
+                                        //toolTip.anchors.left = marker.right
+                                        toolTip.state = "topRight"
+                                    } else {
+                                        //toolTip.anchors.right = marker.left
+                                        toolTip.state = "topLeft"
+                                    }
+                                }
+                            } else {
+                                //toolTip.anchors.top = marker.bottom
+                                if (preferHorizontal == 0) {
+                                    //toolTip.anchors.horizontalCenter = marker.horizontalCenter
+                                    toolTip.state = "bottom"
+                                } else {
+                                    if (preferHorizontal == 1) {
+                                        //toolTip.anchors.left = marker.right
+                                        toolTip.state = "bottomRight"
+                                    } else {
+                                        //toolTip.anchors.right = marker.left
+                                        toolTip.state = "bottomLeft"
+                                    }
+                                }
+                            }
+                        }*/
+
+                        /*onMultiplierChanged: {
                             console.log(multiplier)
-                        }
+                        }*/
 
                         opacity: topView.active ? 1.0 : 0.0
                         visible: opacity > 0.0
@@ -225,12 +343,148 @@ Item {
                             NumberAnimation { duration: 400 }
                         }
 
+                        /*Rectangle {
+                            id: toolTip
+                            color: "lightgray"
+                            visible: parent.showTooltip
+                            width: Math.min(map.width, map.height) * 0.4
+                            height: width
+
+                            states: [
+                                State {
+                                    name: "top"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.horizontalCenter: marker.horizontalCenter
+                                        anchors.bottom: marker.top
+                                    }
+                                },
+                                State {
+                                    name: "topLeft"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.bottom: marker.top
+                                        anchors.right: marker.left
+                                    }
+                                },
+                                State {
+                                    name: "topRight"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.bottom: marker.top
+                                        anchors.left: marker.right
+                                    }
+                                },
+                                State {
+                                    name: "left"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.verticalCenter: marker.verticalCenter
+                                        anchors.right: marker.left
+                                    }
+                                },
+                                State {
+                                    name: "right"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.verticalCenter: marker.verticalCenter
+                                        anchors.left: marker.right
+                                    }
+                                },
+                                State {
+                                    name: "bottom"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.horizontalCenter: marker.horizontalCenter
+                                        anchors.top: marker.bottom
+                                    }
+                                },
+                                State {
+                                    name: "bottomLeft"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.top: marker.bottom
+                                        anchors.right: marker.left
+                                    }
+                                },
+                                State {
+                                    name: "bottomRight"
+                                    AnchorChanges {
+                                        target: toolTip
+                                        anchors.top: marker.bottom
+                                        anchors.left: marker.right
+                                    }
+                                }
+                            ]
+
+                            transitions: Transition {
+                                from: "*"
+                                to: "*"
+                                AnchorAnimation {
+                                    duration: 300
+                                }
+                            }
+
+                            onVisibleChanged: {
+                                if (visible) {
+                                    toolTipCPType.text = cashpointTypePrintable(item.pointType)
+                                    var bank = bankById(item.pointBankId)
+                                    if (bank) {
+                                        toolTipCPBankName.text = bank.name
+                                    }
+                                }
+                            }
+
+                            //ColumnLayout {
+                                //anchors.margins: parent.width * 0.05
+                                //anchors.fill: parent
+                                Label {
+                                    id: toolTipCPType
+                                    anchors.top: parent.top
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                }
+                                Label {
+                                    id: toolTipCPBankName
+                                    anchors.top: toolTipCPType.bottom
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                }
+                                //Rectangle {
+                                //    Layout.fillHeight: true
+                                //}
+                                Rectangle {
+                                    //Layout.preferredHeight: parent.height * 0.2
+                                    //Layout.minimumWidth: parent.width
+                                    color: mrect.containsMouse ? "blue" : "red"
+                                    anchors.bottom: parent.bottom
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: parent.height * 0.2
+
+                                    MouseArea {
+                                        id: mrect
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onPressed: console.log("pressed")
+                                    }
+                                }
+                            //}
+                        }*/
+
                         Image {
                             id: marker
                             anchors.centerIn: parent
                             sourceSize.width: parent.width
                             sourceSize.height: parent.height
-                            source: model.cp_type === "cluster" ? "image://ico/cluster.svg" : "image://ico/place.svg"
+                            source: model.cp_type === "cluster"
+                                        ? "image://ico/cluster.svg"
+                                        : "image://ico/place" + getPlaceSuffix(model.cp_approved) + ".svg"
+
+                            function getPlaceSuffix(approved) {
+                                return approved ? "" : "_gray"
+                            }
 
                             Text {
                                 visible: model.cp_type === "cluster"
@@ -251,11 +505,39 @@ Item {
                             anchors.bottomMargin: parent.width * 0.36
                             sourceSize.width: parent.width * 0.8
                             sourceSize.height: parent.width * 0.8
-                            source: model.cp_type === "cluster"
+                            source: model.cp_type === "cluster" // TODO: WTF?
                                     ? "image://empty/"
                                     : "image://ico/bank/" + model.cp_bank_id
                         }
-                    }
+
+                        Image {
+                            id: roundTheClockMarker
+                            visible: isCashpoint(model.cp_type) && model.cp_round_the_clock
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            sourceSize.width: parent.width * 0.35
+                            sourceSize.height: parent.width * 0.35
+                            source: "image://ico/round_the_clock.svg"
+                        }
+
+                        Image {
+                            id: limitedAccessMarker
+                            visible: isCashpoint(model.cp_type) && !model.cp_free_access
+                            anchors.top: parent.top
+                            anchors.left: parent.left
+                            sourceSize: roundTheClockMarker.sourceSize
+                            source: "image://ico/limited_access.svg"
+                        }
+
+                        Image {
+                            id: patchCountMarker
+                            visible: isCashpoint(model.cp_type) && model.cp_patch_count > 0
+                            y: (limitedAccessMarker.visible ? parent.height * 0.5 : 0)
+                            anchors.left: parent.left
+                            sourceSize: roundTheClockMarker.sourceSize
+                            source: visible ? "image://ico/event.svg:" + model.cp_patch_count.toString() : ""
+                        }
+                }
             }
         }
 
@@ -278,9 +560,13 @@ Item {
             return deltaX * deltaX + deltaY * deltaY
         }
 
-        function invalidate() {
+        function invalidate(opt) {
             var visiableRadius = getVisiableAreaRadius()
-            console.warn("visiable radius: " + visiableRadius)
+            //console.warn("visiable radius: " + visiableRadius)
+
+            if (opt) {
+                searchOneAtLeast = opt.searchOneAtLeast ? opt.searchOneAtLeast : false
+            }
 
             var type = ""
             var zoom = targetZoomLevel
@@ -311,8 +597,12 @@ Item {
             }
 
             if (searchLineEdit.searchCandidate) {
-                console.log("searchCandidate: " + JSON.stringify(searchLineEdit.searchCandidate))
+                //console.log("searchCandidate: " + JSON.stringify(searchLineEdit.searchCandidate))
                 json.filter = searchLineEdit.searchCandidate.filter ? searchLineEdit.searchCandidate.filter : {}
+                if (!json.filter.bank_id) {
+                    var bankIdList = JSON.parse(searchEngine.getMineBanksFilter()).bank_id
+                    json.filter.bank_id = bankIdList
+                }
             } else {
                 var filterJson = searchEngine.getMineBanksFilter()
                 json.filter = JSON.parse(filterJson)
@@ -327,7 +617,11 @@ Item {
                 }
             }
 
-            cashpointModel.setFilter(JSON.stringify(json))
+            if (searchEngine.showOnlyApprovedPoints) {
+                json.filter["approved"] = true
+            }
+
+            cashpointModel.setFilter(JSON.stringify(json), JSON.stringify({}))
         }
 
         function mapItemsAtScenePos(x, y) {
@@ -359,7 +653,8 @@ Item {
                                     "bank": mapItems[i].pointBankId,
                                     "name": mapItems[i].pointName,
                                     "address": mapItems[i].pointAddress,
-                                    "radiusSqr": itemHalfH * itemHalfH + itemHalfW * itemHalfW
+                                    "radiusSqr": itemHalfH * itemHalfH + itemHalfW * itemHalfW,
+                                    "item": mapItems[i].sourceItem
                                 })
                 }
             }
@@ -373,6 +668,7 @@ Item {
         gesture.flickDeceleration: 3000
         gesture.enabled: false
         gesture.activeGestures: MapGestureArea.FlickGesture | MapGestureArea.PanGesture
+        //gesture.activeGestures: MapGestureArea.NoGesture
 
         property bool zooming: false
 
@@ -421,7 +717,7 @@ Item {
                     map._moveToCoord(act.coord, Math.max(map.zoomLevel, cashpointZoom))
                     map._addCashpoint(act.coord)
                     //infoTabView.page = 0
-                    infoView.show()
+                    infoView.show({ createCashpoint: true })
                     return true
                 },
                 "undo": function(act) {
@@ -461,15 +757,21 @@ Item {
                 coord = map.toCoordinate(Qt.point(width * 0.5, height * 0.5))
             }
 
-            console.log("Coordinate:", coord.latitude, coord.longitude);
+            //console.log("Coordinate:", coord.latitude, coord.longitude);
             map.coordLatitude = coord.latitude
             map.coordLongitude = coord.longitude
+
+            if (map.mark && map.mark.visible) {
+                map.mark.coordinate = coord
+            }
+
             if (zoom) {
                 if (round) {
                     zoom = Math.round(zoom)
                 }
                 map.targetZoomLevel = clamp(zoom, minimumZoomLevel, maximumZoomLevel)
             }
+
             if (mapMoveAnim.running) {
                 mapMoveAnim.stop();
             }
@@ -502,14 +804,12 @@ Item {
         function findMe() {
             if (!locationService.enabled) {
                 enableLocServiceDialog.open()
-                console.log("here")
                 return false
             }
 
             positionSource.stop();
             var showed = showMyPos()
             positionSource.start()
-            console.log(showed)
             return showed
         }
 
@@ -545,15 +845,15 @@ Item {
 
             onPinchStarted: {
                 if (topView.active) {
-                    console.log("pinch started")
+                    //console.log("pinch started")
                     oldZoom = map.zoomLevel                    
                 }
             }
 
             onPinchUpdated: {
                 if (topView.active) {
-                    console.log("pinch")
-                    console.log("scale: " + pinch.scale)
+                    //console.log("pinch")
+                    //console.log("scale: " + pinch.scale)
                     map.zoomLevel = oldZoom + Math.log(pinch.scale) / Math.log(2)
                     addPointTimer.stop()
                 }
@@ -578,7 +878,7 @@ Item {
                     onTriggered: {
                         var panDistanceThresholdSqr = mapMouseArea.panDistanceThreshold * mapMouseArea.panDistanceThreshold
                         if (mapMouseArea.totalPanDistanceSqr < panDistanceThresholdSqr) {
-                            console.log("ADD!")
+                            //console.log("ADD!")
                             if (!topView.active) {
                                 return
                             }
@@ -597,9 +897,8 @@ Item {
                 }
 
                 onPressed: {
-                    //searchSuggestionsView.visible = false
                     searchLineEdit.focus = false
-                    searchEngine.setFilter("")
+                    searchEngine.setFilter("", JSON.stringify({}))
 
                     map.panLastX = mouseX
                     map.panLastY = mouseY
@@ -635,14 +934,8 @@ Item {
                         return a.dist - b.dist
                     })
 
-                    //for (var i = 0; i < items.length; i++) {
-                    //    console.log(JSON.stringify(items[i]))
-                    //}
-
                     if (items.length > 0) {
                         var data = items[0]
-
-                        console.log(JSON.stringify(data))
 
                         if (data.type === "cluster" && data.dist < data.radiusSqr) {
                             var minSideLen = Math.min(map.width, map.height)
@@ -666,7 +959,6 @@ Item {
                 }
 
                 onPositionChanged: {
-                    //console.log("pos changed")
                     if (!topView.active) {
                         return
                     }
@@ -677,13 +969,17 @@ Item {
                     if (!mapMoveAnim.running) {
                         var coord = map.toCoordinate(Qt.point(width / 2 - deltaX, height / 2 - deltaY))
 
-                        if (map.mark && map.visibleRegion) {
+                        if (map.mark && map.visibleRegion && map.mark.visible) {
                             if (!map.visibleRegion.contains(map.mark.coordinate)) {
                                 map.mark.visible = false
+                                infoView.hide()
                             }
                         }
 
                         map.center = coord
+                        if (map.mark && map.mark.visible) {
+                            map.mark.coordinate = coord
+                        }
                         map.coordLongitude = coord.longitude
                         map.coordLatitude = coord.latitude
                     } else {
@@ -704,24 +1000,20 @@ Item {
                         var currentCoord = QtPositioning.coordinate(map.coordLatitude, map.coordLongitude)
                         map.moveToCoord(currentCoord, map.zoomLevel, panStartCoord, false)
                     } else {
-                        console.log(mouseX, mouseY)
+                        //console.log(mouseX, mouseY)
                         var coord = map.toCoordinate(Qt.point(mouseX, mouseY))
-                        console.log(coord.latitude + " " + coord.longitude)
+                        //console.log(coord.latitude + " " + coord.longitude)
 
                         var items = map.mapItemsAtScenePos(mouseX, mouseY)
                         items.sort(function(a, b) {
                             return a.dist - b.dist
                         })
 
-                        //for (var i = 0; i < items.length; i++) {
-                        //    console.log(JSON.stringify(items[i]))
-                        //}
-
                         if (items.length > 0) {
                             var data = items[0]
-                            console.log(JSON.stringify(data))
 
-                            if (data.type !== "cluster") {
+                            if (data.id && data.type !== "cluster") {
+                                map.currentCashpointId = data.id
                                 var act = {
                                     //"prevPage": infoTabView.page,
                                     "prevData": infoView.data,
@@ -730,6 +1022,7 @@ Item {
                                     "do": function(act) {
                                         infoView.setInfoData(act.data)
                                         infoView.show()
+                                        map._hideCashpoint()
                                         //infoTabView.page = 1
                                         return true
                                     },
@@ -745,15 +1038,8 @@ Item {
 
                                 action(act)
 
-//                                if (items[0].bank) {
-//                                    var bankJsonData = bankListModel.getBankData(items[0].bank)
-//                                    if (bankJsonData !== "") {
-//                                        var bank = JSON.parse(bankJsonData)
-//                                        text += bank.name
-//                                    }
-//                                }
-
-//                                addToMapText.text = text
+                            } else {
+                                map.currentCashpointId = 0
                             }
                         }
                     }
@@ -776,7 +1062,7 @@ Item {
             width: height
 
             visible: opacity > 0
-            opacity: topView.contolsOpacity
+            opacity: topView.controlsOpacity
             Behavior on opacity {
                 NumberAnimation {
                     duration: 300
@@ -810,7 +1096,7 @@ Item {
             width: height
 
             visible: opacity > 0
-            opacity: topView.contolsOpacity
+            opacity: topView.controlsOpacity
             Behavior on opacity {
                 NumberAnimation {
                     duration: 300
@@ -867,8 +1153,42 @@ Item {
             }
 
             onActiveChanged: {
+                if (active) {
+                    var banks = bankListModel.getMineBanks()
+                    if (banks.length == 0) {
+                        noMineBanksDialog.visible = true
+                        return
+                    }
+                }
                 searchEngine.showOnlyMineBanks = active
                 map.invalidate()
+            }
+
+            MessageDialog {
+                id: noMineBanksDialog
+                title: qsTr("Мои банки")
+                text: qsTr("Не выбран ни один \"Мой банк\". Выбрать?")
+                standardButtons: StandardButton.Yes | StandardButton.No
+                onYes: {
+                    topView.action({
+                                       "type": "openView",
+                                       "mode": "stack",
+                                       "path": "BanksList.qml",
+                                       "onClose": function(act) {
+                                           var banks = bankListModel.getMineBanks()
+                                           if (banks.length == 0) {
+                                               showMineBanks.active = false
+                                               return
+                                           }
+
+                                           searchEngine.showOnlyMineBanks = active
+                                           map.invalidate()
+                                       }
+                                   })
+                }
+                onNo: {
+                    showMineBanks.active = false
+                }
             }
         }
 
@@ -885,7 +1205,7 @@ Item {
             width: height
 
             visible: opacity > 0
-            opacity: topView.contolsOpacity
+            opacity: topView.controlsOpacity
             Behavior on opacity {
                 NumberAnimation {
                     duration: 300
@@ -952,6 +1272,7 @@ Item {
 
     Rectangle {
         id: searchLineEditContainer
+        opacity: controlsOpacity
 
         z: parent.z + 2
 
@@ -1009,15 +1330,16 @@ Item {
                     text = userText
                     color = "black"
                     isUserTextShowed = true
-                    searchEngine.setFilter(userText)
+                    searchEngine.setFilter(userText, JSON.stringify({ "extendedSearchEnabled": true }))
                 } else {
                     userText = text
                     if (userText == "") {
                         text = placeHolderText
                         color = "lightgray"
                         isUserTextShowed = false
+                        setSearchCandidate()
                     }
-                    searchEngine.setFilter("")
+                    searchEngine.setFilter("", JSON.stringify({}))
                 }
             }
 
@@ -1027,7 +1349,11 @@ Item {
 
             property var searchCandidate: null
             function setSearchCandidate(candidate) {
-                console.log("searchCandidate: " + JSON.stringify(candidate))
+                //console.log("searchCandidate: " + JSON.stringify(candidate))
+                if (!searchCandidate && !candidate) {
+                    return
+                }
+
                 searchCandidate = candidate
 //                if (candidate.filter) {
 //                    searchEngine.filterPatch = JSON.stringify(candidate.filter)
@@ -1056,8 +1382,35 @@ Item {
                 var candidateJson = searchEngine.getCandidate()
                 if (candidateJson !== "") {
                     var candidate = JSON.parse(candidateJson)
-                    if (candidate) {
+                    if (candidate && candidate.id) {
                         setSearchCandidate(candidate)
+                    } else if (candidate.type === "ext") {
+                        //console.log("extended search requested!")
+                        if (topView.active) {
+                            topView.action({
+                                               "type": "openView",
+                                               "mode": "stack",
+                                               "path": "ExtendedSearchView.qml",
+                                               "actionCallback": function(act) {
+                                                   if (act.type === "filter") {
+                                                       searchLineEdit.searchCandidate = {
+                                                           "filter": act.filter
+                                                       }
+                                                       searchLineEdit.userText = qsTr("Расширенный поиск")
+                                                       searchLineEdit.focus = true
+                                                       map.invalidate()
+                                                   } else {
+                                                       handleAction(act, {})
+                                                   }
+                                               }
+                                           })
+                        }
+                    } else if (candidate.type === "create") {
+                        map.addCashpoint(map.center)
+                    } else if (candidate.type === "filter") {
+                        setSearchCandidate(candidate)
+                    } else {
+                        console.warn("Unsupported search candidate type")
                     }
                 }
                 focus = false
@@ -1071,12 +1424,13 @@ Item {
             }
 
             onDisplayTextChanged: {
-                if (displayText === "" || displayText === placeHolderText) {
-                    searchEngine.setFilter("")
+                if (displayText === placeHolderText) {
+                    searchEngine.setFilter("", JSON.stringify({}))
                 } else {
-                    console.log("text changed")
-                    searchEngine.setFilter(displayText)
+                    searchEngine.setFilter(displayText, JSON.stringify({ "extendedSearchEnabled": true }))
                 }
+
+                //var filter = displayText === placeHolderText ? "" : displayText
             }
         } // TextInput
 
@@ -1129,7 +1483,7 @@ Item {
             MouseArea {
                 anchors.fill: parent
                 onClicked: {
-                    console.log("menu clicked")
+                    //console.log("menu clicked")
                     topView.menuClicked()
                 }
             }
@@ -1261,6 +1615,7 @@ Item {
     }
 
     RectangularGlow {
+        opacity: controlsOpacity
         z: searchLineEditContainer.z - 1
         anchors.fill: searchLineEditContainer
         glowRadius: searchLineEditContainer.height / 5
@@ -1297,14 +1652,42 @@ Item {
         y: parent.height
         height: previewHeight
 
+        property var pointId: null
+
         states: [
             State {
-                name: "hidden"
+                name: ""
             },
             State {
                 name: "fullscreen"
+            },
+            State {
+                name: "createCashpoint"
             }
         ]
+
+        /*transitions: [
+            Transition {
+                from: "*"
+                to: "fullscreen"
+                NumberAnimation {
+                    duration: 0
+                    onStarted: {
+                        mapView.active = false
+                    }
+                }
+            },
+            Transition {
+                from: "fullscreen"
+                to: "*"
+                NumberAnimation {
+                    duration: 0
+                    onStarted: {
+                        mapView.active = true
+                    }
+                }
+            }
+        ]*/
 
         ParallelAnimation {
             id: infoViewAnim
@@ -1312,14 +1695,14 @@ Item {
             property real targetHeight: 0
             running: false
             NumberAnimation {
-                easing: Easing.InOutCubic
+                easing.type: Easing.InOutCubic
                 duration: 200
                 target: infoView
                 property: "y"
                 to: infoViewAnim.targetY
             }
             NumberAnimation {
-                easing: Easing.InOutCubic
+                easing.type: Easing.InOutCubic
                 duration: 200
                 target: infoView
                 property: "height"
@@ -1327,67 +1710,247 @@ Item {
             }
         }
 
-        property real previewHeight: parent.height * 0.2
+        property real previewHeight: parent.height * 0.15
 
         function setInfoData(d) {
-            var text = cashpointTypePrintable(d.type)
-            var bankJsonData = bankListModel.getBankData(d.bank)
-            if (bankJsonData) {
-                var bank = JSON.parse(bankJsonData)
-                text += " " + bank.name
+            pointInfo.text = cashpointTypePrintable(d.type)
+
+            var bank = bankById(d.bank)
+            if (!bank) {
+                console.warn("cannot get bank by id:", d.bank)
+                return
             }
 
-            pointInfo.text = text
+            var ownerText = bank.name
+
+            if (ownerText.length > 0) {
+                ownerText += ", "
+            }
+            ownerText += d.address
+            pointOwnerInfo.text = ownerText
 
             var cashpointJsonData = cashpointModel.getCashpointById(d.id)
-            console.log(cashpointJsonData)
+            //console.log(cashpointJsonData)
             if (cashpointJsonData) {
                 var cp = JSON.parse(cashpointJsonData)
-                pointSchedule.text = cp.schedule
+                if (cp.id) {
+                    pointId = cp.id
+                } else {
+                    pointId = null
+                }
+
+                pointSchedule.text = ""
             }
 
-            pointCurrencyType.text = currencyTypePrintable(cp)
+            var currencyList = []
+            if (cp.rub) { currencyList.push(643) }
+            if (cp.usd) { currencyList.push(840) }
+            if (cp.eur) { currencyList.push(978) }
+
+            pointCurrency.setCurrency(currencyList)
+
+            //pointCurrencyType.text = currencyTypePrintable(cp)
         }
 
-        function show() {
+        function show(opt) {
+            console.warn("show!")
+            if (!opt) {
+                //console.warn("no opt!")
+                opt = {
+                    createCashpoint: false,
+                }
+            }
+
             infoViewAnim.targetY = parent.height - previewHeight
             infoViewAnim.targetHeight = previewHeight
             infoViewAnim.start()
-            state = ""
+
+            if (opt.createCashpoint) {
+                state = "createCashpoint"
+            } else {
+                state = ""
+            }
+
+            showControls = true
         }
 
-        function showFullscreen() {
-            infoViewAnim.targetY = 0.0
-            infoViewAnim.targetHeight = topView.height
+        function showFullscreen(opt) {
+            //infoViewAnim.targetY = 0.0
+            //infoViewAnim.targetHeight = topView.height
+            infoViewAnim.targetY = topView.height
+            infoViewAnim.targetHeight = previewHeight
             infoViewAnim.start()
             state = "fullscreen"
+
+//            cashpointView.setCashpointData(opt)
+            showControls = true
+
+            topView.action({
+                               "type": "openView",
+                               "path": "CashpointView.qml",
+                               "data": opt,
+                               "actionCallback": function(act) {
+                                   topView.action(act)
+                               }
+                           })
+            map._hideCashpoint()
         }
 
         function hide() {
             infoViewAnim.targetY = topView.height
             infoViewAnim.targetHeight = previewHeight
             infoViewAnim.start()
-            state = "hidden"
+            state = ""
+
+            showControls = true
         }
 
-        Column {
+        /*CashpointView {
+            id: cashpointView
             anchors.fill: parent
+            visible: parent.state === "fullscreen"
+
+            onAction: {
+                topView.action(act)
+            }
+
+            onFinished: {
+                map.invalidate()
+                map._hideCashpoint()
+                infoView.hide()
+            }
+        }*/
+
+        Rectangle {
+            anchors.fill: parent
+            visible: parent.state === "createCashpoint"
+
+            Button {
+                anchors.fill: parent
+                anchors.margins: parent.height * 0.05
+                text: qsTr("Добавить банкомат / отделение")
+
+                onClicked: {
+                    infoView.showFullscreen({
+                                                "action": "create",
+                                                "data": {
+                                                    "longitude": map.mark.coordinate.longitude,
+                                                    "latitude": map.mark.coordinate.latitude,
+                                                }
+                                            })
+                }
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            visible: parent.state === ""
 
             Label {
                 id: pointInfo
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.margins: parent.height * 0.05
+            }
+
+            Label {
+                id: pointCurrency
+                anchors.margins: parent.width * 0.05
+                anchors.top: pointStateLabel.top
+                anchors.right: pointState.left
+
+                function setCurrency(currency) {
+                    var currChars = []
+                    currency.sort()
+                    for (var i = 0; i < currency.length; i++) {
+                        switch (currency[i]) {
+                        case 643: currChars.push('р'); break
+                        case 840: currChars.push('$'); break
+                        case 978: currChars.push('€'); break
+                        }
+                    }
+                    text = currChars.join(' ')
+                }
+            }
+
+            Rectangle {
+                id: pointState
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: parent.height * 0.05
+
+                radius: height * 0.25
+
+                color: "lightgray"
+
+                width: parent.width * 0.35
+                height: pointInfo.height
+
+                states: [
+                    State {
+                        name: "open"
+                        PropertyChanges {
+                            target: pointState
+                            color: "lightgreen"
+                        }
+                        PropertyChanges {
+                            target: pointStateLabel
+                            text: qsTr("открыто")
+                        }
+                    }
+                ]
+
+                Label {
+                    id: pointStateLabel
+                    anchors.centerIn: parent
+                    text: qsTr("закрыто")
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        parent.state = parent.state == "" ? "open" : ""
+                    }
+                }
+            }
+
+            Label {
+                id: pointOwnerInfo
+                anchors.top: pointInfo.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: pointInfo.anchors.margins
+                elide: Text.ElideMiddle
             }
 
             Label {
                 id: pointSchedule
+                anchors.top: pointOwnerInfo.bottom
+                anchors.left: parent.left
+                anchors.margins: pointInfo.anchors.margins
             }
 
-            Row {
-                Label {
-                    text: qsTr("Валюта:")
-                }
-
-                Label {
-                    id: pointCurrencyType
+            Button {
+                id: pointMoreInfo
+                text: qsTr("Подробнее")
+                anchors.top: pointOwnerInfo.bottom
+                anchors.left: pointSchedule.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: pointInfo.anchors.margins
+                onClicked: {
+                    var cpJsonData = cashpointModel.getCashpointById(infoView.pointId)
+                    if (cpJsonData) {
+                        var cp = JSON.parse(cpJsonData)
+                        if (cp) {
+                            infoView.showFullscreen({
+                                                        "action": "view",
+                                                        "data": cp
+                                                    })
+                        } else {
+                            // TODO: error
+                        }
+                    }
                 }
             }
         }

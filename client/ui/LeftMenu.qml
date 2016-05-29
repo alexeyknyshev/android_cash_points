@@ -1,17 +1,8 @@
 import QtQuick 2.3
 import QtQuick.Controls 1.2
-
-//ApplicationWindow {
-//    visible: true
-//    height: 800
-//    width: 600
+import QtQuick.Window 2.2
 
 Rectangle {
-    SystemPalette {
-        id: sysPalette
-        colorGroup: SystemPalette.Active
-    }
-
     property bool hidden: false
 
     states: State {
@@ -47,7 +38,6 @@ Rectangle {
             }
             onRunningChanged: {
                 if (running) {
-//                    console.log("I'm here")
                     visible = true
                 }
             }
@@ -56,40 +46,99 @@ Rectangle {
 
     id: topItem
 
-    color: sysPalette.window
-
     property bool isAboutToHide: false
 
-    signal itemClicked(string itemName)
+    signal action(var act)
 
     MultiPointTouchArea {
         anchors.fill: parent
 
-//        onPositionChanged: {
-//            console.log("moved 1")
-//        }
+        Image {
+            id: userAccountView
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: parent.height * 0.25
 
-        onGestureStarted: {
-            console.log("gesture started")
-            console.log(gesture.toString())
-        }
-
-        onTouchUpdated: {
-            if (touchPoints.length === 0)
-                return
-
-            console.log("touch upd")
-
-            console.log(touchPoints[0].velocity)
-            if (touchPoints[0].velocity.length() > parent.width * 0.3) {
-                console.log("hide!")
+            Image {
+                id: userAccountImage
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.margins: parent.height * 0.15
+                width: parent.height * 0.5
+                height: width
+                source: "image://ico/user.svg"
+                sourceSize: Qt.size(width, height)
             }
 
-            for (var i = 0; i < touchPoints.length; i++) {
-//                console.log("point " + i + ": " + touchPoints[i].x + " " + touchPoints[i].y)
+            Rectangle {
+                anchors.top: userAccountImage.bottom
+                anchors.topMargin: parent.height * 0.15
+                anchors.left: parent.left
+                anchors.leftMargin: parent.height * 0.1
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                anchors.rightMargin: parent.height * 0.1
+
+                color: "#427FED"
+                radius: height * 0.1
+
+                scale: googleLoginMA.pressed ? 0.99 : 1
+
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 100
+                    }
+                }
+
+                Image {
+                    id: googleIco
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    anchors.topMargin: parent.height * 0.1
+                    anchors.bottomMargin: parent.height * 0.1
+
+                    width: height
+
+                    sourceSize: Qt.size(width, height)
+                    source: "image://ico/google.svg"
+                }
+
+                Rectangle {
+                    id: separator
+                    color: "white"
+                    width: 1
+                    anchors.left: googleIco.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                }
+
+                Label {
+                    anchors.left: googleIco.right
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+
+                    verticalAlignment: Qt.AlignVCenter
+                    horizontalAlignment: Qt.AlignHCenter
+
+                    text: qsTr("Вход Google")
+                    color: "white"
+                }
+
+                MouseArea {
+                    id: googleLoginMA
+                    anchors.fill: parent
+
+                    onClicked: {
+                        googleApi.dial()
+                    }
+                }
             }
         }
 
+/*
         Rectangle {
             id: userAccountView
             anchors.top: parent.top
@@ -159,7 +208,7 @@ Rectangle {
                 }
             }
         }
-
+*/
         ListModel {
             id: menuModel
 
@@ -167,38 +216,38 @@ Rectangle {
                 name: "bankSelectionItem"
                 text: qsTr("Мои банки")
                 ico: "../icon/bank.svg"
-                property string qmlfile: "BanksList.qml"
+                qmlfile: "BanksList.qml"
             }
             ListElement {
                 name: "townSelectionItem"
-                text: qsTr("Мои города")
+                text: qsTr("Города")
                 ico: "../icon/town.svg"
-                property string qmlfile: "TownList.qml"
+                qmlfile: "TownList.qml"
             }
             ListElement {
                 name: "settingsSelectionItem"
                 text: qsTr("Настройки")
                 ico: "../icon/settings.svg"
-                property string qmlfile: ""
+                qmlfile: ""
             }
             ListElement {
                 name: "helpSelectonItem"
                 text: qsTr("Помощь")
                 ico: "../icon/info.svg"
-                property string qmlfile: ""
+                qmlfile: ""
             }
             ListElement {
                 name: "feedbackSelectionItem"
                 text: qsTr("Оставить отзыв")
                 ico: "../icon/like.svg"
-                property string qmlfile: ""
+                qmlfile: ""
             }
             ListElement {
                 name: "bugreportSelectionItem"
                 text: qsTr("Сообщить об ошибке")
                 ico: "../icon/bug.svg"
-                property string qmlfile: ""
-                property string url: "https://github.com/alexeyknyshev/android_cash_points/issues/new"
+                qmlfile: ""
+                url: "https://github.com/alexeyknyshev/android_cash_points/issues/new"
             }
         }
 
@@ -215,7 +264,7 @@ Rectangle {
                 delegate: Rectangle {
                     z: parent.z + 1
                     id: itemContatiner
-                    height: menu.height * 0.2
+                    height: menu.height * (Screen.primaryOrientation == Screen.orientation ? 0.125 : 0.2)
                     width: parent.width
 
                     color: "white"
@@ -223,21 +272,17 @@ Rectangle {
                     Image {
                         id: itemImageView
                         anchors.top: parent.top
-                        anchors.topMargin: itemContatiner.height * 0.25
+                        anchors.topMargin: itemContatiner.height * 0.3
                         anchors.left: parent.left
-                        anchors.rightMargin: anchors.topMargin
-    //                    anchors.left: parent.left
+                        anchors.rightMargin: anchors.topMargin * 2
                         anchors.leftMargin: anchors.topMargin
                         anchors.bottom: parent.bottom
                         anchors.bottomMargin: anchors.topMargin
-                        fillMode: Image.PreserveAspectFit
-                        mipmap: true
+                        //fillMode: Image.PreserveAspectFit
 
-    //                    height: itemTextView.contentHeight
-
-
-                        source: model.ico
                         width: height
+                        source: model.ico
+                        sourceSize: Qt.size(width, height)
                     }
 
                     Label {
@@ -280,8 +325,31 @@ Rectangle {
                             }
                         }
                         onClicked: {
-                            topItem.itemClicked(model.qmlfile)
                             if (model.qmlfile && model.qmlfile.length > 0) {
+                                var act = {
+                                    "type": "openView",
+                                    "path": model.qmlfile
+                                }
+                                if (model.name === "townSelectionItem") {
+                                    act["callback"] = function(t) {
+                                        var townData = townListModel.getTownData(t.id)
+                                        var town = JSON.parse(townData)
+                                        if (town.id) {
+                                            topItem.action({ "type": "undo" })
+                                            topItem.action({
+                                                               "type": "moveToCoord",
+                                                               "coord": {
+                                                                   "latitude": town.latitude,
+                                                                   "longitude": town.longitude
+                                                               },
+                                                               "zoom": town.zoom
+                                                           })
+                                            topItem.state = "hidden"
+                                        }
+                                    }
+                                }
+
+                                topItem.action(act)
                                 console.log(model.name + " clicked: loading " + model.qmlfile)
                             } else if (model.url && model.url.length > 0) {
                                 feedbackService.openUrl(model.url)
@@ -291,7 +359,6 @@ Rectangle {
                 }
             }
         }
-
     }
 }
 

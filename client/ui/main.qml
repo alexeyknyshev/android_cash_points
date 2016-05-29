@@ -2,7 +2,6 @@ import QtQuick 2.4
 import QtQuick.Controls 1.3
 import QtQuick.Window 2.2
 import QtQuick.Dialogs 1.2
-import QtGraphicalEffects 1.0
 import QtQml 2.2
 
 import "viewloadercreator.js" as ViewLoaderCreator
@@ -39,6 +38,8 @@ ApplicationWindow {
         "total": 0,
     }
 
+    property var mainView
+
     signal serverDataReceived(bool ok, string data)
     onServerDataReceived: {
         var text = ""
@@ -51,7 +52,17 @@ ApplicationWindow {
             }
 
             if (banksReceived && townsReceived) {
-                flipable.flipped = true
+                handleAction({
+                                 "type": "openView",
+                                 "mode": "replace",
+                                 "path": "MainView.qml",
+                                 "actionCallback": function(act) {
+                                     handleAction(act, {})
+                                 },
+                                 "initCallback": function(view) {
+                                     mainView = view
+                                 }
+                             })
             }
 
             /*if (data === "towns") {
@@ -108,28 +119,30 @@ ApplicationWindow {
         var text = ""
         if (banksProgress.done > 0) {
             var bpercent = banksProgress.done / banksProgress.total
-            text += "Банки: " + Math.round(bpercent.toString() * 100) + "%\n"
+            text += qsTr("Банки") + ": " + Math.round(bpercent.toString() * 100) + "%\n"
         }
         if (townsProgress.done > 0) {
             var tpercent = townsProgress.done / townsProgress.total
-            text += "Города: " + Math.round(tpercent.toString() * 100) + "%\n"
+            text += qsTr("Города") + ": " + Math.round(tpercent.toString() * 100) + "%\n"
         }
         if (text.length > 0) {
             text = qsTr("Загрузка\n") + text
         } else {
-            text = qsTr("Подготовка")
+            textпить = qsTr("Подготовка")
         }
         progress.setTextInfo(text)
     }
 
     function saveLastGeoPos() {
-        var pos = mapView.getMapCenter()
-        var zoom = mapView.getMapZoom()
-        cashpointModel.saveLastGeoPos(JSON.stringify({
-                                          "longitude": pos.longitude,
-                                          "latitude": pos.latitude,
-                                          "zoom": zoom,
-                                      }))
+        if (mainView) {
+            var pos = mainView.getMapCenter()
+            var zoom = mainView.getMapZoom()
+            cashpointModel.saveLastGeoPos(JSON.stringify({
+                                              "longitude": pos.longitude,
+                                              "latitude": pos.latitude,
+                                              "zoom": zoom,
+                                          }))
+        }
     }
 
     signal appStateChanged(int state)
@@ -147,14 +160,55 @@ ApplicationWindow {
 
     property var actions: []
 
-    function handleAction(action, blockSaving) {
+    function handleAction(action, opt) {
         if (!action) {
             return true
         }
 
-        if (actionCallback) {
+        if (!opt) {
+            opt = {}
+        }
+
+        /*if (actionCallback) {
             var ok = actionCallback(action)
             if (!ok) {
+                return true
+            }
+        }*/
+
+        if (action.type === "openView") {
+            if (!action.mode) {
+                action.mode = "push"
+            }
+
+            action.do = function(act) {
+                if (action.path) {
+                    ViewLoaderCreator.newLoader(function(object) {
+                        action.object = object
+                        object.setView(action.path, action)
+
+                        var opt = { "item": object }
+                        if (action.mode === "replace") {
+                            opt.replace = true
+                        }
+                        mainStack.push(opt)
+                    }, action)
+                }
+                return true
+            }
+            action.undo = function(act) {
+                if (action.onClose) {
+                    action.onClose()
+                }
+
+                if (action.object) {
+                    if (mainStack.depth > 1) {
+                        var object = mainStack.pop()
+                        if (object) {
+                            object.setView("")
+                        }
+                    }
+                }
                 return true
             }
         }
@@ -168,7 +222,7 @@ ApplicationWindow {
             return lastAction.undo(lastAction)
         } else {
             var saveAction = action.do(action)
-            if (saveAction && !blockSaving) {
+            if (saveAction && !opt.blockSaving) {
                 if (actions.length > 32) {
                     actions.shift()
                 }
@@ -201,11 +255,48 @@ ApplicationWindow {
         }
     }
 
-    Flipable {
-        id: flipable
+    StackView {
+        id: mainStack
         anchors.fill: parent
 
-        Keys.onEscapePressed: {
+        delegate: StackViewDelegate {
+            function transitionFinished(properties)
+            {
+                properties.exitItem.opacity = 1
+            }
+
+            pushTransition: StackViewTransition {
+                PropertyAnimation {
+                    duration: 800
+                    target: enterItem
+                    property: "opacity"
+                    easing.type: Easing.InQuad
+                    from: 0
+                    to: 1
+                }
+                /*PropertyAnimation {
+                    duration: 800
+                    target: exitItem
+                    property: "opacity"
+                    easing.type: Easing.OutQuad
+                    from: 1
+                    to: 0
+                }*/
+            }
+
+            popTransition: StackViewTransition {
+                PropertyAnimation {
+                    duration: 800
+                    target: exitItem
+                    property: "opacity"
+                    easing.type: Easing.OutQuad
+                    from: 1
+                    to: 0
+                }
+            }
+        }
+
+        /*Keys.onEscapePressed: {
             if (flipped) {
                 flipped = !flipped
             }
@@ -223,9 +314,9 @@ ApplicationWindow {
                                  }, true)
                 }
             }
-        }
+        }*/
 
-        property bool flipped: false
+        /*property bool flipped: false
         states: State
                 {
                     name: "back"
@@ -254,12 +345,12 @@ ApplicationWindow {
                         axis.x: 0; axis.y: 1; axis.z: 0     // set axis.y to 1 to rotate around y-axis
                         angle: 0    // the default angle
                      }
-                   ]
+                   ]*/
 
 
-        front:
-        Item {
-            enabled: !parent.flipped
+        //front:
+        initialItem: Item {
+            //enabled: !parent.flipped
             anchors.fill: parent
 
             Image {
@@ -362,10 +453,6 @@ ApplicationWindow {
                 font.pixelSize: 24
                 color: "gray"
 
-//                value: 0.8
-
-//                property int dotCount: 0
-
                 Behavior on opacity {
                     NumberAnimation {
                         duration: 1000
@@ -424,99 +511,91 @@ ApplicationWindow {
                 }
             }
         }
-        back:
-        MapView {
-            id: mapView
-            enabled: parent.flipped
-            anchors.fill: parent
-            showControls: leftMenu.state == "hidden"
-            active: !leftMenu.visible
 
-            onAction: {
-                handleAction(action)
-            }
+        /*
+            MapView {
+                id: mapView
+                enabled: parent.flipped
+                anchors.fill: parent
+                showControls: leftMenu.state == "hidden"
+                active: !leftMenu.visible
 
-            onParentChanged: {
-                appWindow.actionCallback = getActionCallback()
-            }
+                onAction: {
+                    handleAction(action)
+                }
 
-            LeftMenu {
-                id: leftMenu
-                x: 0
-                z: mapView.z + 10
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: parent.width * 0.6
+                onParentChanged: {
+                    appWindow.actionCallback = getActionCallback()
+                }
 
-                onItemClicked: {
-                    if (itemName && itemName.length > 0) {
-                        handleAction({
-                                         "type": "openView",
-                                         "do": function(act) {
-                                             ViewLoaderCreator.createViewLoader(function(loader) {
-                                                 loader.setView(itemName)
-                                             })
-                                             flipable.flipped = !flipable.flipped
-                                             return true
-                                         },
-                                         "undo": function(act) {
-                                             flipable.flipped = !flipable.flipped
-                                             return true
-                                         }
-                                     })
+                LeftMenu {
+                    id: leftMenu
+                    x: 0
+                    z: mapView.z + 10
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: parent.width * 0.6
+
+                    onItemClicked: {
+                        if (itemName && itemName.length > 0) {
+                            handleAction({
+                                             "type": "openView",
+                                             "name": itemName,
+                                         })
+                        }
                     }
                 }
-            }
 
-            RectangularGlow {
-                id: leftMenuGlow
-                visible: leftMenu.visible
-                anchors.fill: leftMenu
-                z: leftMenu.z - 1
-                glowRadius: leftMenu.height / 10
-                spread: 0.1
-                color: "#0000000FF"
-                cornerRadius: glowRadius
-                opacity: (leftMenu.x + leftMenu.width) / (mapView.width * 0.6)
-            }
+                RectangularGlow {
+                    id: leftMenuGlow
+                    visible: leftMenu.visible
+                    anchors.fill: leftMenu
+                    z: leftMenu.z - 1
+                    glowRadius: leftMenu.height / 10
+                    spread: 0.1
+                    color: "#0000000FF"
+                    cornerRadius: glowRadius
+                    opacity: (leftMenu.x + leftMenu.width) / (mapView.width * 0.6)
+                }
 
-            RectangularGlow {
-                visible: leftMenu.visible
-                anchors.fill: mapView
-                z: leftMenu.z - 1
-                color: "#0000000FF"
-                glowRadius: 100000
-                opacity: leftMenuGlow.opacity
-            }
+                RectangularGlow {
+                    visible: leftMenu.visible
+                    anchors.fill: mapView
+                    z: leftMenu.z - 1
+                    color: "#0000000FF"
+                    glowRadius: 100000
+                    opacity: leftMenuGlow.opacity
+                }
 
-            onClicked: {
-                if (leftMenu.state === "") {
+                onClicked: {
+                    if (leftMenu.state === "") {
+                        handleAction({
+                                         "type": "hideMenu",
+                                         "do": function(act) {
+                                             leftMenu.state = "hidden"
+                                             return false
+                                        },
+                                        "undo": function(act) {
+                                             return true
+                                        }
+                                    })
+                    }
+                }
+
+                onMenuClicked: {
                     handleAction({
-                                     "type": "hideMenu",
+                                     "type": "showMenu",
                                      "do": function(act) {
-                                         leftMenu.state = "hidden"
-                                         return false
+                                         leftMenu.state = ""
+                                         return true
                                      },
                                      "undo": function(act) {
+                                         leftMenu.state = "hidden"
                                          return true
-                                     }
-                                 })
+                                    }
+                                })
                 }
             }
-
-            onMenuClicked: {
-                handleAction({
-                                 "type": "showMenu",
-                                 "do": function(act) {
-                                     leftMenu.state = ""
-                                     return true
-                                 },
-                                 "undo": function(act) {
-                                     leftMenu.state = "hidden"
-                                     return true
-                                 }
-                             })
-            }
-        }
+        }*/
     }
 }

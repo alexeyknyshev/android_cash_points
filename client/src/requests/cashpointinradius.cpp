@@ -212,7 +212,7 @@ void CashPointInRadius::fetchCashpoints(ServerApiPtr api, quint32 leftAttempts)
         const auto cpEnd = cashpoints.end();
         for (auto it = cashpoints.begin(); it != cpEnd; it++) {
             mResponse->addCashPointData(it->toObject());
-            qDebug() << "added cashpoint: " << it->toObject()["id"].toInt();
+            //qDebug() << "added cashpoint: " << it->toObject()["id"].toInt();
         }
 
         emitResponseReady(lastRequest);

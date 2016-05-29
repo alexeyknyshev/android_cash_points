@@ -1,6 +1,7 @@
 #include "banklistsqlmodel.h"
 #include "townlistsqlmodel.h"
 #include "cashpointsqlmodel.h"
+#include "filtersmodel.h"
 #include "serverapi.h"
 #include "icoimageprovider.h"
 #include "emptyimageprovider.h"
@@ -9,6 +10,7 @@
 #include "searchengine.h"
 #include "appstateproxy.h"
 #include "hostsmodel.h"
+#include "googleapiclient.h"
 
 #include <QApplication>
 #include <QQmlApplicationEngine>
@@ -20,6 +22,34 @@
 #include <QDebug>
 #include <QtCore/QSettings>
 #include <QtCore/QStandardPaths>
+
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QJsonArray>
+
+class MyBanksDynamicFilter : public FiltersModel::DynamicFilter
+{
+public:
+    MyBanksDynamicFilter(BankListSqlModel *model)
+        : mBanksModel(model)
+    {}
+
+    QString createFilter()
+    {
+        auto banks = mBanksModel->getMineBanks();
+        QJsonArray bank_id;
+        for (int id : banks) {
+            bank_id.append(id);
+        }
+
+        QJsonObject obj;
+        obj["bank_id"] = bank_id;
+        return QString::fromUtf8(QJsonDocument(obj).toJson());
+    }
+
+private:
+    BankListSqlModel *mBanksModel;
+};
 
 QStringList getSqlQuery(const QString &queryFileName)
 {
@@ -78,16 +108,17 @@ int main(int argc, char *argv[])
                              "town_id integer, cord_lon real, cord_lat real, address text, "
                              "address_comment text, metro_name text, main_office integer, "
                              "without_weekend integer, round_the_clock integer, "
-                             "works_as_shop integer, free_access integer, rub integer, usd integer, "
-                             "eur integer, cash_in integer, timestamp integer, schedule text)");
+                             "works_as_shop integer, free_access integer, currency text,"
+                             "cash_in integer, timestamp integer, approved integer, "
+                             "schedule text, patch_count integer)");
     db.commit();
 
     qRegisterMetaType<ServerApiPtr>("ServerApiPtr");
     ServerApi *api = new ServerApi(
 //                                   "192.168.1.126"
-                                   "localhost"
+//                                   "localhost"
 //                                   "52.89.4.111"
-//                                   "5.23.98.144"
+                                 "5.23.98.144"
                                    , 8080);
 
     HostsModel *hostsModel = new HostsModel(api, &settings, api);
@@ -106,7 +137,16 @@ int main(int argc, char *argv[])
         ":/icon/add.svg",
         ":/icon/cluster.svg",
         ":/icon/round_the_clock.svg",
-        ":/icon/limited_access.svg"
+        ":/icon/limited_access.svg",
+        ":/icon/editing.svg",
+        ":/icon/eye.svg",
+        ":/icon/clear.svg",
+        ":/icon/share.svg",
+        ":/icon/user.svg",
+        ":/icon/google.svg"
+    };
+    const QMap<QString, QByteArray> iconsTemplates = {
+        { ":/templates/event.svg", "#n" }
     };
 
     IcoImageProvider *icoImageProvider = new IcoImageProvider;
@@ -118,6 +158,17 @@ int main(int argc, char *argv[])
             qDebug() << icoPath << "loaded as" << resName;
         } else {
             qDebug() << icoPath << "cannot load ico to image provider";
+        }
+    }
+    for (auto it = iconsTemplates.cbegin(); it != iconsTemplates.cend(); it++) {
+        const QString &icoPath = it.key();
+        QFile file(icoPath);
+        if (file.open(QIODevice::ReadOnly)) {
+            QString resName = icoPath.split('/').last();
+            icoImageProvider->loadSvgImageTemplate(resName, file.readAll(), it.value());
+            qDebug() << icoPath << "template loaded as" << resName;
+        } else {
+            qDebug() << icoPath << "cannot load ico template to image provider";
         }
     }
 
@@ -132,10 +183,16 @@ int main(int argc, char *argv[])
     CashPointSqlModel *cashpointModel =
             new CashPointSqlModel(dbName, api, icoImageProvider, &settings);
 
+    FiltersModel *filtersModel =
+            new FiltersModel(dbName, api, icoImageProvider, &settings);
+    int id = filtersModel->addDynamicFilter(new MyBanksDynamicFilter(bankListModel));
+    filtersModel->setFilterName(id, QObject::trUtf8("Мои банки"));
+
     SearchEngine *searchEngine = new SearchEngine(bankListModel, townListModel);
 
     LocationService *locationService = new LocationService(&app);
     FeedbackService *feedbackService = new FeedbackService(&app);
+    GoogleApiClient *googleApiClient = new GoogleApiClient(&app);
 
     QQmlApplicationEngine *engine = new QQmlApplicationEngine;
 
@@ -151,6 +208,8 @@ int main(int argc, char *argv[])
     engine->rootContext()->setContextProperty("feedbackService", feedbackService);
     engine->rootContext()->setContextProperty("searchEngine", searchEngine);
     engine->rootContext()->setContextProperty("hostsModel", hostsModel);
+    engine->rootContext()->setContextProperty("googleApi", googleApiClient);
+    engine->rootContext()->setContextProperty("filtersModel", filtersModel);
     engine->load(QUrl(QStringLiteral("qrc:/ui/main.qml")));
 
     QObject *appWindow = nullptr;
@@ -182,6 +241,10 @@ int main(int argc, char *argv[])
                              proxy, &AppStateProxy::onBanksDataLoaded);
             QObject::connect(townListModel, &TownListSqlModel::serverDataReceived,
                              proxy, &AppStateProxy::onTownsDataLoaded);
+            /*QObject::connect(bankListModel, &BankListSqlModel::requestError,
+                             proxy, &AppStateProxy::onConnectionFailed);
+            QObject::connect(townListModel, &TownListSqlModel::requestError,
+                             proxy, &AppStateProxy::onConnectionFailed);*/
             bankListModel->updateFromServer();
             townListModel->updateFromServer();
         } else {

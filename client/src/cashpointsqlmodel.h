@@ -33,11 +33,10 @@ public:
         RoundTheClockRole,
         WorksAsShopRole,
         FreeAccess,
-        RubRole,
-        UsdRole,
-        EurRole,
+        CurrencyRole,
         CashInRole,
         ApprovedRole,
+        PatchCountRole,
 
         SizeRole,
 
@@ -90,6 +89,8 @@ protected:
 
     QSqlQuery *getQuery() override { return &mQuery; }
     bool needEscapeFilter() const override { return false; }
+
+    QList<int> getSelectedIdsImpl() const override { return {}; }
 
 private slots:
     void onRequestErrorReceived(CashPointRequest *request, QString msg);

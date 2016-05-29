@@ -59,11 +59,12 @@ signals:
 
 protected:
     void updateFromServerImpl(quint32 leftAttempts) override;
-    void setFilterImpl(const QString &filter) override;
+    void setFilterImpl(const QString &filter, const QJsonObject &options) override;
 
     int getLastRole() const override { return RoleLast; }
     bool needEscapeFilter() const override { return true; }
 
+    QList<int> getSelectedIdsImpl() const override;
 
 private slots:
     void restoreBanksData();

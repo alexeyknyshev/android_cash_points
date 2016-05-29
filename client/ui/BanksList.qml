@@ -13,8 +13,11 @@ Rectangle {
     anchors.fill: parent
     color: "#EDEDED"
 
-    onParentChanged: {
-        bankListModel.setFilter("")
+    property var externalAction
+
+    onExternalActionChanged: {
+        console.log("exteralAction: ")
+        console.log(externalAction)
     }
 
     Rectangle {
@@ -90,9 +93,9 @@ Rectangle {
 
             onDisplayTextChanged: {
                 if (isUserTextShowed) {
-                    bankListModel.setFilter(displayText)
+                    bankListModel.setFilter(displayText, "{}")
                 } else {
-                    bankListModel.setFilter("")
+                    bankListModel.setFilter("", "{}")
                 }
             }
         } // TextInput
@@ -324,6 +327,10 @@ Rectangle {
                         }
                         onClicked: {
                             console.log("selected bank: " + model.bank_name + " (" + model.bank_id + ") ")
+                            //console.log("externalAction:" + JSON.stringify(topRect.externalAction))
+                            if (topRect.externalAction && topRect.externalAction.callback) {
+                                topRect.externalAction.callback({ "id": model.bank_id })
+                            }
                         }
                     }
                 }
