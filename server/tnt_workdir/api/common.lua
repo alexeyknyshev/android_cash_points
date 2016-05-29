@@ -15,14 +15,12 @@ local COL_CP_WORKS_AS_SHOP = 13
 local COL_CP_SCHEDULE = 14
 local COL_CP_TEL = 15
 local COL_CP_ADDITIONAL = 16
-local COL_CP_RUB = 17
-local COL_CP_USD = 18
-local COL_CP_EUR = 19
-local COL_CP_CASH_IN = 20
-local COL_CP_VERSION = 21
-local COL_CP_TIMESTAMP = 22
-local COL_CP_APPROVED = 23
-local COL_CP_PATCH_COUNT = 24
+local COL_CP_CURRENCY = 17
+local COL_CP_CASH_IN = 18
+local COL_CP_VERSION = 19
+local COL_CP_TIMESTAMP = 20
+local COL_CP_APPROVED = 21
+local COL_CP_PATCH_COUNT = 22
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -30,6 +28,10 @@ local COL_CLUSTER_ID = 1
 local COL_CLUSTER_COORD = 2
 local COL_CLUSTER_MEMBERS = 3
 local COL_CLUSTER_SIZE = 4
+
+local CURRENCY_CODE_RUB = 643
+local CURRENCY_CODE_USD = 840
+local CURRENCY_CODE_EUR = 978
 
 local CLUSTER_ZOOM_MIN = 10
 local CLUSTER_ZOOM_MAX = 16
@@ -74,9 +76,7 @@ local function _cashpointTupleToTable(t)
         schedule = schedule,
         tel = t[COL_CP_TEL],
         additional = t[COL_CP_ADDITIONAL],
-        rub = t[COL_CP_RUB],
-        usd = t[COL_CP_USD],
-        eur = t[COL_CP_EUR],
+        currency = t[COL_CP_CURRENCY],
         cash_in = t[COL_CP_CASH_IN],
         version = t[COL_CP_VERSION],
         timestamp = t[COL_CP_TIMESTAMP],
@@ -498,26 +498,25 @@ function matchingFreeAccess(tuple, filter)
     return true
 end
 
-function matchingRubFilter(tuple, filter)
-    if filter.rub ~= nil then
-        return tuple[COL_CP_RUB] == filter.rub
+function matchingCurrencyFilter(tuple, filter)
+    if filter.currency ~= nil then
+        for _, fCode in ipairs(filter.currency) do
+            local isSupported = false
+            for _, tCode in ipairs(tuple[COL_CP_CURRENCY]) do
+                if tCode == fCode then
+                    isSupported = true
+                    break
+                end
+            end
+            if not isSupported then
+                return false
+            end
+        end
+        return true
     end
     return true
 end
 
-function matchingUsdFilter(tuple, filter)
-    if filter.usd ~= nil then
-        return tuple[COL_CP_USD] == filter.usd
-    end
-    return true
-end
-
-function matchingEurFilter(tuple, filter)
-    if filter.eur ~= nil then
-        return tuple[COL_CP_EUR] == filter.eur
-    end
-    return true
-end
 
 function deltaInside(from, to, delta, curTime)
     if from > to then
@@ -666,6 +665,15 @@ local function isValidCashpointType(cpType)
     return false
 end
 
+local function isSupportedCurrency(code)
+    local allowedCode = {
+    [CURRENCY_CODE_RUB] = true,
+    [CURRENCY_CODE_USD] = true,
+    [CURRENCY_CODE_EUR] = true,
+    }
+    return allowedCode[code]
+end
+
 local function validateCashpointFields(cp, checkRequired, func)
     local allowedFields = {
         id = { type = 'number', required = false },
@@ -685,9 +693,7 @@ local function validateCashpointFields(cp, checkRequired, func)
         schedule = { type = 'table', required = true },
         tel = { type = 'string', required = false, default = "" },
         additional = { type = 'string', required = false, default = "" },
-        rub = { type = 'boolean', required = true },
-        usd = { type = 'boolean', required = true },
-        eur = { type = 'boolean', required = true },
+        currency = { type = 'table', required = true },
         cash_in = { type = 'boolean', required = true },
         version = { type = 'number', required = false },
         timestamp = { type = 'number', required = false },
@@ -719,6 +725,13 @@ local function validateCashpointFields(cp, checkRequired, func)
         local expectedType = allowedFields[k].type
         if fieldType ~= expectedType then -- type missmatch
             return malformedRequest("wrong type of cashpoint field '" .. tostring(k) .. "'. Expected '" .. expectedType .. "' but got '" .. fieldType .. "'", func)
+        end
+    end
+    if cp.currency then
+        for _, code in ipairs(cp.currency) do
+            if not isSupportedCurrency(code) then
+                return malformedRequest("Unsupported currency " .. tostring(code)," ", func)
+            end
         end
     end
 end

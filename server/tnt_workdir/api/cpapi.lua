@@ -18,14 +18,10 @@ local COL_CP_ID = 1
 --local COL_SCHEDULE = 14
 --local COL_TEL = 15
 --local COL_ADDITIONAL = 16
---local COL_RUB = 17
---local COL_USD = 18
---local COL_EUR = 19
---local COL_CASH_IN = 20
---local COL_VERSION = 21
---local COL_CP_TIMESTAMP = 22
-local COL_CP_APPROVED = 23
-local COL_CP_CREATOR = 24
+--local COL_CP_CURRENCY = 17
+
+local COL_CP_APPROVED = 21
+local COL_CP_CREATOR = 22
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -132,9 +128,7 @@ function getNearbyCashpoints(reqJson)
     local filtersList = {
         matchingBankFilter,
         matchingTypeFilter,
-        matchingRubFilter,
-        matchingUsdFilter,
-        matchingEurFilter,
+        matchingCurrencyFilter,
         matchingRoundTheClock,
         matchingWithoutWeekend,
         matchingFreeAccess,
@@ -240,13 +234,11 @@ function cashpointCommit(reqJson, userId)
         end
         cp.version = (cp.version or 0) + 1
         local approved = true
-
         box.space.cashpoints:replace{
             cp.id, { cp.longitude, cp.latitude }, cp.type, cp.bank_id, cp.town_id,
             cp.address, cp.address_comment, cp.metro_name, cp.free_access,
             cp.main_office, cp.without_weekend, cp.round_the_clock,
-            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
-            cp.usd, cp.eur, cp.cash_in, cp.version, timestamp, approved, cp.creator
+            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.currency, cp.cash_in, cp.version, timestamp, approved, cp.creator
         }
 
         return cp.id
@@ -270,11 +262,9 @@ function cashpointCommit(reqJson, userId)
         local version = 0
         local approved = false
         local tuple = box.space.cashpoints:auto_increment{
-            { cp.longitude, cp.latitude }, cp.type, cp.bank_id, cp.town_id,
-            cp.address, cp.address_comment, cp.metro_name, cp.free_access,
-            cp.main_office, cp.without_weekend, cp.round_the_clock,
-            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.rub,
-            cp.usd, cp.eur, cp.cash_in, version, timestamp, approved, userId
+            { cp.longitude, cp.latitude }, cp.type, cp.bank_id, cp.town_id, cp.address, cp.address_comment,
+            cp.metro_name, cp.free_access, cp.main_office, cp.without_weekend, cp.round_the_clock,
+            cp.works_as_shop, cp.schedule, cp.tel, cp.additional, cp.currency, cp.cash_in, version, timestamp, approved, userId
         }
         cp.id = tuple[COL_CP_ID]
 
