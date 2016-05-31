@@ -137,11 +137,11 @@ func checkJsonResponse(t *testing.T, got, expected []byte) bool {
 // ======================================================================
 
 type SpaceMetrics struct {
-	Regions    uint32 `json:"regions"`
-	Towns      uint32 `json:"towns"`
-	Cashpoints uint32 `json:"cashpoints"`
-	Banks      uint32 `json:"banks"`
-	Clusters   uint32 `json:"clusters"`
+	Regions           uint32 `json:"regions"`
+	Towns             uint32 `json:"towns"`
+	Cashpoints        uint32 `json:"cashpoints"`
+	Banks             uint32 `json:"banks"`
+	Clusters          uint32 `json:"clusters"`
 	CashpointsPatches uint32 `json:"cashpoints_patches"`
 }
 
@@ -382,9 +382,7 @@ type CashpointShort struct {
 	Schedule       Schedule `json:"schedule"`
 	Tel            string   `json:"tel"`
 	Additional     string   `json:"additional"`
-	Rub            bool     `json:"rub"`
-	Usd            bool     `json:"usd"`
-	Eur            bool     `json:"eur"`
+	Currency       []uint32 `json:"currency"`
 	CashIn         bool     `json:"cash_in"`
 }
 
@@ -442,9 +440,7 @@ func TestCashpointGet(t *testing.T) {
 		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
-		Rub:            true,
-		Usd:            false,
-		Eur:            false,
+		Currency:       []uint32{643},
 		CashIn:         false,
 	}
 
@@ -777,9 +773,7 @@ func TestCashpointCreateSuccessful(t *testing.T) {
 		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
-		Rub:            true,
-		Usd:            false,
-		Eur:            false,
+		Currency:       []uint32{643},
 		CashIn:         true,
 	}
 
@@ -988,9 +982,7 @@ func TestCashpointCreateWrongCoordinates(t *testing.T) {
 		Schedule:       Schedule{},
 		Tel:            "",
 		Additional:     "",
-		Rub:            true,
-		Usd:            false,
-		Eur:            false,
+		Currency:       []uint32{643},
 		CashIn:         true,
 	}
 
@@ -1071,9 +1063,7 @@ func TestCashpointCreateMissingRequredFields(t *testing.T) {
 		Schedule:    Schedule{},
 		Tel:         "",
 		Additional:  "",
-		Rub:         true,
-		Usd:         false,
-		Eur:         false,
+		Currency:    []uint32{643},
 		CashIn:      true,
 	}
 
@@ -1165,9 +1155,7 @@ func TestCashpointCreateApproveHack(t *testing.T) {
 		Schedule:    Schedule{},
 		Tel:         "",
 		Additional:  "",
-		Rub:         true,
-		Usd:         false,
-		Eur:         false,
+		Currency:    []uint32{643},
 		CashIn:      true,
 	}
 
@@ -1307,9 +1295,7 @@ func TestCashpointEdit(t *testing.T) {
 		},
 		Tel:        "",
 		Additional: "",
-		Rub:        true,
-		Usd:        false,
-		Eur:        false,
+		Currency:   []uint32{643},
 		CashIn:     false,
 	}
 	cpFull := CashpointFull{
@@ -1363,8 +1349,9 @@ type FilterSchedule struct {
 }
 
 type NearByRequestFilter struct {
-	BankId  []uint32       `json:"bank_id,omitempty"`
-	FiltSch FilterSchedule `json:"schedule,omitempty"`
+	BankId   []uint32        `json:"bank_id,omitempty"`
+	FiltSch  *FilterSchedule `json:"schedule,omitempty"`
+	Currency []uint32        `json:"currency,omitempty"`
 }
 
 type NearByRequest struct {
@@ -1397,7 +1384,7 @@ func TestFilterBankIdCount(t *testing.T) {
 		},
 		Filter: NearByRequestFilter{
 			BankId:  []uint32{322, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 357, 338, 339, 340},
-			FiltSch: FilterSchedule{},
+			FiltSch: &FilterSchedule{},
 		},
 	}
 
@@ -1432,6 +1419,63 @@ func TestFilterBankIdCount(t *testing.T) {
 	}
 }
 
+func TestFilterCurrency(t *testing.T) {
+	hCtx, err := makeHandlerContext(getServerConfig())
+	if err != nil {
+		t.Fatalf("Connection to tarantool failed: %v", err)
+	}
+	defer hCtx.Close()
+
+	metrics, err := getSpaceMetrics(hCtx)
+	if err != nil {
+		t.Errorf("Failed to get space metric on start: %v", err)
+	}
+	defer checkSpaceMetrics(t, func() ([]byte, error) { return getSpaceMetrics(hCtx) }, metrics)
+	reqNearBy := NearByRequest{
+		BottomRight: Coordinate{
+			Longitude: 37.64, //, , ,
+			Latitude:  55.76,
+		},
+		TopLeft: Coordinate{
+			Longitude: 37.65,
+			Latitude:  55.77,
+		},
+		Filter: NearByRequestFilter{
+			Currency: []uint32{840},
+		},
+	}
+
+	url, handlerCreate := handlerNearbyCashPoints(hCtx)
+
+	reqJson, _ := json.Marshal(reqNearBy)
+	request := TestRequest{
+		RequestType: "POST",
+		EndpointUrl: url,
+		Data:        string(reqJson),
+	}
+	response, err := readResponse(testRequest(request, handlerCreate))
+	if err != nil {
+		t.Errorf("%v", err)
+	}
+	checkHttpCode(t, response.Code, http.StatusOK)
+	expectedResp := []int{6575135, 6580021, 341381, 342266}
+	var respDataArray []int
+	err = json.Unmarshal(response.Data, &respDataArray)
+	sort.Ints(respDataArray)
+	sort.Ints(expectedResp)
+	if len(expectedResp) != len(respDataArray) {
+		t.Error("Received amount of cashpoints not equal expected")
+		return
+	}
+
+	for i, _ := range respDataArray {
+		if respDataArray[i] != expectedResp[i] {
+			t.Error("Comparison failed")
+			return
+		}
+	}
+}
+
 func TestTimeFilter(t *testing.T) {
 	hCtx, err := makeHandlerContext(getServerConfig())
 	if err != nil {
@@ -1455,7 +1499,7 @@ func TestTimeFilter(t *testing.T) {
 			Latitude:  55.762994273656425,
 		},
 		Filter: NearByRequestFilter{
-			FiltSch: FilterSchedule{
+			FiltSch: &FilterSchedule{
 				Time:  1458397500, // sat, 17:25 (UTC+3)
 				Delta: 1800,
 			},

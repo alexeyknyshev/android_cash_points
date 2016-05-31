@@ -26,9 +26,7 @@ type PatchRequest struct {
 	Schedule       *Schedule `json:"schedule,omitempty"`
 	Tel            string    `json:"tel,omitempty"`
 	Additional     string    `json:"additional,omitempty"`
-	Rub            *bool     `json:"rub,omitempty"`
-	Usd            *bool     `json:"usd,omitempty"`
-	Eur            *bool     `json:"eur,omitempty"`
+	Currency       []uint32  `json:"currency,omitempty"`
 	CashIn         *bool     `json:"cash_in,omitempty"`
 }
 
@@ -58,9 +56,7 @@ func getPatchExampleNewCP() *PatchRequest {
 		Tel:            "",
 		Schedule:       &sched,
 		Additional:     "",
-		Rub:            &True,
-		Usd:            &False,
-		Eur:            &False,
+		Currency:       []uint32{643},
 		CashIn:         &False,
 	}
 	return &patchReq

@@ -970,7 +970,16 @@ func migrateCashpoints(cpDb *sql.DB, tnt *tarantool.Connection) {
 // 		}
 
 		coord := []float32{ cp.Longitude, cp.Latitude }
-
+		var currency []int
+		if cp.Rub {//RUB_CODE = 643
+			currency = append(currency, 643)
+		}
+		if cp.Usd {//USD_CODE = 840
+			currency = append(currency, 840)
+		}
+		if cp.Eur {//EUR_CODE = 978
+			currency = append(currency, 978)
+		}
 		resp, err := tnt.Insert(spaceId, []interface{}{
 			uint32(cp.Id), coord, cp.Type, cp.BankId, cp.TownId,
 			cp.Address, cp.AddressComment,
@@ -978,7 +987,7 @@ func migrateCashpoints(cpDb *sql.DB, tnt *tarantool.Connection) {
 			cp.MainOffice, cp.WithoutWeekend,
 			cp.RoundTheClock, cp.WorksAsShop,
 			cp.Schedule, cp.Tel, cp.Additional,
-			cp.Rub, cp.Usd, cp.Eur, cp.CashIn,
+			currency, cp.CashIn,
 			cp.Version,
 		})
 
