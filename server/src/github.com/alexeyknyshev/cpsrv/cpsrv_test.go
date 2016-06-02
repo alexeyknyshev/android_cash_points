@@ -12,8 +12,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -30,8 +32,18 @@ type TestResponse struct {
 }
 
 func getServerConfig() *ServerConfig {
+	url := "localhost"
+	shift := 2
+	for _, vol := range os.Args {
+		if strings.Contains(vol, "-test.run") {
+			shift++
+		}
+	}
+	if len(os.Args) == shift {
+		url = os.Args[shift-1]
+	}
 	return &ServerConfig{
-		TntUrl:  "localhost:3301",
+		TntUrl:  url + ":3301",
 		TntUser: "admin",
 		TntPass: "admin",
 	}

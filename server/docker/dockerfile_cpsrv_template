@@ -7,6 +7,6 @@ RUN mkdir /usr/src/cpsrv/bin
 RUN cd /usr/src/cpsrv && export GOPATH=$PWD && go build github.com/alexeyknyshev/cpsrv
 RUN cp /usr/src/cpsrv/cpsrv /usr/bin/
 
-CMD /usr/bin/cpsrv /etc/cpsrv/config.json
-
+{main}^CMD /usr/bin/cpsrv /etc/cpsrv/config.json
+{test}^CMD export GOPATH=/usr/src/cpsrv && cd /usr/src/cpsrv && go test github.com/alexeyknyshev/cpsrv -args tarantool
 EXPOSE 8080
