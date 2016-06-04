@@ -99,6 +99,24 @@ local function _clusterTupleToTable(t)
     return cluster
 end
 
+function _getFiltersList( opt )
+    opt = opt or {withBankFilter = true}
+    local filters =  {
+        assert(matchingTypeFilter),
+        assert(matchingCurrencyFilter),
+        assert(matchingRoundTheClock),
+        assert(matchingWithoutWeekend),
+        assert(matchingFreeAccess),
+        assert(matchingApproved),
+        assert(matchingTimeFilter),
+    }
+
+    if opt.withBankFilter then
+        table.insert(filters, 1 , assert(matchingBankFilter))
+    end
+    return filters
+end
+
 function _getCashpointById(cpId)
     local t = box.space.cashpoints.index[0]:select(cpId)
     if #t == 0 then
@@ -397,9 +415,7 @@ function getSupportedFilters()
         without_weekend = 'boolean',
         round_the_clock = 'boolean',
         works_as_shop = 'boolean',
-        rub = 'boolean',
-        usd = 'boolean',
-        eur = 'boolean',
+        currency = 'table',
         cash_in = 'boolean',
     }
 end
@@ -412,9 +428,7 @@ function getSupportedFiltersOrder()
         "without_weekend",
         "round_the_clock",
         "works_as_shop",
-        "rub",
-        "usd",
-        "eur",
+        "currency",
         "cash_in",
         "bank_id"
     }
