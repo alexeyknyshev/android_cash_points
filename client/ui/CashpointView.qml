@@ -55,10 +55,22 @@ Rectangle {
 
     function dataChanged() {
         var patch = getPatchObject()
-        if (Object.keys(patch).length > 0) {
-            acceptButton.state = "edited"
-        } else {
-            acceptButton.state = ""
+        if (acceptButton) {
+            if (Object.keys(patch).length > 0) {
+                acceptButton.state = "edited"
+            } else {
+                acceptButton.state = ""
+            }
+        }
+
+        if (bankIco) {
+            if (patch.bank_id) {
+                bankIco.source = "image://ico/bank/" + patch.bank_id
+            } else if (oldData.bank_id) {
+                bankIco.source = "image://ico/bank/" + oldData.bank_id
+            } else {
+                bankIco.source = ""
+            }
         }
     }
 
@@ -400,6 +412,19 @@ Rectangle {
 
                 text: qsTr("Банк")
                 verticalAlignment: Qt.AlignVCenter
+            }
+
+            Image {
+                anchors.top: bankLabel.top
+                anchors.right: bankLabel.left
+                anchors.bottom: bankLabel.bottom
+                anchors.margins: bankLabel.height * 0.25
+
+                id: bankIco
+
+                visible: !editingMode
+                width: height
+                sourceSize: Qt.size(width, height)
             }
 
             Label {
