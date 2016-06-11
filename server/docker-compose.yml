@@ -8,20 +8,20 @@ services:
       - ./data/banks:/var/lib/cpsrv/data/banks:ro
     depends_on:
       - tarantool
+    command: ["cpsrv", "/etc/cpsrv/config.json"]
     networks:
       cpnet:
     ports:
       - "8080:80"
   tarantool:
-    build:
-      context: .
-      dockerfile: docker/dockerfile_tnt
+    image: tarantool/tarantool
     volumes:
+      - ./tnt_workdir/init_common.lua:/var/lib/cpsrv/lua/init_common.lua:ro
       - ./tnt_workdir/init_docker.lua:/var/lib/cpsrv/lua/init.lua:ro
       - ./tnt_workdir/api:/var/lib/cpsrv/lua/api:ro
       - ./tnt_workdir/snap:/var/lib/cpsrv/snap
       - ./tnt_workdir/wal:/var/lib/cpsrv/wal
-    command: tarantool /var/lib/cpsrv/lua/init.lua
+    command: ["tarantool", "/var/lib/cpsrv/lua/init.lua"]
     networks:
       cpnet:
 networks:

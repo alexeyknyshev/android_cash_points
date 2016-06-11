@@ -7,7 +7,7 @@ box.cfg{
     wal_dir = 'wal'
 }
 
-package.path = package.path .. ';/var/lib/cpsrv/lua/api/?.lua'
+package.path = package.path .. ';/var/lib/cpsrv/lua/?.lua;/var/lib/cpsrv/lua/api/?.lua'
 
 box.schema.user.passwd('admin', 'admin')
 
