@@ -94,7 +94,7 @@ function init()
         })
         patches:create_index('target', { -- cp_id
             type = 'TREE',
-            parts = { 2, 'NUM', 3, 'NUM' },
+            parts = { 2, 'NUM', 3, 'STR' },
             unique = false,
         })
         log.info('created space: cashpoints_patches')
@@ -111,7 +111,7 @@ function init()
         })
         votes:create_index('votes', {
             type = 'TREE',
-            parts = { 2, 'NUM', 3, 'NUM' },
+            parts = { 2, 'NUM', 3, 'STR' },
         })
         log.info('created space: cashpoints_patches_votes')
     else
