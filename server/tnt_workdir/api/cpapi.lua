@@ -19,6 +19,7 @@ local COL_CP_ID = 1
 --local COL_TEL = 15
 --local COL_ADDITIONAL = 16
 --local COL_CP_CURRENCY = 17
+local COL_CP_TIMESTAMP = 20
 
 local COL_CP_APPROVED = 21
 local COL_CP_CREATOR = 22

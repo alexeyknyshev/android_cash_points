@@ -20,7 +20,7 @@ local COL_CP_CASH_IN = 18
 local COL_CP_VERSION = 19
 local COL_CP_TIMESTAMP = 20
 local COL_CP_APPROVED = 21
-local COL_CP_PATCH_COUNT = 22
+local COL_CP_USER_ID = 22
 
 local COL_TOWN_CP_COUNT = 9
 
@@ -81,7 +81,8 @@ local function _cashpointTupleToTable(t)
         version = t[COL_CP_VERSION],
         timestamp = t[COL_CP_TIMESTAMP],
         approved = approved,
-        patch_count = getCashpointPatchesCount(cpId)
+        patch_count = getCashpointPatchesCount(cpId),
+        user_id = t[COL_CP_USER_ID]
     }
 
     return cp
